@@ -1,0 +1,1092 @@
+[
+  {
+    "name": "AI Feedback基础反馈 ",
+    "key": "87fe83f1488c2de01e769b9b01729745852d5ab3",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": ".AICardContent",
+    "key": "d9de8ecdf0f54248f6eeb608f6f77ca7ab6ccb07",
+    "description": ""
+  },
+  {
+    "name": "AI Floating menu 悬浮菜单",
+    "key": "b5280f0d933035b99458bf63dcd3c2770d9aabee",
+    "description": ""
+  },
+  {
+    "name": "_components/Time Input",
+    "key": "dbfab26bda1ee2fb524b5be279afd840ac6d05f6",
+    "description": ""
+  },
+  {
+    "name": "Panel_Datepicker 日期选择器面板",
+    "key": "3f6ac0ebb15f99e227e41661e74b2e0aadef0327",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Panel_Rangepicker 日期选择器范围面板",
+    "key": "9ebd824cef622143e73dd2109090ff32ae10a1cf",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/Head 头部",
+    "key": "b3ab947346fbd8bd94a856eb28917a96e174eebf",
+    "description": ""
+  },
+  {
+    "name": "_components/week",
+    "key": "e60ed0da7534a70412ce79376f4847a1d32cf2ac",
+    "description": ""
+  },
+  {
+    "name": "Calendar 日历",
+    "key": "7906a6460bc14fc0aab5b3e1e004489f3c822693",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_component/Base-treenode",
+    "key": "209f1e9971aae005d8e054ba58757884948c026d",
+    "description": ""
+  },
+  {
+    "name": "_components/caret",
+    "key": "e2c6c6ab4b37568cd77af9e1845f1daba07bd8b6",
+    "description": ""
+  },
+  {
+    "name": "_components/item 元素/Vertical 纵向选项卡",
+    "key": "231364c3e0ef1adf7970102c1043b0f697580bb4",
+    "description": ""
+  },
+  {
+    "name": "_components/slider",
+    "key": "10a3f1c7b6b735522f7e7cd11f8a5f83bfa8569d",
+    "description": ""
+  },
+  {
+    "name": "_components/connection",
+    "key": "3f192950ae75d6bba77adfcd6453d3f8969d634a",
+    "description": ""
+  },
+  {
+    "name": "_光标",
+    "key": "b2ccc0541eac5e745e65342fd631eded3fb5f1bc",
+    "description": ""
+  },
+  {
+    "name": "_components/slider/item",
+    "key": "c06b324849f4cf5051f7852c2437b66f2dd48327",
+    "description": ""
+  },
+  {
+    "name": "_slot占位符",
+    "key": "24fc078b11e632e232c352c4f3f68c7853e62fd7",
+    "description": ""
+  },
+  {
+    "name": "_components/Relative",
+    "key": "cd913ce5ecc03572e6bd080748f322488d0fd4e4",
+    "description": ""
+  },
+  {
+    "name": "Lable 表单文字标签",
+    "key": "7115b4ea7ff7a19e3a7295ff3d2bc7dcc1fb0e39",
+    "description": ""
+  },
+  {
+    "name": "Tag 默认标签",
+    "key": "19089a80333c317accdfb64ccd31736c7fef9dbd",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Drag 拖拽上传",
+    "key": "2014a5ca9e9b957e51f9af5394bc29915a19e651",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Alert 警告提示",
+    "key": "8885eb316fd43fa95238e9ea0a8bf55d3f02a3f5",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "Modal-confirm 确认对话框",
+    "key": "1d085a1348c2bde2a43f15d7acf12a779fcf53a1",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "_components/menu 侧导航/expanded 展开",
+    "key": "0400a076fb6f3e8ef2f9131920fb75b0441a3526",
+    "description": ""
+  },
+  {
+    "name": "Input 输入框",
+    "key": "bfe6f49493d83990d7a5d07afd17dc3c2ef52b3c",
+    "description": ""
+  },
+  {
+    "name": "Radio 单选框",
+    "key": "c5e8d61d59e1d17540ef918252cde1e2ce149f03",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/column 列/header 表头/40",
+    "key": "b4790133ebbfa0c65d74093c393cd8392e8b5e5f",
+    "description": ""
+  },
+  {
+    "name": "_components/TimeSelect",
+    "key": "b2697d306a3aa4fd47151f76ca5ad7cc0ec986fb",
+    "description": ""
+  },
+  {
+    "name": "通用智能化背景",
+    "key": "08a851f64e51dfda7c2ea8a10f8d28328818766e",
+    "description": ""
+  },
+  {
+    "name": "AI Button group 智能按钮组",
+    "key": "60bb4b331507842afcde2d03a1a298e37b7ea5ae",
+    "description": ""
+  },
+  {
+    "name": "AI Search 智能搜索框",
+    "key": "6fb129fd4e24b704062cc9daa22b56cb56b1447d",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "_slot占位符",
+    "key": "0ba54f4def78f1984692845ee0dabea62b4bdbf8",
+    "description": ""
+  },
+  {
+    "name": "AvatarIcon 头像图标",
+    "key": "e8cae07d6783736ec763be0c5b474e21842902a3",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/panel",
+    "key": "226e4f64d66d34bbf737e5f4b76a0aef0e252d91",
+    "description": ""
+  },
+  {
+    "name": "_components/month",
+    "key": "10bdc907a434db17dca7130e8bdf7d4f3defe4f3",
+    "description": ""
+  },
+  {
+    "name": "验证信息",
+    "key": "45167cfac238dee8a4d77d40e09e1797270e8a8d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/Source 源选项/Option 选项",
+    "key": "2c6ed3633c5a269a62b277a34848a86c6be40d68",
+    "description": ""
+  },
+  {
+    "name": "浅色系",
+    "key": "b818f0ce87ee0b8705151815a19f6307455dc6cd",
+    "description": ""
+  },
+  {
+    "name": "_components/number",
+    "key": "03c28205465c53c0dd45a7850916f20bf4ac7f1d",
+    "description": ""
+  },
+  {
+    "name": "_components/dropdown_item/fileicon",
+    "key": "c4e1024c306e430121a72f3df3337da80b00c85e",
+    "description": ""
+  },
+  {
+    "name": "_components/清空icon",
+    "key": "0018a3f155e622d0e9b92249dcc2a9287a5073a8",
+    "description": ""
+  },
+  {
+    "name": "Button 按钮 ",
+    "key": "a539f78c79dc3ab8df6c18d806b0666f64fae1ab",
+    "description": "分类：基础开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FButton"
+  },
+  {
+    "name": "AutoComplete 自动补全",
+    "key": "355fad193afc9d482a114e9e435bce05c970d60c",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "MultiColor Tag 多色标签",
+    "key": "1fe9750b5bb150ddbff545a49e6bf442683fe85c",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Cascader 级联选择",
+    "key": "7245c6d58b6dae1ef68cdffb0c90798cb57bfb7d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Avatar 头像",
+    "key": "aec22c3b5dc500fb30959d048063170cd77e6abf",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "logo",
+    "key": "f9f74af74b6475f0cea71fe7381e281a2e1512ce",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/tag 标签",
+    "key": "011f043fb5a8b6255e5186f372262c0a6c87e4c9",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/header 表头/1st",
+    "key": "956a7b07bf6b19442b0677ee5671cc22f62bfe08",
+    "description": ""
+  },
+  {
+    "name": "_components/icon 图标",
+    "key": "73ebd5436d761f450698114c11b81e18cd30a0ab",
+    "description": ""
+  },
+  {
+    "name": "卡片 Card-图片 Pic",
+    "key": "9e7fd9a7a42488a6dfbdc4822066729a078f49a6",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Description 解释说明",
+    "key": "77be2c6eb77bbb81f37e130c49622fa330586f12",
+    "description": ""
+  },
+  {
+    "name": "_components/radio-segmented picker 分段选择器",
+    "key": "af840dd062c4ae9f17b3cc3d6110c5195aa1df57",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "DateTimepicker_segemented 分段时间输入",
+    "key": "5a348cbb6740e5d449689350cf7e7f53447d0f30",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": ".RightAction",
+    "key": "69c4ddb7dee332db341f9b6fd4b966babfaf3600",
+    "description": ""
+  },
+  {
+    "name": "_AI-Input-iconButton",
+    "key": "ab55ab6ae8d3455ea1b5791977c3b8a9b385dd6c",
+    "description": ""
+  },
+  {
+    "name": "Select-Borderless 无边框选择器",
+    "key": "c60ca4a915c3861605ba17f1416d09b29512a77a",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Radio Group 单选框组",
+    "key": "360abf928135cb51b513e27732dfc609c0dffe14",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Switch 开关",
+    "key": "d6017b9a513cbd53d6963d768259bbe0fcb8ddde",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Datepicker 日期选择器",
+    "key": "75d61442da83762c096571de0f34f56012bea78d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Input 输入框",
+    "key": "f04bea11a4ef73f626b7402aac670a94ad32faf0",
+    "description": "分类：数据输入\n\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FInput"
+  },
+  {
+    "name": "Divider",
+    "key": "3e1832b1cb594bc7a31805be88967c359ffe5e6e",
+    "description": "分类：布局"
+  },
+  {
+    "name": "Slider 滑动输入",
+    "key": "cc707c07037cc48e0551dcd72feae6dabe9ed484",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Statistic 数值显示 ",
+    "key": "984f1ee1fe2ca3b9096f0f18dfc091c003a27f65",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Segmented Picker 分段选择器",
+    "key": "94125fa758354931512313d1bb6ce37aae02b8c7",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Checkbox Group 复选框组",
+    "key": "ca3d2f097d5c3a695f6b4b8c8d7455b03d6dcafd",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/group",
+    "key": "360e455342e473f0dad02ae66bb2f0c98df05957",
+    "description": ""
+  },
+  {
+    "name": "_components/item 元素/Othertabs 其他选项卡样式",
+    "key": "6995189b85ff8c9a7b272424e131f002635f467e",
+    "description": ""
+  },
+  {
+    "name": "Timepicker 时间选择器",
+    "key": "b6eadcc611e8d23cea25b9799bc317154a718322",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "anchornode/2nd-3rd level",
+    "key": "f5c2d355bbace6cd31f2d9f4206a73d18c041404",
+    "description": ""
+  },
+  {
+    "name": "_components/item 元素/Multi-line 多行选项卡",
+    "key": "35d415c65ff4e1b91d488523a455a13835d785de",
+    "description": ""
+  },
+  {
+    "name": "_components/column 列/content 内容/40",
+    "key": "7ce325a6c870ecd39959a050721929667640b34f",
+    "description": ""
+  },
+  {
+    "name": "深色系",
+    "key": "0d8c9fa04ccd4f95ea22f0df2259bc87be6e68ea",
+    "description": ""
+  },
+  {
+    "name": "_components/menu 侧导航/function 全部功能",
+    "key": "2670a091bdd6128abb8f26757116958c7001bf33",
+    "description": ""
+  },
+  {
+    "name": "_components/menu 侧导航/1st 一级选项/collapsed 折叠",
+    "key": "b90445668d77775505498d7d28de0bd0e03acd95",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/content 内容/32",
+    "key": "98c70fd2731ca4114b8bc0a7e209de22d80ade17",
+    "description": ""
+  },
+  {
+    "name": "_components/week",
+    "key": "42ca8616a99fbdf31ecce13430153a860f0e39fc",
+    "description": ""
+  },
+  {
+    "name": "_components/month",
+    "key": "bf573d115049dbc7fb0438ec45d7459d06c6fb0f",
+    "description": ""
+  },
+  {
+    "name": "登录表单",
+    "key": "dac6c37e35b02e175afafd5265ff1280e79d95b1",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/item 元素/L3 三级选项卡",
+    "key": "5376a53dd8d036ec5549feea553d5f1e7d6b59d4",
+    "description": ""
+  },
+  {
+    "name": "_components/Footer 底部",
+    "key": "00fcd89b8862353e5c0064bd488f760eb38d6dbf",
+    "description": ""
+  },
+  {
+    "name": "_components/Header",
+    "key": "6c796cc58231e76fca441f6f6cbe1cb51a33b6ce",
+    "description": ""
+  },
+  {
+    "name": "_components/timepicker=item",
+    "key": "b8bb54634a8833843279be15b8de7d175032f632",
+    "description": ""
+  },
+  {
+    "name": "_components/timepicker",
+    "key": "845166a426dc2e496210144dfbf4e31a0a6d8ca2",
+    "description": ""
+  },
+  {
+    "name": "_components/dropdown_item 下拉选项",
+    "key": "f8a5f2b231586e43265eb45e6d3dd96ef50a4e59",
+    "description": ""
+  },
+  {
+    "name": "Menu 侧导航",
+    "key": "4496be3ff5c3285149aadc832fda2d0ca91c61f2",
+    "description": "分类：导航"
+  },
+  {
+    "name": "InputNumber 数字输入框",
+    "key": "207e734d854bc8d664b0218f431761c985ecccf1",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Badge 徽标",
+    "key": "54bd3fb9f7e48d3234dfaccdf4810ddeca5ae539",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Message 全局公告",
+    "key": "74d953dcc0f31a9cf04916f1b90d4cbbf2b7e344",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "_components/vertical纵向",
+    "key": "b7fdce6fee868b322053e4f2bd23152360c8cec2",
+    "description": ""
+  },
+  {
+    "name": "Search 搜索框",
+    "key": "4394ad4bddd9e82a82ae9a3aa6f6ff0c574a4ff8",
+    "description": "分类：数据输入\n\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FInput"
+  },
+  {
+    "name": "Popover 气泡卡片",
+    "key": "1aa0a28fc871d9368c69cbe99c2ff0c0aaae5cb7",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Image 图片上传",
+    "key": "85ba2a0764a9485d4b07cdd6420a44292b8f4fcc",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Button 按钮上传",
+    "key": "d93abfb10eb04a5723ba8016b9147c131b54dc6d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Treeselect 树选择",
+    "key": "9ba274503ab0dba7d0abf90c22192c94b0cb02bb",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Progress-line 进度条(线)",
+    "key": "4343577511ca6dd426361026f46629e0bcdbbcaa",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "_components/Day",
+    "key": "493db7b2e0542de5982906cbd7cf0b4f4c8ad50c",
+    "description": ""
+  },
+  {
+    "name": "Progress-line 进度条(线)",
+    "key": "4bee92238c47c4d21ed44f33d9ead1f6f08f4810",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "Popconfirm 气泡确认框",
+    "key": "c929a897787611cdc7333df450d45b323651844f",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "AI Shortcut key 快捷键",
+    "key": "24d079652bb113daa2608577978d3ecf70bf9457",
+    "description": "分类：AI/火山引擎智能化\n\n\n\n开发链接：暂无待补充"
+  },
+  {
+    "name": "AI ProgressBar进度条(线)",
+    "key": "4427dac55b49b8600c341dc95589a428039c2c7d",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "反馈交互",
+    "key": "0de25b466ed87954c24442194532f0a36f4e3139",
+    "description": ""
+  },
+  {
+    "name": "_components/percentage",
+    "key": "6075c48af74c468297e5c57954070a0ecbdfe029",
+    "description": ""
+  },
+  {
+    "name": "_components/Statistic 数值显示 ",
+    "key": "bafa6b19e21d9a044a8055b8c81e94828f1602d1",
+    "description": ""
+  },
+  {
+    "name": "components/Statistic_card",
+    "key": "bb4fa04407e44dffccd88d30438be84e95d34578",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "AI Button 智能按钮 ",
+    "key": "6f00d37932bf86e4ed8e95ec2cef53089dcfc228",
+    "description": "分类：AI/火山引擎智能化\n\n开发链接：https://cloud.bytedance.net/material/detail/ai-button?x-resource-account=public"
+  },
+  {
+    "name": "Vertical Form 纵向表单",
+    "key": "0be124134930bd594da9da61af7046c4e442878d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Anchor 锚点",
+    "key": "3495aec09721d6eacfbe3028036f69546435def7",
+    "description": "分类：导航"
+  },
+  {
+    "name": "_components/Anchor-node 锚点节点/3rd",
+    "key": "630e5d1f5688b93a49c4073e17d602b4b25803cc",
+    "description": ""
+  },
+  {
+    "name": "Panel_DateTime-Menu 日期时间选择器面板",
+    "key": "970675f532f0ccccee29b46998ecc01e755c4c34",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/Anchor-node 锚点节点/1st",
+    "key": "9881996ef611b06b3fbd7d07ccccf70db486d4ec",
+    "description": ""
+  },
+  {
+    "name": "AI Chat Editor 对话编辑器 ",
+    "key": "9e465df7927d32c72182957cc90fb13813626c9d",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "anchornode/1st-2nd level",
+    "key": "b21f75e0cca56a121ab673ce82af7357207a221e",
+    "description": ""
+  },
+  {
+    "name": "_components/Picturezone 图片区域",
+    "key": "fbcb471d5d29fe44ca907162c8e146d584a60adb",
+    "description": ""
+  },
+  {
+    "name": "_component",
+    "key": "de4c5ec0f6ef7b992ddb29842e4b71c23bc7326d",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/header 表头/2nd",
+    "key": "16cda8971a37b44f15cc6b926deaca364b27a878",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/productIcon 产品图标",
+    "key": "39189287d87c2b189d28059a40616199a0a19944",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/header 表头/32",
+    "key": "44b401189e4a6a88e41bfb7f570b0d23c350d79b",
+    "description": ""
+  },
+  {
+    "name": "TableExpand 展开表格",
+    "key": "2510986b76fdf4dda2fa0045d9882ef3877c1822",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "treenode/*root",
+    "key": "72f0bc02076e02138e67bc4c0254f9fc11943af9",
+    "description": ""
+  },
+  {
+    "name": "_Collapse 折叠面板 / Header",
+    "key": "713a8889bf571be0db1e9b527b05c14abccaab8c",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/expandIcon 展开图标",
+    "key": "eb2cbc31fedd7d4476b8920e318cdf32b51242de",
+    "description": ""
+  },
+  {
+    "name": "_components/column 列/content 内容/56",
+    "key": "d5112601fc1e67c3a57aaedbf17664361e852408",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/header 表头/select cell  选择单元格",
+    "key": "00e230aea62151db2ce2698e978924572b72b603",
+    "description": ""
+  },
+  {
+    "name": "Status Tag 状态标签",
+    "key": "03929d474a32cb373ef51950eef4f25970649ab0",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/Date",
+    "key": "5999535f5a2dc6206d1f28369874a80d94cc2a41",
+    "description": ""
+  },
+  {
+    "name": "_tabs-icon",
+    "key": "96cf09ca36f81feb25b1ffead8c7e20382f63c29",
+    "description": ""
+  },
+  {
+    "name": "Table 表格",
+    "key": "bfccce80a53ec4ed52182f155c06653123a9864d",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Digital Tag 数字标签",
+    "key": "928aa07dc25a1e41fc69a48b948834411121c505",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Safety Tag 安全标签",
+    "key": "e454991493ca9e3e7e623f2b9ed0ce4b4991261f",
+    "description": ""
+  },
+  {
+    "name": "_components/logo",
+    "key": "d08b317c637108b705b9b54041b255dd599a39c4",
+    "description": ""
+  },
+  {
+    "name": "步骤条",
+    "key": "329423acfa88f75014d5c127e9a2223b8fcd86f4",
+    "description": "分类：导航"
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/pirorityIcon 优先级图标",
+    "key": "3db0d52173ea58b43402be9ba19d7f300d407df8",
+    "description": ""
+  },
+  {
+    "name": "_components/horizontal横向",
+    "key": "5cb8630ecd918c647e5923676340080099f4addf",
+    "description": ""
+  },
+  {
+    "name": "_components/Edit",
+    "key": "5e7b75a3d69fec741e7e664e86f28d9891cf0059",
+    "description": ""
+  },
+  {
+    "name": "_components/indicator 指示符",
+    "key": "855c88c2c5540b55a7c9bdc5f42eced91f4def5b",
+    "description": ""
+  },
+  {
+    "name": ".Dragzone 拖拽域",
+    "key": "9b466a4a6d61ab9648d66333d1f3768db54a32fb",
+    "description": ""
+  },
+  {
+    "name": "_components/item",
+    "key": "bcbe418a36f933c60fd27c7d34c723871462a161",
+    "description": ""
+  },
+  {
+    "name": "Breadcrumb 面包屑",
+    "key": "727e5a59c09ccafa68737e4cd23aa9f0d0354c31",
+    "description": "分类：导航"
+  },
+  {
+    "name": "Notification 通知提醒",
+    "key": "838eb6c49a91d180d08100be0d0402e6b12ce9c6",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "_components/Component 191",
+    "key": "c4c3402f8aacc74570db4e9edbb680af17b6712a",
+    "description": ""
+  },
+  {
+    "name": "_components/List item",
+    "key": "e905ee5167f39a667042e9623592aeadd7aa209c",
+    "description": ""
+  },
+  {
+    "name": "_components/Uploadlist 上传列表条目",
+    "key": "40f0261f13e3db993250b9d17e89b032a6420599",
+    "description": ""
+  },
+  {
+    "name": "AI TextArea 智能文本域",
+    "key": "49af2690f504a1f56b545e4287acdd904809f78a",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "_components/Checked 已选项/Option 选项",
+    "key": "2f40893c895c4d4097ddcd183dd1774e0ce903cb",
+    "description": ""
+  },
+  {
+    "name": "Badge+avatar 徽标+头像",
+    "key": "f67ae4bd04f3c39aa33c14d5a5f1c5aa5f8edec1",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Descriptions",
+    "key": "28a8d9c0652b6c199e9b40641fc06d5a67a7e600",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Panel_RangeSegemented 分离式日期时间选择器面板",
+    "key": "3d971d876397753a90b9af537d4a5d44a571e172",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_Collapse 折叠面板 / expandicon",
+    "key": "1f720bc5b17c5adf860c752620c312c96f361194",
+    "description": ""
+  },
+  {
+    "name": "TextArea 文本域",
+    "key": "acba4b2ca240bc5a54672107c78235f4f82fd419",
+    "description": "分类：数据输入\n\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FInput"
+  },
+  {
+    "name": "Tree",
+    "key": "e963b2f2c512e2005cd306379ed39b81dd0b245c",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Tooltip 文字气泡",
+    "key": "2eb76d229c8bd334dfa7054d4a5909f97c3c6899",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/avatar 头像",
+    "key": "17ea5de7dc10d6126991b117909394357067a147",
+    "description": ""
+  },
+  {
+    "name": "Form 表单",
+    "key": "25f071ee2f2569f0fd3744d41ed085020d386b26",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "Panel_Relativetime 相对时间选择器面板",
+    "key": "6c2796b14acd974e3856d47ae955c7201b689db2",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/menu 侧导航/2nd 二级选项",
+    "key": "9fdd42b3419828a771e43f5a77b1c4ab7aca5df8",
+    "description": ""
+  },
+  {
+    "name": "_components/Breadcrumb",
+    "key": "c42aa1206946983ee6b3fe144ca4755dd024726b",
+    "description": ""
+  },
+  {
+    "name": "_components/countdown",
+    "key": "c7111cf623f4a8116f58fd74965b1ed6969a89cb",
+    "description": ""
+  },
+  {
+    "name": "Header 页头",
+    "key": "f75d67ec3641bb846aa05d21669cc1d02f227967",
+    "description": "分类：导航"
+  },
+  {
+    "name": "_components/Breadcrumb",
+    "key": "0d4e9a2a17109cc99f386ab2ecadd4d1ced8c216",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/item 元素/icon 图标",
+    "key": "2c600306db9b10be048c5ce3bf72697c252ad4ed",
+    "description": ""
+  },
+  {
+    "name": "Add Tag 添加标签",
+    "key": "3402d492e9cc9cd182e53addda7b647b5b98824e",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "TimePicker-menu 时间选择器菜单",
+    "key": "bae12d9dfb4f45c2dfd211d447a30ac53b56ee26",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "可编辑头像",
+    "key": "a54d66508e3d54f5db521e1f189caf45b34dfab0",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_指令",
+    "key": "349896e6066d6affc31733bb8e3cc6ca13c21709",
+    "description": ""
+  },
+  {
+    "name": "Checkbox 复选框",
+    "key": "51a9e035c762059b3c592e77aadbbe5b22dcb04e",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/Component 187",
+    "key": "35e75c203b74e0ee0563938209a4962324dac27c",
+    "description": ""
+  },
+  {
+    "name": "_components/menu 侧导航/product 产品名称",
+    "key": "9e53afc823b52d1681aa9e479b9dcf74c607b0c9",
+    "description": ""
+  },
+  {
+    "name": "DateTimepicker_segemented-item",
+    "key": "6d40ae7377b10b6fd95d31633780dbe45670089b",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/header 表头/40",
+    "key": "bba9bde86f85937f174aebf43afc6c2b7032196b",
+    "description": ""
+  },
+  {
+    "name": "Tabs 选项卡",
+    "key": "43d661890f421adcaca45eeba551fb00dc2edcd1",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/item 元素/Vertical 纵向二级选项卡",
+    "key": "045eb2e53f4f57f443f8d9d05f746e495adf8073",
+    "description": ""
+  },
+  {
+    "name": "_components/item 元素/L2 二级选项卡",
+    "key": "9aee1e851ff91c4f5bb789330712c84d70245bb3",
+    "description": ""
+  },
+  {
+    "name": "_components/item 元素/L1 一级选项卡",
+    "key": "b11806df55533942284b02cdd0e46e0b7f60deeb",
+    "description": ""
+  },
+  {
+    "name": "_components/Anchor-node 锚点节点/2nd",
+    "key": "5e26bd1f3985441bc7623a1eae2424ae29c65840",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/content 内容/40",
+    "key": "12c41963faa00b81e6f60acf0cb9f0c7d08b4b5b",
+    "description": ""
+  },
+  {
+    "name": "Other Tag 其他标签",
+    "key": "2d9c0e17cb30fdb3fb4d5a785f8e5ed4e638252e",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Collapse 折叠面板 ",
+    "key": "3de69eb3db0810ee8b175c7d8ecbbf07c58e3a54",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/footer 脚/batch action 批量操作",
+    "key": "48e9f539d9e5f8ed8b3e9b722a61c44142a63f10",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/content 内容/48",
+    "key": "7a125bcf5957f82100a77601be647928f3a64c92",
+    "description": ""
+  },
+  {
+    "name": "_components/column 列/header 表头/48",
+    "key": "8782bb8fd723b7f413830f4e7e32d800a9581850",
+    "description": ""
+  },
+  {
+    "name": "Select 选择器",
+    "key": "d124dbe0576b8dfd900897124bd14e888e4db6f3",
+    "description": "分类：数据输入\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FSelect"
+  },
+  {
+    "name": "AI Popconfirm 智能化气泡确认框",
+    "key": "24b69364e72795b04009d1f58e8e01bba1d364c6",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "PicList 图片列表",
+    "key": "4a94b3da5e1ce54430a22c627029d1c3a0df2b78",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Timeline 时间轴",
+    "key": "335c356695092876a2f1718c907541e928dccb65",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Modal 对话框",
+    "key": "4b46e03230cba8680dba61fd3e10ec73b819bdc9",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "_components/PageHeader",
+    "key": "4f6f62c73b51233a53c3c9b48280a19624a0d10f",
+    "description": ""
+  },
+  {
+    "name": "Risk Level Tag 风险等级标签",
+    "key": "5213fbef91da23af8b1a1db570c482156037fe90",
+    "description": ""
+  },
+  {
+    "name": "AvatarGroop 头像组",
+    "key": "0c0c6c4c739a3317d1897e15a6bc96dca1a8662d",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Card 卡片 ",
+    "key": "8892d33a43451d9eb3d6251bfd07712dc1a1d3cd",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Inputgroup 输入框组",
+    "key": "b67f094a9256bf4cc0da575d6524f9b8b46c00c7",
+    "description": "分类：数据输入\n\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FInput"
+  },
+  {
+    "name": "AI Modal 智能对话框",
+    "key": "683d3c791333359f03a70bf25e1435a675efd107",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "AI Accept采纳按钮组 ",
+    "key": "7e16aee1dc7490b13d3f42af200209981287adf8",
+    "description": "分类：AI/火山引擎智能化"
+  },
+  {
+    "name": "顶部导航",
+    "key": "bde7297e2e07b6380f9850c67b590df1b440021e",
+    "description": "分类：导航"
+  },
+  {
+    "name": "Link 链接",
+    "key": "f41466dcfeadfa7f023b8f76862ccb43196e940e",
+    "description": "分类：基础\n开发链接：https://arco.bytedance.net/orgs/ve-o-design/pt/material/preview?groupId=FG-W7qmX1h&module=%40ve-o-design%2Fweb-react%2FLink"
+  },
+  {
+    "name": "抽屉 Drawer",
+    "key": "220c9c0f3992a0dd0bdffc555995845f6c9d437e",
+    "description": "分类：反馈"
+  },
+  {
+    "name": "AI Card 智能卡片",
+    "key": "b175a60d33eba4eabd669cb150423178811aeeb5",
+    "description": "分类：AI/火山引擎智能化\n\n开发链接：https://cloud.bytedance.net/material/detail/ai-card?x-resource-account=public"
+  },
+  {
+    "name": "_components/cell 单元格/content 内容/select cell  选择单元格",
+    "key": "e58a4be12cba71904b0db9ddd62b5f624b3fa896",
+    "description": ""
+  },
+  {
+    "name": ".AIFooteraction",
+    "key": "ed6a6fe5237bb7ded5984421da359fa427bb6c82",
+    "description": ""
+  },
+  {
+    "name": "Dropdown 下拉菜单",
+    "key": "5e6f4710d2c14cc6cf44ea86def1099beb024d1c",
+    "description": "分类：导航"
+  },
+  {
+    "name": "Horizontal Form 横向表单",
+    "key": "621ab3ad5d95d291cb6d31438dbad667594ae098",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/column 列/content 内容/32",
+    "key": "ae6a00390110050fd28c8020a7682f3e173950b2",
+    "description": ""
+  },
+  {
+    "name": "TableFixation 固定表格",
+    "key": "c081103df8d15a1fef8309d5d794b2e7a6404c2b",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/column 列/header 表头/32",
+    "key": "f47501d6d172734d81167b521d6d39eac2de39ee",
+    "description": ""
+  },
+  {
+    "name": "_components/column 列/header 表头/56",
+    "key": "bc297d334cb970c8cf0c29edca3fadd23f537b38",
+    "description": ""
+  },
+  {
+    "name": "_components/row 行/content 内容/56",
+    "key": "c2bff2f7a448293c8ab67722cbf301cd90b6d6a5",
+    "description": ""
+  },
+  {
+    "name": "_components/pagination-baisc",
+    "key": "e64a157f1eb85ec3f56c2177276a45bd4b5e9cf0",
+    "description": ""
+  },
+  {
+    "name": "_components/menu 侧导航/1st 一级选项/default 默认",
+    "key": "63821d16e61098536304ab52343ed20f59a83a43",
+    "description": ""
+  },
+  {
+    "name": "_components/cell 单元格/content 内容/1st",
+    "key": "7d231e72862091a933fc3c0f1bb1b933a736919d",
+    "description": ""
+  },
+  {
+    "name": "List 列表",
+    "key": "3f790aed52a836b6210de70949f8594a2ef653ba",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "_components/cell 单元格/content 内容/2nd",
+    "key": "5810cde904f7944dc84ae0f608307eb0c766b475",
+    "description": ""
+  },
+  {
+    "name": "_components/indicator",
+    "key": "6acb074f05bbaa9a780d4ea9341811e263e4b44d",
+    "description": ""
+  },
+  {
+    "name": "_components/column 列/content 内容/48",
+    "key": "6b05a3c1b7cb851543abdae22c19133350eb0c8e",
+    "description": ""
+  },
+  {
+    "name": "Transfer 数据穿梭框 ",
+    "key": "91aa7f09c8b35252733355dffca7274fc03c850d",
+    "description": "分类：数据输入"
+  },
+  {
+    "name": "_components/TimeInput",
+    "key": "45eef41aba8bf4b7853579e828ca5f392d0c8237",
+    "description": ""
+  },
+  {
+    "name": "_components/date",
+    "key": "3d2dd1d0bae95087b49b10ecac84c941582453b8",
+    "description": ""
+  },
+  {
+    "name": "Othertabs 其他选项卡样式",
+    "key": "6d9e7cb10773c4659dcdfdb2cffb6c268a0b0221",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Pagination 分页",
+    "key": "0e1ed7b2c19ed13d7889ad0e3373d861a8a34477",
+    "description": "分类：导航"
+  }
+]

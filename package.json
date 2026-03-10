@@ -1,0 +1,33 @@
+{
+  "name": "figma-ui-agent",
+  "version": "1.0.0",
+  "description": "A Figma plugin built with React and Vite",
+  "main": "dist/code.js",
+  "scripts": {
+    "build": "npm run build:ui && npm run build:main",
+    "build:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
+    "build:ui": "vite build",
+    "spec:snapshot:apply": "node scripts/apply-component-spec-patch.mjs",
+    "spec:snapshot:status": "node scripts/component-snapshot-status.mjs",
+    "watch": "concurrently \"npm run watch:main\" \"npm run watch:ui\"",
+    "watch:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6 --watch",
+    "watch:ui": "vite build --watch"
+  },
+  "dependencies": {
+    "codepage": "^1.15.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.84.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "vite-plugin-singlefile": "^2.0.0"
+  }
+}
