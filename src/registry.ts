@@ -147,7 +147,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell': {
     id: 'table-cell',
-    name: '表格单元格',
+    name: 'Text 文字',
     category: 'Table',
     family: 'table-cell',
     description: '标准表格单元格',
@@ -169,7 +169,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell-tag': {
     id: 'table-cell-tag',
-    name: '标签单元格',
+    name: 'Tag 标签',
     category: 'Table',
     family: 'table-cell',
     description: '包含标签(Tag)的表格单元格（支持 StatusTag/TypeTag；状态标签默认使用 L2 二级标签）',
@@ -221,7 +221,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell-avatar': {
     id: 'table-cell-avatar',
-    name: '头像单元格',
+    name: 'Avatar 头像',
     category: 'Table',
     family: 'table-cell',
     description: '包含头像和文本的表格单元格',
@@ -242,7 +242,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell-input': {
     id: 'table-cell-input',
-    name: '输入单元格',
+    name: 'Input 输入',
     category: 'Table',
     family: 'table-cell',
     description: '包含输入框的表格单元格',
@@ -267,7 +267,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell-action-text': {
     id: 'table-cell-action-text',
-    name: '操作文字单元格',
+    name: 'ActionText 操作文字',
     category: 'Table',
     family: 'table-cell',
     description: '以文字形式承载操作（如“编辑 / 删除 / …”），默认右对齐；支持自动折叠并在末尾展示更多图标。',
@@ -294,7 +294,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-cell-action-icon': {
     id: 'table-cell-action-icon',
-    name: '操作图标单元格',
+    name: 'ActionIcon 操作图标',
     category: 'Table',
     family: 'table-cell',
     description: '以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。',
@@ -317,7 +317,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-header-cell': {
     id: 'table-header-cell',
-    name: '表头单元格',
+    name: 'Header 表头',
     category: 'Table',
     description: '加粗文本的表头单元格',
     agentPrompt: '用于表格的表头单元格，文本默认为加粗。通常作为 table-column 的第一个子项。',
@@ -349,7 +349,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
   },
   'table-column': {
     id: 'table-column',
-    name: '表格列',
+    name: 'Column 列',
     category: 'Table',
     description: '包含表头和多个单元格的列容器',
     agentPrompt: '表格的列容器。它垂直排列一个表头单元格和多个普通单元格。请设置 rowCount 来控制行数。如果需要填充具体数据，请务必通过 children 传入 table-header-cell 和多个 table-cell。注意：如果传入了 children，请不要传入任何默认的占位符单元格，只传入你需要的数据。必须显式提供表头(第一个子节点)和所有数据单元格。',

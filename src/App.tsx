@@ -1095,6 +1095,9 @@ function App() {
   const applyQuickPrompt = React.useCallback((prompt: string) => {
     setUserInput((prev) => (prev.trim() ? `${prev}\n${prompt}` : prompt));
   }, []);
+  const replaceQuickPrompt = React.useCallback((prompt: string) => {
+    setUserInput(prompt);
+  }, []);
 
   const updateLastAiMessage = React.useCallback((content: string) => {
     setUiMessages((prev) => {
@@ -5299,6 +5302,20 @@ StepD:
   const isFormComponent = (componentId: string) => ['form', 'form-row', 'form-field'].includes(componentId);
   const isTableCellComponent = (componentId: string) =>
     componentId === 'table-header-cell' || componentId.startsWith('table-cell');
+  const isChartSelection = (() => {
+    if (!selectedComponent) return false;
+    if (selectedComponent.componentId.startsWith('chart-')) return true;
+    const def = COMPONENT_REGISTRY[selectedComponent.componentId];
+    return def?.category === 'Data' && selectedComponent.componentId.includes('chart');
+  })();
+  const chartTypeShortcuts = [
+    { label: '折线图', prompt: '生成一个折线图' },
+    { label: '饼图', prompt: '生成一个饼图' },
+    { label: '环形图', prompt: '生成一个环形图' },
+    { label: '柱状图', prompt: '生成一个柱状图' },
+    { label: '条形图', prompt: '生成一个条形图' },
+    { label: '面积图', prompt: '生成一个面积图' }
+  ];
 
   const normalizeFormOption = (value: unknown) => String(value || '').trim().toLowerCase();
 
