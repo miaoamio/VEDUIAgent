@@ -5,7 +5,16 @@ import AI_CHART_UI_HTML from './ai-chart-ui.html?raw';
 import { COMPONENT_REGISTRY } from './registry';
 import { loadRegistryV2 } from './registry.loader';
 import { ComponentDefinitionV2 } from './registry.v2.types';
-import { ComponentDefinition } from './types';
+import { ComponentDefinition, ComponentParam } from './types';
+import {
+  ColorControl,
+  FieldRow,
+  NumberInputControl,
+  SegmentedControl,
+  SelectControl,
+  SwitchControl,
+  TextInputControl
+} from './ui/PropertyControls';
 import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-tokens';
 import { BASE_TYPOGRAPHY_TOKEN_PACK, SEMANTIC_TYPOGRAPHY_TOKEN_PACK } from './theme.typography-tokens';
 import { BASE_COMPONENT_TOKEN_PACK, SEMANTIC_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
@@ -5451,6 +5460,16 @@ StepD:
     ...TAG_PARAM_SETS.status
   ]);
 
+  const GENERATION_ONLY_PARAM_KEYS = new Set(['width', 'height', 'cornerRadius', 'headerHeight', 'bodyHeight']);
+  const COLUMN_CONTENT_HIDDEN_KEYS = new Set(['rowCount', 'columnWidthMode', 'textAlign', 'textDisplay', 'headerText']);
+
+  const isParamEditable = (key: string, paramDef?: ComponentParam): boolean => {
+    if (!paramDef) return false;
+    if (paramDef.uiRole === 'generation-only') return false;
+    if (GENERATION_ONLY_PARAM_KEYS.has(key)) return false;
+    return true;
+  };
+
   const shouldDisplayTagParam = (key: string, params: Record<string, any>): boolean => {
     if (!TAG_PARAM_KEYS.has(key)) return true;
     const family = resolveTagFamily(params);
@@ -5472,7 +5491,144 @@ StepD:
     return next;
   };
 
-  // Helper to render property inputs
+  const PARAM_LABEL_MAP: Record<string, string> = {
+    text: '文本',
+    headerText: '表头文本',
+    headerType: '表头元素',
+    rowCount: '行数',
+    columnCount: '列数',
+    width: '宽度',
+    height: '高度',
+    size: '尺寸',
+    rowAction: '行操作',
+    hasPagination: '分页器',
+    hasFilter: '筛选器',
+    hasActions: '按钮',
+    hasTabs: '页签',
+    textAlign: '对齐方式',
+    textDisplay: '文本显示',
+    columnWidthMode: '列宽',
+    headerHeight: '表头行高',
+    bodyHeight: '内容行高',
+    rowHeight: '行高',
+    paddingTop: '上内边距',
+    paddingBottom: '下内边距',
+    paddingLeft: '左内边距',
+    paddingRight: '右内边距',
+    backgroundColor: '背景颜色',
+    borderColor: '边框颜色',
+    borderWidth: '边框宽度',
+    borderBottomOnly: '仅下边框',
+    cornerRadius: '圆角',
+    componentToken: '组件 Token',
+    tagType: '标签类型',
+    sizePreset: '尺寸预设',
+    colorScheme: '配色方案',
+    statusTheme: '状态主题',
+    statusType: '状态类型',
+    statusState: '状态状态',
+    showIcon: '显示图标',
+    showDot: '显示圆点',
+    showDropdown: '显示下拉',
+    closable: '可关闭',
+    disabled: '禁用',
+    groupTexts: '标签组文本',
+    labelWidth: '标签宽度',
+    labelWidthPreset: '标签宽度预设',
+    align: '对齐',
+    layout: '布局',
+    rowSpacing: '行间距',
+    controlWidth: '控件宽度'
+  };
+
+  const OPTION_LABEL_MAP: Record<string, string> = {
+    left: '左对齐',
+    right: '右对齐',
+    center: '居中',
+    ellipsis: '单行省略',
+    lineBreak: '支持换行',
+    FIXED: '固定',
+    HUG: '适应',
+    FILL: '充满',
+    None: '无',
+    none: '无',
+    Filter: '筛选',
+    Sort: '排序',
+    Search: '搜索',
+    Info: '提示',
+    mini: '迷你',
+    default: '默认',
+    medium: '中等',
+    large: '大号',
+    multiple: '多选',
+    single: '单选',
+    drag: '拖拽',
+    expand: '展开',
+    switch: '开关'
+  };
+
+  const resolveParamLabel = (def: ComponentDefinition, key: string, paramDef: ComponentParam): string => {
+    if (PARAM_LABEL_MAP[key]) return PARAM_LABEL_MAP[key];
+    if (paramDef.description) return paramDef.description;
+    return key;
+  };
+
+  const resolveOptionLabel = (def: ComponentDefinition, key: string, value: string): string => {
+    if (OPTION_LABEL_MAP[value]) return OPTION_LABEL_MAP[value];
+    if (isFormComponent(def.id)) return getFormSelectOptionLabel(key, value);
+    return value;
+  };
+
+  const buildParamControlRows = (
+    def: ComponentDefinition,
+    keys: string[],
+    params: Record<string, any>
+  ): { mainRows: React.ReactNode[]; switchRows: React.ReactNode[] } => {
+    const mainRows: React.ReactNode[] = [];
+    const switchRows: React.ReactNode[] = [];
+
+    keys.forEach((key) => {
+      const paramDef = def.params[key];
+      const value = params[key] ?? paramDef.default;
+      const label = resolveParamLabel(def, key, paramDef);
+
+      if (paramDef.type === 'boolean') {
+        switchRows.push(
+          <div className="switch-item" key={key}>
+            <label>{label}</label>
+            <SwitchControl value={!!value} onChange={(next) => updateParam(key, next)} />
+          </div>
+        );
+        return;
+      }
+
+      mainRows.push(
+        <FieldRow key={key} label={label}>
+          {paramDef.type === 'number' && (
+            <NumberInputControl value={value} onChange={(next) => updateParam(key, next)} />
+          )}
+          {paramDef.type === 'string' && (
+            <TextInputControl value={value} onChange={(next) => updateParam(key, next)} />
+          )}
+          {paramDef.type === 'select' && (
+            <SelectControl value={value} onChange={(next) => updateParam(key, next)}>
+              {paramDef.options?.map((opt) => (
+                <option key={opt} value={opt}>
+                  {resolveOptionLabel(def, key, opt)}
+                </option>
+              ))}
+            </SelectControl>
+          )}
+          {paramDef.type === 'color' && (
+            <ColorControl value={value} onChange={(next) => updateParam(key, next)} />
+          )}
+        </FieldRow>
+      );
+    });
+
+    return { mainRows, switchRows };
+  };
+
   const renderPropertyEditor = () => {
     // Also render analysis if available
     const editor = (() => {
@@ -5498,89 +5654,34 @@ StepD:
           <h3>编辑 {def.name}</h3>
 
           {familyVariants.length > 0 && (
-              <div className="control-row" style={{ marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
-                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                      {def.id === 'table-column' ? '列单元格类型 (Column Cells):' : '类型 (Variant):'}
-                  </label>
-                  <select 
-                    value={currentVariantId} 
-                    onChange={(e) => updateComponentType(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #E6E6E6', backgroundColor: '#fff' }}
-                  >
-                    {familyVariants.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                  </select>
-              </div>
+            <div className="control-row" style={{ marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+                {def.id === 'table-column' ? '列单元格类型' : '类型'}
+              </label>
+              <SelectControl value={currentVariantId} onChange={(value) => updateComponentType(value)}>
+                {familyVariants.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </SelectControl>
+            </div>
           )}
 
-          {Object.keys(def.params).filter((key) => {
-            if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
-            const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
-            return shouldDisplayTagParam(key, effectiveParams);
-          }).map((key) => {
-            const paramDef = def.params[key];
-            const value = selectedComponent.params[key] ?? paramDef.default;
-            const label = isFormComponent(def.id) && paramDef.description ? paramDef.description : key;
-
+          {(() => {
+            const paramKeys = Object.keys(def.params).filter((key) => {
+              const paramDef = def.params[key];
+              if (!isParamEditable(key, paramDef)) return false;
+              if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
+              const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
+              return shouldDisplayTagParam(key, effectiveParams);
+            });
+            const { mainRows, switchRows } = buildParamControlRows(def, paramKeys, selectedComponent.params || {});
             return (
-              <div className="control-row" key={key}>
-                <label>{label}:</label>
-                {paramDef.type === 'number' && (
-                  <input 
-                    type="number" 
-                    value={value} 
-                    onChange={(e) => updateParam(key, parseFloat(e.target.value))}
-                  />
-                )}
-                {paramDef.type === 'string' && (
-                  <input 
-                    type="text" 
-                    value={value} 
-                    onChange={(e) => updateParam(key, e.target.value)}
-                  />
-                )}
-                {paramDef.type === 'boolean' && (
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={!!value} 
-                      onChange={(e) => updateParam(key, e.target.checked)}
-                      style={{ width: 'auto' }}
-                    />
-                  </div>
-                )}
-                {paramDef.type === 'select' && (
-                  <select 
-                    value={value} 
-                    onChange={(e) => updateParam(key, e.target.value)}
-                    style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #E6E6E6' }}
-                  >
-                    {paramDef.options?.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {isFormComponent(def.id) ? getFormSelectOptionLabel(key, opt) : opt}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                 {paramDef.type === 'color' && (
-                  <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-                    <input 
-                      type="color" 
-                      value={value} 
-                      onChange={(e) => updateParam(key, e.target.value)}
-                      style={{ width: '30px', padding: 0, flex: 'none' }}
-                    />
-                    <input 
-                      type="text" 
-                      value={value} 
-                      onChange={(e) => updateParam(key, e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
+              <>
+                {mainRows}
+                {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
+              </>
             );
-          })}
+          })()}
         </div>
       );
     })();
@@ -5620,91 +5721,57 @@ StepD:
         <div className="section-title">表格尺寸</div>
         <div className="row">
           <div className="col">
-            <select
-              value={sizeValue}
-              onChange={(e) => updateParam('size', e.target.value)}
-            >
+            <SelectControl value={sizeValue} onChange={(value) => updateParam('size', value)}>
               {sizeOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </SelectControl>
           </div>
         </div>
 
         <div className="section-title">表格行数</div>
         <div className="row">
           <div className="col">
-            <select
+            <SelectControl
               value={String(rowCountValue)}
-              onChange={(e) => updateParam('rowCount', Number(e.target.value))}
+              onChange={(value) => updateParam('rowCount', Number(value))}
             >
               {rowCountOptions.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
-            </select>
+            </SelectControl>
           </div>
         </div>
 
         <div className="section-title">表格行操作</div>
         <div className="row">
           <div className="col">
-            <select
-              value={rowActionValue}
-              onChange={(e) => updateParam('rowAction', e.target.value)}
-            >
+            <SelectControl value={rowActionValue} onChange={(value) => updateParam('rowAction', value)}>
               {rowActionOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </SelectControl>
           </div>
         </div>
 
-        <div style={{ marginTop: '12px' }}>
-          <div className="switch-item">
-            <label>分页器</label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={!!params.hasPagination}
-                onChange={(e) => updateParam('hasPagination', e.target.checked)}
-              />
-              <span className="slider"></span>
-            </label>
+          <div style={{ marginTop: '12px' }}>
+            <div className="switch-item">
+              <label>分页器</label>
+              <SwitchControl value={!!params.hasPagination} onChange={(value) => updateParam('hasPagination', value)} />
+            </div>
+            <div className="switch-item">
+              <label>筛选器</label>
+              <SwitchControl value={!!params.hasFilter} onChange={(value) => updateParam('hasFilter', value)} />
+            </div>
+            <div className="switch-item">
+              <label>按钮</label>
+              <SwitchControl value={!!params.hasActions} onChange={(value) => updateParam('hasActions', value)} />
+            </div>
+            <div className="switch-item">
+              <label>页签</label>
+              <SwitchControl value={!!params.hasTabs} onChange={(value) => updateParam('hasTabs', value)} />
+            </div>
           </div>
-          <div className="switch-item">
-            <label>筛选器</label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={!!params.hasFilter}
-                onChange={(e) => updateParam('hasFilter', e.target.checked)}
-              />
-              <span className="slider"></span>
-            </label>
-          </div>
-          <div className="switch-item">
-            <label>按钮</label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={!!params.hasActions}
-                onChange={(e) => updateParam('hasActions', e.target.checked)}
-              />
-              <span className="slider"></span>
-            </label>
-          </div>
-          <div className="switch-item">
-            <label>页签</label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={!!params.hasTabs}
-                onChange={(e) => updateParam('hasTabs', e.target.checked)}
-              />
-              <span className="slider"></span>
-            </label>
-          </div>
-        </div>
       </div>
     );
   };
@@ -5723,6 +5790,18 @@ StepD:
     const textDisplayValue = params.textDisplay || 'ellipsis';
     const widthModeValue = (params.columnWidthMode || 'FILL').toUpperCase();
     const contentDef = COMPONENT_REGISTRY[selectedComponent.componentId];
+    const headerTextValue =
+      (params.headerText ?? contentDef?.params?.headerText?.default ?? '') as string;
+    const contentParamKeys = contentDef
+      ? Object.keys(contentDef.params || {}).filter((key) => {
+          const paramDef = contentDef.params[key];
+          if (!isParamEditable(key, paramDef)) return false;
+          if (isColumn && (key === 'headerType' || COLUMN_CONTENT_HIDDEN_KEYS.has(key))) return false;
+          if (contentDef.id !== 'tag' && contentDef.id !== 'table-cell-tag') return true;
+          const effectiveParams = buildEffectiveParams(contentDef, selectedComponent.params || {});
+          return shouldDisplayTagParam(key, effectiveParams);
+        })
+      : [];
 
     return (
       <div className="selection-panel">
@@ -5731,14 +5810,11 @@ StepD:
             <div className="section-title">单元格类型</div>
             <div className="row">
               <div className="col">
-                <select
-                  value={currentCellType}
-                  onChange={(e) => updateComponentType(e.target.value)}
-                >
+                <SelectControl value={currentCellType} onChange={(value) => updateComponentType(value)}>
                   {cellVariants.map((variant) => (
                     <option key={variant.id} value={variant.id}>{variant.name}</option>
                   ))}
-                </select>
+                </SelectControl>
               </div>
             </div>
           </>
@@ -5749,16 +5825,22 @@ StepD:
             <div className="section-title">表头元素</div>
             <div className="row">
               <div className="col">
-                <select
-                  value={headerTypeValue}
-                  onChange={(e) => updateParam('headerType', e.target.value)}
-                >
+                <SelectControl value={headerTypeValue} onChange={(value) => updateParam('headerType', value)}>
                   <option value="None">无</option>
                   <option value="Filter">筛选</option>
                   <option value="Sort">排序</option>
                   <option value="Search">搜索</option>
                   <option value="Info">提示</option>
-                </select>
+                </SelectControl>
+              </div>
+            </div>
+            <div className="section-title">表头文本</div>
+            <div className="row">
+              <div className="col">
+                <TextInputControl
+                  value={headerTextValue}
+                  onChange={(value) => updateParam('headerText', value)}
+                />
               </div>
             </div>
           </>
@@ -5767,68 +5849,55 @@ StepD:
         <div className="section-title">对齐方式</div>
         <div className="row">
           <div className="col">
-            <div className="align-group">
-              <button
-                type="button"
-                className={`align-button ${alignValue === 'left' ? 'active' : ''}`}
-                onClick={() => updateParam('textAlign', 'left')}
-              >
-                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.2761 4.5 15 4.5H5ZM5 8C4.72386 8 4.5 8.22386 4.5 8.5C4.5 8.77614 4.72386 9 5 9H11C11.2761 9 11.5 8.77614 11.5 8.5C11.5 8.22386 11.2761 8 11 8H5ZM5 11.5C4.72386 11.5 4.5 11.7239 4.5 12C4.5 12.2761 4.72386 12.5 5 12.5H13C13.2761 12.5 13.5 12.2761 13.5 12C13.5 11.7239 13.2761 11.5 13 11.5H5ZM5 15C4.72386 15 4.5 15.2239 4.5 15.5C4.5 15.7761 4.72386 16 5 16H10C10.2761 16 10.5 15.7761 10.5 15.5C10.5 15.2239 10.2761 15 10 15H5Z"/>
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={`align-button ${alignValue === 'right' ? 'active' : ''}`}
-                onClick={() => updateParam('textAlign', 'right')}
-              >
-                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.2761 4.5 15 4.5H5ZM9 8C8.72386 8 8.5 8.22386 8.5 8.5C8.5 8.77614 8.72386 9 9 9H15C15.2761 9 15.5 8.77614 15.5 8.5C15.5 8.22386 15.2761 8 15 8H9ZM7 11.5C6.72386 11.5 6.5 11.7239 6.5 12C6.5 12.2761 6.72386 12.5 7 12.5H15C15.2761 12.5 15.5 12.2761 15.5 12C15.5 11.7239 15.2761 11.5 15 11.5H7ZM10 15C9.72386 15 9.5 15.2239 9.5 15.5C9.5 15.7761 9.72386 16 10 16H15C15.2761 16 15.5 15.7761 15.5 15.5C15.5 15.2239 15.2761 15 15 15H10Z"/>
-                </svg>
-              </button>
-            </div>
+            <SegmentedControl
+              value={alignValue}
+              onChange={(value) => updateParam('textAlign', value)}
+              groupClassName="align-group"
+              buttonClassName="align-button"
+              options={[
+                {
+                  value: 'left',
+                  icon: (
+                    <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.2761 4.5 15 4.5H5ZM5 8C4.72386 8 4.5 8.22386 4.5 8.5C4.5 8.77614 4.72386 9 5 9H11C11.2761 9 11.5 8.77614 11.5 8.5C11.5 8.22386 11.2761 8 11 8H5ZM5 11.5C4.72386 11.5 4.5 11.7239 4.5 12C4.5 12.2761 4.72386 12.5 5 12.5H13C13.2761 12.5 13.5 12.2761 13.5 12C13.5 11.7239 13.2761 11.5 13 11.5H5ZM5 15C4.72386 15 4.5 15.2239 4.5 15.5C4.5 15.7761 4.72386 16 5 16H10C10.2761 16 10.5 15.7761 10.5 15.5C10.5 15.2239 10.2761 15 10 15H5Z"/>
+                    </svg>
+                  )
+                },
+                {
+                  value: 'right',
+                  icon: (
+                    <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.2761 4.5 15 4.5H5ZM9 8C8.72386 8 8.5 8.22386 8.5 8.5C8.5 8.77614 8.72386 9 9 9H15C15.2761 9 15.5 8.77614 15.5 8.5C15.5 8.22386 15.2761 8 15 8H9ZM7 11.5C6.72386 11.5 6.5 11.7239 6.5 12C6.5 12.2761 6.72386 12.5 7 12.5H15C15.2761 12.5 15.5 12.2761 15.5 12C15.5 11.7239 15.2761 11.5 15 11.5H7ZM10 15C9.72386 15 9.5 15.2239 9.5 15.5C9.5 15.7761 9.72386 16 10 16H15C15.2761 16 15.5 15.7761 15.5 15.5C15.5 15.2239 15.2761 15 15 15H10Z"/>
+                    </svg>
+                  )
+                }
+              ]}
+            />
           </div>
         </div>
 
         <div className="section-title">文本显示</div>
         <div className="row">
           <div className="col">
-            <select
-              value={textDisplayValue}
-              onChange={(e) => updateParam('textDisplay', e.target.value)}
-            >
+            <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
               <option value="ellipsis">单行省略</option>
               <option value="lineBreak">支持换行</option>
-            </select>
+            </SelectControl>
           </div>
         </div>
 
         <div className="section-title">列宽</div>
         <div className="row">
           <div className="col">
-            <div className="segment-group">
-              <button
-                type="button"
-                className={`segment-button ${widthModeValue === 'FIXED' ? 'active' : ''}`}
-                onClick={() => updateParam('columnWidthMode', 'FIXED')}
-              >
-                固定
-              </button>
-              <button
-                type="button"
-                className={`segment-button ${widthModeValue === 'HUG' ? 'active' : ''}`}
-                onClick={() => updateParam('columnWidthMode', 'HUG')}
-              >
-                适应
-              </button>
-              <button
-                type="button"
-                className={`segment-button ${widthModeValue === 'FILL' ? 'active' : ''}`}
-                onClick={() => updateParam('columnWidthMode', 'FILL')}
-              >
-                充满
-              </button>
-            </div>
+            <SegmentedControl
+              value={widthModeValue}
+              onChange={(value) => updateParam('columnWidthMode', value)}
+              options={[
+                { value: 'FIXED', label: '固定' },
+                { value: 'HUG', label: '适应' },
+                { value: 'FILL', label: '充满' }
+              ]}
+            />
           </div>
         </div>
 
@@ -5840,75 +5909,22 @@ StepD:
           </div>
         )}
 
-        {contentDef && selectedComponent.componentId !== 'table-header-cell' && (
+        {contentDef && selectedComponent.componentId !== 'table-header-cell' && contentParamKeys.length > 0 && (
           <>
             <div className="section-title">单元格内容</div>
-            {Object.keys(contentDef.params || {}).filter((key) => {
-              if (contentDef.id !== 'tag' && contentDef.id !== 'table-cell-tag') return true;
-              const effectiveParams = buildEffectiveParams(contentDef, selectedComponent.params || {});
-              return shouldDisplayTagParam(key, effectiveParams);
-            }).map((key) => {
-              const paramDef = contentDef.params[key];
-              const value = selectedComponent.params[key] ?? paramDef.default;
-              const label = isFormComponent(contentDef.id) && paramDef.description ? paramDef.description : key;
-              return (
-                <div className="control-row" key={key}>
-                  <label>{label}:</label>
-                  {paramDef.type === 'number' && (
-                    <input 
-                      type="number" 
-                      value={value} 
-                      onChange={(e) => updateParam(key, parseFloat(e.target.value))}
-                    />
-                  )}
-                  {paramDef.type === 'string' && (
-                    <input 
-                      type="text" 
-                      value={value} 
-                      onChange={(e) => updateParam(key, e.target.value)}
-                    />
-                  )}
-                  {paramDef.type === 'boolean' && (
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={!!value} 
-                        onChange={(e) => updateParam(key, e.target.checked)}
-                        style={{ width: 'auto' }}
-                      />
-                    </div>
-                  )}
-                  {paramDef.type === 'select' && (
-                    <select 
-                      value={value} 
-                      onChange={(e) => updateParam(key, e.target.value)}
-                      style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #E6E6E6' }}
-                    >
-                      {paramDef.options?.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {isFormComponent(contentDef.id) ? getFormSelectOptionLabel(key, opt) : opt}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {paramDef.type === 'color' && (
-                    <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-                      <input 
-                        type="color" 
-                        value={value} 
-                        onChange={(e) => updateParam(key, e.target.value)}
-                        style={{ width: '30px', padding: 0, flex: 'none' }}
-                      />
-                      <input 
-                        type="text" 
-                        value={value} 
-                        onChange={(e) => updateParam(key, e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
+            {(() => {
+              const { mainRows, switchRows } = buildParamControlRows(
+                contentDef,
+                contentParamKeys,
+                selectedComponent.params || {}
               );
-            })}
+              return (
+                <>
+                  {mainRows}
+                  {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
+                </>
+              );
+            })()}
           </>
         )}
       </div>

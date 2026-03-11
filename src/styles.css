@@ -615,6 +615,23 @@ button:disabled {
   color: #666;
 }
 
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.field-row:last-child {
+  margin-bottom: 0;
+}
+
+.field-row label {
+  color: #6b7280;
+  font-size: 12px;
+}
+
 .selection-panel {
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -663,6 +680,9 @@ button:disabled {
   outline: none;
   appearance: none;
   background-color: #ffffff;
+}
+
+.selection-panel select {
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right 12px center;
