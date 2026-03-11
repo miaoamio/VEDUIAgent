@@ -14,21 +14,24 @@
 ## 3. 决策顺序（必须按序判断）
 1. 是否“新建纯表格”：
 是 -> `read_specs(table*)` 后直接 `draw_tabl/draw_table`。
-2. 是否“需要复用 Figma 组件库组件”：
+2. 是否“新建标准表单/筛选表单”：
+是 -> `read_specs(form*)` 后直接 `draw_form`。
+   - 默认单列：除非用户明确要求“双列/多列/紧凑排布”，否则 `rows` 的每个子数组只放 1 个字段/控件。
+3. 是否“需要复用 Figma 组件库组件”：
 是 -> 先 `read_specs(['figma-component'])` 读取 `ComponentTokenCatalog`，再用 `params.componentToken`。
 若要传 `variantCriteria` -> 先 `discover_component_props` 再设置。
 仅在 token 不可用时回退 `params.componentKey`。
-3. 是否“需要高保真复刻设计系统组件（尤其 input/select/button/checkbox/radio/form-field 等视觉敏感组件）”：
+4. 是否“需要高保真复刻设计系统组件（尤其 input/select/button/checkbox/radio/form-field 等视觉敏感组件）”：
 是 -> 先 `inspect_component_structure` 或 unified inspect 获取 `componentKey`、真实变体轴、内部文本节点、`boundVariables/fills/strokes/effectStyle/effects`。
 若能导入原始组件 -> 优先 `createFigmaComponentInstance` / `figma-component` 创建正确变体，再 `detach`，最后只改文案、尺寸、少量开关。
 不要先手工重画背景、边框、shadow。
 只有原始组件无法导入时，才回退自定义渲染。
-4. 是否“多区块复杂页面（表格/表单/图表/tabs 等 >=2）”：
+5. 是否“多区块复杂页面（表格/表单/图表/tabs 等 >=2）”：
 是 -> 优先 `set_plan` 或复用系统已有 plan，再 `plan_next` / `execute_task`。
 单表格/单区块请求 -> 不要进入 plan。
-5. 是否“复杂结构创建或增量编辑”：
+6. 是否“复杂结构创建或增量编辑”：
 是 -> `apply_scene`。
-6. 是否“单一简单节点创建”：
+7. 是否“单一简单节点创建”：
 是 -> `create_node`。
 
 ## 4. 动作协议约束
@@ -37,7 +40,7 @@
 {
   "thought": "一句话说明当前动作目的",
   "action": {
-    "type": "read_specs | discover_component_props | draw_tabl | apply_scene | create_node | set_plan | plan_next | update_plan | execute_task | finish",
+    "type": "read_specs | discover_component_props | draw_tabl | draw_form | apply_scene | create_node | set_plan | plan_next | update_plan | execute_task | finish",
     "payload": {}
   }
 }
@@ -148,9 +151,11 @@
 ## 12. 最小执行模板
 1. 新建表格：
 `read_specs(table*) -> draw_tabl -> finish`
-2. 页面级复杂请求：
+2. 新建表单：
+`read_specs(form*) -> draw_form -> finish`
+3. 页面级复杂请求：
 `set_plan(或复用 auto plan) -> plan_next -> execute_task -> update_plan(必要时) -> ... -> finish`
-3. 简单节点：
+4. 简单节点：
 `read_specs -> create_node -> finish`
 
 ## 13. 参考文档（按需读取）

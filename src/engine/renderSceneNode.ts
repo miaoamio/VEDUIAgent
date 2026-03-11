@@ -684,6 +684,8 @@ function createFallbackFrameNode(sceneNode: ProtocolSceneNode): FrameNode {
   frame.primaryAxisSizingMode = "AUTO";
   frame.counterAxisSizingMode = "AUTO";
   frame.fills = [];
+  // Layout-only fallback containers should not clip child strokes/effects.
+  frame.clipsContent = false;
   return frame;
 }
 

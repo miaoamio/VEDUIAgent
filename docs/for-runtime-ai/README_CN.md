@@ -25,7 +25,10 @@
 
 1. 默认只把 `AI_RUNTIME_SPEC_CODING_CN.md` 喂给模型
 2. 只有遇到协议细节争议时，再按需补充子规范
-3. 如需修改运行时规则，检查 `src/App.tsx` 中实际拼装给模型的 prompt
+3. 如需修改运行时规则，检查 `src/App.tsx` 中实际拼装给模型的 prompt：
+   - `generateMasterPrompt()`：基础 system prompt（包含 draw_form/draw_tabl 等动作建议）
+   - `read_specs` 的 `specsInfo/ActionHint`：会写入对话历史并影响后续轮行为，修改默认策略时要与基础 prompt 保持一致
+   - 搜索关键词：`generateMasterPrompt`、`标准表单/筛选表单创建优先走 draw_form`、`ActionHint: New form creation`
 
 ---
 
