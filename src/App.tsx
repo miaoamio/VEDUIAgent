@@ -6748,6 +6748,73 @@ StepD:
                 手动调整
               </button>
             </div>
+            <div className="composer-quick-actions">
+              <button
+                type="button"
+                className="composer-quick-chip"
+                onClick={() => {
+                  applyQuickPrompt('生成一个表格');
+                  setChartPromptMode(false);
+                  setChartShortcutActive(null);
+                  setAttachmentMenuOpen(false);
+                  composerTextareaRef.current?.focus();
+                }}
+                disabled={loading}
+              >
+                <span className="composer-quick-chip-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2.75" y="3.25" width="12.5" height="11.5" rx="1.5" stroke="#111827" strokeWidth="1.5" />
+                    <path d="M2.75 7H15.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M7 3.25V14.75" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </span>
+                表格
+              </button>
+              <button
+                type="button"
+                className="composer-quick-chip"
+                onClick={() => {
+                  applyQuickPrompt('生成一个表单');
+                  setChartPromptMode(false);
+                  setChartShortcutActive(null);
+                  setAttachmentMenuOpen(false);
+                  composerTextareaRef.current?.focus();
+                }}
+                disabled={loading}
+              >
+                <span className="composer-quick-chip-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="2.5" width="12" height="13" rx="1.5" stroke="#111827" strokeWidth="1.5" />
+                    <path d="M6 6.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M6 9.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M6 12.5H10.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </span>
+                表单
+              </button>
+              <button
+                type="button"
+                className="composer-quick-chip"
+                onClick={() => {
+                  replaceQuickPrompt('生成一个图表');
+                  setChartPromptMode(true);
+                  setChartShortcutActive(null);
+                  setAttachmentMenuOpen(false);
+                  composerTextareaRef.current?.focus();
+                }}
+                disabled={loading}
+              >
+                <span className="composer-quick-chip-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3.5 13.5V9.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M9 13.5V6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M14.5 13.5V4.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M3 14H15" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </span>
+                图表
+              </button>
+            </div>
             <div className="composer">
               {(uploadedImages.length > 0 || uploadedTables.length > 0 || attachmentError) && (
                 <div className="attachment-list">
