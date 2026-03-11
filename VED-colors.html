@@ -7,21 +7,21 @@
     <style>
         :root {
             /* 基础背景与文字 */
-            --ved-bg-canvas: #FFFFFF;
-            --ved-text-primary: #18181B;
-            --ved-text-secondary: #71717A;
+            --ved-layout-bg: #FFFFFF; /* 对应 layout.bg */
+            --ved-text-primary: #18181B; /* 对应 text.primary */
+            --ved-text-secondary: #71717A; /* 对应 text.secondary */
 
             /* 按钮 (Button) */
-            --ved-btn-primary-bg: #18181B;
-            --ved-btn-primary-text: #FFFFFF;
-            --ved-btn-secondary-bg: #FFFFFF;
-            --ved-btn-secondary-border: #D4D4D8;
-            --ved-btn-hover: #F4F4F5;
+            --ved-button-primary-bg: #18181B; /* 对应 button.primary.bg */
+            --ved-button-primary-text: #FFFFFF; /* 对应 button.primary.text */
+            --ved-button-secondary-bg: #FFFFFF; /* 对应 button.secondary.bg */
+            --ved-button-secondary-border: #D4D4D8; /* 对应 button.secondary.border (Project Extended) */
+            --ved-button-hover: #F4F4F5; /* 对应 button.hover (Project Extended) */
 
             /* 输入与选择器 (Input/Select) */
-            --ved-input-bg: #FFFFFF;
-            --ved-input-border: #E4E4E7;
-            --ved-input-focus: #18181B;
+            --ved-input-bg: #FFFFFF; /* 对应 input.bg */
+            --ved-input-border: #E4E4E7; /* 对应 input.border */
+            --ved-input-focus: #18181B; /* 对应 input.focus (Project Extended) */
 
             /* 开关 (Switch) */
             --ved-switch-off: #E4E4E7;
@@ -92,7 +92,7 @@
         }
 
         body {
-            background-color: var(--ved-bg-canvas);
+            background-color: var(--ved-layout-bg);
             color: var(--ved-text-primary);
             font-family: var(--ved-font-family);
             margin: 0;
@@ -189,7 +189,7 @@
             bottom: 24px;
             right: 24px;
             background-color: var(--ved-text-primary);
-            color: var(--ved-bg-canvas);
+            color: var(--ved-layout-bg);
             padding: 8px 16px;
             border-radius: 4px;
             font: var(--ved-style-label);
@@ -273,12 +273,12 @@
         <div class="section">
             <div class="section-title">Base (Background & Text)</div>
             <div class="grid">
-                <div class="card" onclick="copyToken('--ved-bg-canvas')">
-                    <div class="swatch" style="background-color: var(--ved-bg-canvas)"></div>
+                <div class="card" onclick="copyToken('--ved-layout-bg')">
+                    <div class="swatch" style="background-color: var(--ved-layout-bg)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-bg-canvas</div>
+                        <div class="token-name">--ved-layout-bg</div>
                         <div class="token-value">#FFFFFF</div>
-                        <div class="token-desc">基础背景</div>
+                        <div class="token-desc">基础背景 (layout.bg)</div>
                     </div>
                 </div>
                 <div class="card" onclick="copyToken('--ved-text-primary')">
@@ -286,7 +286,7 @@
                     <div class="info">
                         <div class="token-name">--ved-text-primary</div>
                         <div class="token-value">#18181B</div>
-                        <div class="token-desc">主要文字</div>
+                        <div class="token-desc">主要文字 (text.primary)</div>
                     </div>
                 </div>
                 <div class="card" onclick="copyToken('--ved-text-secondary')">
@@ -294,7 +294,7 @@
                     <div class="info">
                         <div class="token-name">--ved-text-secondary</div>
                         <div class="token-value">#71717A</div>
-                        <div class="token-desc">次要文字</div>
+                        <div class="token-desc">次要文字 (text.secondary)</div>
                     </div>
                 </div>
             </div>
@@ -304,42 +304,42 @@
         <div class="section">
             <div class="section-title">Buttons</div>
             <div class="grid">
-                <div class="card" onclick="copyToken('--ved-btn-primary-bg')">
-                    <div class="swatch" style="background-color: var(--ved-btn-primary-bg)"></div>
+                <div class="card" onclick="copyToken('--ved-button-primary-bg')">
+                    <div class="swatch" style="background-color: var(--ved-button-primary-bg)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-btn-primary-bg</div>
+                        <div class="token-name">--ved-button-primary-bg</div>
                         <div class="token-value">#18181B</div>
-                        <div class="token-desc">主按钮背景</div>
+                        <div class="token-desc">主按钮背景 (button.primary.bg)</div>
                     </div>
                 </div>
-                <div class="card" onclick="copyToken('--ved-btn-primary-text')">
-                    <div class="swatch" style="background-color: var(--ved-btn-primary-text)"></div>
+                <div class="card" onclick="copyToken('--ved-button-primary-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-primary-text)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-btn-primary-text</div>
+                        <div class="token-name">--ved-button-primary-text</div>
                         <div class="token-value">#FFFFFF</div>
-                        <div class="token-desc">主按钮文字</div>
+                        <div class="token-desc">主按钮文字 (button.primary.text)</div>
                     </div>
                 </div>
-                <div class="card" onclick="copyToken('--ved-btn-secondary-bg')">
-                    <div class="swatch" style="background-color: var(--ved-btn-secondary-bg)"></div>
+                <div class="card" onclick="copyToken('--ved-button-secondary-bg')">
+                    <div class="swatch" style="background-color: var(--ved-button-secondary-bg)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-btn-secondary-bg</div>
+                        <div class="token-name">--ved-button-secondary-bg</div>
                         <div class="token-value">#FFFFFF</div>
-                        <div class="token-desc">次按钮背景</div>
+                        <div class="token-desc">次按钮背景 (button.secondary.bg)</div>
                     </div>
                 </div>
-                <div class="card" onclick="copyToken('--ved-btn-secondary-border')">
-                    <div class="swatch" style="background-color: var(--ved-btn-secondary-border)"></div>
+                <div class="card" onclick="copyToken('--ved-button-secondary-border')">
+                    <div class="swatch" style="background-color: var(--ved-button-secondary-border)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-btn-secondary-border</div>
+                        <div class="token-name">--ved-button-secondary-border</div>
                         <div class="token-value">#D4D4D8</div>
                         <div class="token-desc">次按钮边框</div>
                     </div>
                 </div>
-                <div class="card" onclick="copyToken('--ved-btn-hover')">
-                    <div class="swatch" style="background-color: var(--ved-btn-hover)"></div>
+                <div class="card" onclick="copyToken('--ved-button-hover')">
+                    <div class="swatch" style="background-color: var(--ved-button-hover)"></div>
                     <div class="info">
-                        <div class="token-name">--ved-btn-hover</div>
+                        <div class="token-name">--ved-button-hover</div>
                         <div class="token-value">#F4F4F5</div>
                         <div class="token-desc">按钮悬停</div>
                     </div>
@@ -497,7 +497,7 @@
                     <div class="info">
                         <div class="token-name">--ved-input-bg</div>
                         <div class="token-value">#FFFFFF</div>
-                        <div class="token-desc">输入框背景</div>
+                        <div class="token-desc">输入框背景 (input.bg)</div>
                     </div>
                 </div>
                 <div class="card" onclick="copyToken('--ved-input-border')">
@@ -505,7 +505,7 @@
                     <div class="info">
                         <div class="token-name">--ved-input-border</div>
                         <div class="token-value">#E4E4E7</div>
-                        <div class="token-desc">输入框边框</div>
+                        <div class="token-desc">输入框边框 (input.border)</div>
                     </div>
                 </div>
                 <div class="card" onclick="copyToken('--ved-input-focus')">
@@ -513,7 +513,7 @@
                     <div class="info">
                         <div class="token-name">--ved-input-focus</div>
                         <div class="token-value">#18181B</div>
-                        <div class="token-desc">输入框聚焦</div>
+                        <div class="token-desc">输入框聚焦 (input.focus)</div>
                     </div>
                 </div>
             </div>
