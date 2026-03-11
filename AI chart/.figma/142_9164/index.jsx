@@ -4,6 +4,11 @@ import styles from './index.module.scss';
 
 const imgSrc = (fileName) => new URL(`../image/${fileName}`, import.meta.url).toString();
 
+const onImgError = (fileName) => (event) => {
+  console.error(`Image not found: ${fileName}`);
+  event.currentTarget.remove();
+};
+
 const Component = () => {
   return (
     <div className={styles.frame1912056450}>
@@ -38,42 +43,54 @@ const Component = () => {
           <div className={styles.grid}>
             <div className={styles.instance2}>
               <div className={styles.frame1912056441}>
-                <img src={imgSrc('mmbmikny-tn6jqxh.svg')} className={styles.frame} />
+                <img
+                  src={imgSrc('mmbmikny-tn6jqxh.svg')}
+                  onError={onImgError('mmbmikny-tn6jqxh.svg')}
+                  className={styles.frame}
+                />
                 <div className={styles.frame6}>
                   <img
                     src={imgSrc('mmbmikny-f21hoje.svg')}
+                    onError={onImgError('mmbmikny-f21hoje.svg')}
                     className={styles.frame2}
                   />
                   <div className={styles.frame4}>
                     <img
                       src={imgSrc('mmbmikny-udc04ty.svg')}
+                      onError={onImgError('mmbmikny-udc04ty.svg')}
                       className={styles.frame3}
                     />
                   </div>
                   <img
                     src={imgSrc('mmbmikny-h1vt038.svg')}
+                    onError={onImgError('mmbmikny-h1vt038.svg')}
                     className={styles.frame5}
                   />
                   <img
                     src={imgSrc('mmbmikny-82glfff.svg')}
+                    onError={onImgError('mmbmikny-82glfff.svg')}
                     className={styles.gridLine3}
                   />
                   <img
                     src={imgSrc('mmbmikny-82glfff.svg')}
+                    onError={onImgError('mmbmikny-82glfff.svg')}
                     className={styles.gridLine4}
                   />
                 </div>
               </div>
               <img
                 src={imgSrc('mmbmikny-82glfff.svg')}
+                onError={onImgError('mmbmikny-82glfff.svg')}
                 className={styles.gridLine1}
               />
               <img
                 src={imgSrc('mmbmikny-82glfff.svg')}
+                onError={onImgError('mmbmikny-82glfff.svg')}
                 className={styles.gridLine2}
               />
               <img
                 src={imgSrc('mmbmikny-82glfff.svg')}
+                onError={onImgError('mmbmikny-82glfff.svg')}
                 className={styles.gridLine5}
               />
             </div>
