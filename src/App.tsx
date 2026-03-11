@@ -1214,7 +1214,6 @@ function App() {
          ["李四", "32", "上海"]
        ],
        "columnTypes": ["Text", "Text", "Text"],
-       "columnWidths": [120, 80, 120],
        "rowHeight": { "header": 40, "body": 40 }
      }
    - 标签列（Tag）请显式区分两类：
@@ -1224,7 +1223,7 @@ function App() {
        { "text": "企业", "tagType": "Outline 线型标签" }
      - 兼容：旧的 columnTypes "Tag" 视为 "StatusTag"。
    - 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：
-     @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"columnWidths":[120,80],"rowHeight":{"header":40,"body":40}}
+    @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
      @@table_stream {"event":"table_row","row":["李四",32]}
      @@table_stream {"event":"table_done"}
    - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。
@@ -1303,7 +1302,7 @@ function App() {
 Step1:
 {"thought":"读table spec","action":{"type":"read_specs","payload":{"ids":["table","table-column","table-header-cell","table-cell"]}}}
 Step2:
-{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"],"columnWidths":[120,80,120]}}}
+{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
 Step3:
 {"thought":"结束","action":{"type":"finish"}}
 
@@ -1336,6 +1335,7 @@ StepD:
 - 每次只执行一个动作。
 - "thought" 只保留当前动作意图，越短越好。
 - 如果所有步骤都已完成，调用 { "type": "finish" }。
+- 示例文字中的时间格式统一为 2019-10-12 00:00:00。
 `;
     return prompt;
   };
@@ -1711,7 +1711,8 @@ StepD:
       const cellComponentId = tableTypeToComponentId(type);
       const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
       const widthRaw = Number(columnWidths[colIndex]);
-      const width = Number.isFinite(widthRaw) && widthRaw > 0 ? widthRaw : (isActionColumn ? 0 : 120);
+      const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;
+      const width = hasWidth ? widthRaw : undefined;
       const tagColumnKind: TagColumnKind | null =
         cellComponentId === 'table-cell-tag' ? resolveTagColumnKind(type, header) : null;
       const headerText = isActionColumn ? '操作' : header;
@@ -1721,7 +1722,7 @@ StepD:
           componentId: 'table-header-cell',
           params: {
             text: headerText,
-            width,
+            ...(hasWidth && !isActionColumn ? { width } : {}),
             height: headerHeight
           }
         }
@@ -1739,13 +1740,13 @@ StepD:
           const componentToken = tagPayload.componentToken || fallbackToken;
           const tagText = tagPayload.text || value || 'Tag';
           const baseParams: any = {
-            width,
             height: bodyHeight,
             componentToken,
             tagKind: kind,
             tagText,
             text: tagText,
-            tagColor: tagPayload.tagColor
+            tagColor: tagPayload.tagColor,
+            ...(hasWidth && !isActionColumn ? { width } : {})
           };
 
           if (isStatus) {
@@ -1766,9 +1767,9 @@ StepD:
           columnChildren.push({
             componentId: 'table-cell-avatar',
             params: {
-              width,
               height: bodyHeight,
-              text: value || 'User'
+              text: value || 'User',
+              ...(hasWidth && !isActionColumn ? { width } : {})
             }
           });
           return;
@@ -1777,9 +1778,9 @@ StepD:
           columnChildren.push({
             componentId: 'table-cell-input',
             params: {
-              width,
               height: bodyHeight,
-              value
+              value,
+              ...(hasWidth && !isActionColumn ? { width } : {})
             }
           });
           return;
@@ -1788,7 +1789,6 @@ StepD:
           columnChildren.push({
             componentId: 'table-cell-action-text',
             params: {
-              width,
               height: bodyHeight,
               text: value || '编辑 删除 …'
             }
@@ -1799,7 +1799,6 @@ StepD:
           columnChildren.push({
             componentId: 'table-cell-action-icon',
             params: {
-              width,
               height: bodyHeight,
               text: value
             }
@@ -1809,9 +1808,9 @@ StepD:
         columnChildren.push({
           componentId: 'table-cell',
           params: {
-            width,
             height: bodyHeight,
-            text: value
+            text: value,
+            ...(hasWidth && !isActionColumn ? { width } : {})
           }
         });
       });
@@ -1821,8 +1820,8 @@ StepD:
         params: {
           headerText,
           rowCount: rows.length,
-          width: width > 0 ? width : undefined,
-          columnWidthMode: isActionColumn ? 'HUG' : undefined,
+          ...(hasWidth && !isActionColumn ? { width } : {}),
+          ...(isActionColumn ? { columnWidthMode: 'HUG' } : {}),
           headerHeight,
           bodyHeight
         },
@@ -5480,7 +5479,7 @@ StepD:
           )}
 
           {Object.keys(def.params).filter((key) => {
-            if (def.id !== 'tag') return true;
+            if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             return shouldDisplayTagParam(key, effectiveParams);
           }).map((key) => {
@@ -5687,6 +5686,7 @@ StepD:
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
     const widthModeValue = (params.columnWidthMode || 'FILL').toUpperCase();
+    const contentDef = COMPONENT_REGISTRY[selectedComponent.componentId];
 
     return (
       <div className="selection-panel">
@@ -5802,6 +5802,78 @@ StepD:
               应用到整列
             </button>
           </div>
+        )}
+
+        {contentDef && selectedComponent.componentId !== 'table-header-cell' && (
+          <>
+            <div className="section-title">单元格内容</div>
+            {Object.keys(contentDef.params || {}).filter((key) => {
+              if (contentDef.id !== 'tag' && contentDef.id !== 'table-cell-tag') return true;
+              const effectiveParams = buildEffectiveParams(contentDef, selectedComponent.params || {});
+              return shouldDisplayTagParam(key, effectiveParams);
+            }).map((key) => {
+              const paramDef = contentDef.params[key];
+              const value = selectedComponent.params[key] ?? paramDef.default;
+              const label = isFormComponent(contentDef.id) && paramDef.description ? paramDef.description : key;
+              return (
+                <div className="control-row" key={key}>
+                  <label>{label}:</label>
+                  {paramDef.type === 'number' && (
+                    <input 
+                      type="number" 
+                      value={value} 
+                      onChange={(e) => updateParam(key, parseFloat(e.target.value))}
+                    />
+                  )}
+                  {paramDef.type === 'string' && (
+                    <input 
+                      type="text" 
+                      value={value} 
+                      onChange={(e) => updateParam(key, e.target.value)}
+                    />
+                  )}
+                  {paramDef.type === 'boolean' && (
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={!!value} 
+                        onChange={(e) => updateParam(key, e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                    </div>
+                  )}
+                  {paramDef.type === 'select' && (
+                    <select 
+                      value={value} 
+                      onChange={(e) => updateParam(key, e.target.value)}
+                      style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #E6E6E6' }}
+                    >
+                      {paramDef.options?.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {isFormComponent(contentDef.id) ? getFormSelectOptionLabel(key, opt) : opt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {paramDef.type === 'color' && (
+                    <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                      <input 
+                        type="color" 
+                        value={value} 
+                        onChange={(e) => updateParam(key, e.target.value)}
+                        style={{ width: '30px', padding: 0, flex: 'none' }}
+                      />
+                      <input 
+                        type="text" 
+                        value={value} 
+                        onChange={(e) => updateParam(key, e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
         )}
       </div>
     );

@@ -3,5 +3,4 @@ dist
 .DS_Store
 .dbg
 .trae
-smarttable.zip
 node_modules

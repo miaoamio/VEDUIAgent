@@ -931,7 +931,8 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
     params: {
       itemsText: { type: 'string', default: '状态:select,城市:select,关键词:search', description: '筛选项配置：逗号/换行分隔 `label:type`；type 支持 select/input/search' },
       gap: { type: 'number', default: 12, description: '筛选项间距' },
-      itemWidth: { type: 'number', default: 240, description: '每个筛选项宽度（传给内部 select.width）' },
+      width: { type: 'number', default: 0, description: '筛选器组宽度；0 表示自适应（仅在作为根节点单独生成时默认采用 1000）' },
+      itemWidth: { type: 'number', default: 0, description: '每个筛选项宽度；0 表示 Fill（内部 select 默认填充父容器）' },
       size: { type: 'select', default: 'Default 32', options: ['Mini 24', 'Small 28', 'Default 32', 'Large 36'], description: '尺寸（透传给内部 select.size）' },
       state: { type: 'select', default: 'Default 默认', options: ['Default 默认', 'Hover 悬浮', 'Active 激活'], description: '交互状态（透传给内部 select.state）' },
       disabled: { type: 'boolean', default: false, description: '是否禁用（透传给内部 select.disabled）' }

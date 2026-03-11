@@ -29,5 +29,7 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'lib-data-display-tag': ['tag'],
   'library.data-display.tag': ['tag'],
   'lib-data-display-status-tag': ['table-cell-tag', 'tag'],
-  'library.data-display.status-tag': ['table-cell-tag', 'tag']
+  'library.data-display.status-tag': ['table-cell-tag', 'tag'],
+  'lib-data-display-avataricon': ['table-cell-avatar'],
+  'library.data-display.avataricon': ['table-cell-avatar']
 };

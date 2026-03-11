@@ -20,23 +20,35 @@ import { createInspectDrivenTagFallbackNode } from './tag.fallback';
 // This shows the HTML page in "ui.html".
 figma.showUI(__html__, { width: 500, height: 680 });
 
+function findAiComponentNode(node: SceneNode | null): SceneNode | null {
+  let current: BaseNode | null = node;
+  while (current && current.type !== 'PAGE') {
+    if ('getPluginData' in current && current.getPluginData('is-ai-component') === 'true') {
+      return current as SceneNode;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 // Helper to check selection and notify UI
 function checkSelection() {
   const selection = figma.currentPage.selection;
   if (selection.length === 1) {
     const node = selection[0];
-    const isAIComponent = node.getPluginData('is-ai-component');
-    if (isAIComponent === 'true') {
-      const componentId = node.getPluginData('component-id');
-      const params = node.getPluginData('params');
+    const targetNode =
+      node.getPluginData('is-ai-component') === 'true' ? node : findAiComponentNode(node);
+    if (targetNode && targetNode.getPluginData('is-ai-component') === 'true') {
+      const componentId = targetNode.getPluginData('component-id');
+      const params = targetNode.getPluginData('params');
       if (componentId && params) {
         let childComponentId;
-        if (componentId === 'table-column' && node.type === 'FRAME') {
-            const storedCellType = node.getPluginData('cellType');
+        if (componentId === 'table-column' && targetNode.type === 'FRAME') {
+            const storedCellType = targetNode.getPluginData('cellType');
             if (storedCellType) {
                 childComponentId = storedCellType;
             } else {
-                const firstCell = node.children.find(child => {
+                const firstCell = targetNode.children.find(child => {
                     const cid = child.getPluginData('component-id');
                     return cid && cid !== 'table-header-cell';
                 });
@@ -53,7 +65,7 @@ function checkSelection() {
             : parsedParams;
 
         if (isTableCellComponentId(componentId)) {
-          const column = findTableColumnFromNode(node);
+          const column = findTableColumnFromNode(targetNode);
           if (column) {
             const columnParams = readNodeParams(column);
             const merged = { ...columnParams, ...normalizedParams };
@@ -70,7 +82,7 @@ function checkSelection() {
             componentId,
             params: normalizedParams,
             childComponentId, // Optional: for columns
-            nodeName: node.name
+            nodeName: targetNode.name
           }
         });
         return;
@@ -284,7 +296,7 @@ async function createTableHeaderIconInstance(type: TableHeaderElementType): Prom
     }
     tryApplyTableHeaderIconVariant(icon, type);
     try {
-        icon.resize(16, 16);
+        icon.resize(12, 12);
     } catch {
         // ignore
     }
@@ -312,6 +324,33 @@ async function applyTableHeaderElementToHeaderCell(
 
     const desired = normalizeTableHeaderElementType(headerType);
     const frame = headerCell as FrameNode;
+    const ensureHeaderFill = () => {
+        try {
+            (frame as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+        try {
+            frame.layoutAlign = 'STRETCH';
+        } catch {
+            // ignore
+        }
+    };
+    const ensureColumnFill = () => {
+        const parent = frame.parent;
+        if (!parent || parent.type !== 'FRAME') return;
+        if (!isTableColumnNode(parent)) return;
+        const columnParams = readNodeParams(parent);
+        const mode = String(columnParams.columnWidthMode || '').toUpperCase();
+        if (mode && mode !== 'FILL') return;
+        parent.layoutGrow = 1;
+        parent.counterAxisSizingMode = 'FIXED';
+        try {
+            (parent as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+    };
 
     const existingIcon = findTableHeaderIconInstance(frame);
     const textNode = findDirectTextChild(frame);
@@ -331,11 +370,13 @@ async function applyTableHeaderElementToHeaderCell(
         }
         if (textNode) {
             try {
-                textNode.layoutGrow = 1;
+                textNode.layoutGrow = 0;
             } catch {
                 // ignore
             }
         }
+        ensureHeaderFill();
+        ensureColumnFill();
         return;
     }
 
@@ -383,6 +424,15 @@ async function applyTableHeaderElementToHeaderCell(
         }
         tryApplyTableHeaderIconVariant(iconToUse, desired);
     }
+    if (iconToUse) {
+        try {
+            iconToUse.resize(12, 12);
+        } catch {
+            // ignore
+        }
+    }
+    ensureHeaderFill();
+    ensureColumnFill();
 }
 
 function isTableCellComponentId(componentId?: string | null): boolean {
@@ -462,6 +512,146 @@ function getTableColumns(table: FrameNode): FrameNode[] {
     }
 
     return [];
+}
+
+function hasDirectTableColumns(node: FrameNode): boolean {
+    return node.children.some((child) => isTableColumnNode(child) || looksLikeTableColumnFrame(child as SceneNode));
+}
+
+function resolveTableContentFrame(table: FrameNode): FrameNode {
+    if (hasDirectTableColumns(table)) return table;
+    const directFrames = table.children.filter((child): child is FrameNode => child.type === 'FRAME') as FrameNode[];
+    for (const frame of directFrames) {
+        if (hasDirectTableColumns(frame)) return frame;
+    }
+    try {
+        const nested = table.findOne((n) => {
+            if (n.type !== 'FRAME') return false;
+            return hasDirectTableColumns(n as FrameNode);
+        });
+        if (nested && nested.type === 'FRAME') return nested as FrameNode;
+    } catch {
+        // ignore
+    }
+    return table;
+}
+
+function isFigmaComponentWithToken(node: BaseNode, token: string): boolean {
+    if (!node || !('getPluginData' in node)) return false;
+    if (node.getPluginData('component-id') !== 'figma-component') return false;
+    const params = readNodeParams(node);
+    return params.componentToken === token;
+}
+
+function findPaginationRow(tableRoot: FrameNode): FrameNode | null {
+    // Prefer explicit marker (newer tables).
+    const marked = tableRoot.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'pagination-row'
+    );
+    if (marked && marked.type === 'FRAME') return marked as FrameNode;
+
+    // Heuristic: a frame containing the pagination figma-component instance.
+    for (const child of tableRoot.children) {
+        if (child.type !== 'FRAME') continue;
+        if (child.children.some((n) => isFigmaComponentWithToken(n, 'lib-navigation-pagination'))) {
+            return child as FrameNode;
+        }
+    }
+
+    try {
+        const paginationNode = tableRoot.findOne((n) => isFigmaComponentWithToken(n as BaseNode, 'lib-navigation-pagination'));
+        if (paginationNode && paginationNode.parent && paginationNode.parent.type === 'FRAME') {
+            return paginationNode.parent as FrameNode;
+        }
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
+    const existing = findPaginationRow(tableRoot);
+    if (existing) {
+        existing.visible = true;
+        return;
+    }
+
+    const paginationRow = figma.createFrame();
+    paginationRow.setPluginData('table-role', 'pagination-row');
+    paginationRow.layoutMode = 'HORIZONTAL';
+    paginationRow.primaryAxisSizingMode = 'FIXED';
+    paginationRow.counterAxisSizingMode = 'AUTO';
+    paginationRow.primaryAxisAlignItems = 'MAX';
+    paginationRow.layoutAlign = 'STRETCH';
+    paginationRow.fills = [];
+    paginationRow.resize(width, 1);
+
+	    const paginationNode = await renderComponent({
+	        id: `pagination-${Date.now()}`,
+	        componentId: 'figma-component',
+	        params: { componentToken: 'lib-navigation-pagination' }
+	    }, { isRoot: false });
+    paginationRow.appendChild(paginationNode);
+    tableRoot.appendChild(paginationRow);
+}
+
+function removePaginationRow(tableRoot: FrameNode) {
+    const existing = findPaginationRow(tableRoot);
+    if (!existing) return;
+    try {
+        existing.remove();
+    } catch {
+        // ignore
+    }
+}
+
+function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<string, any>): FrameNode | null {
+    const parent = tableFrame.parent;
+    if (!parent || !('insertChild' in parent) || !('children' in parent)) return null;
+
+    const wrapper = figma.createFrame();
+    wrapper.name = tableFrame.name;
+    wrapper.layoutMode = 'VERTICAL';
+    wrapper.primaryAxisSizingMode = 'AUTO';
+    wrapper.counterAxisSizingMode = 'FIXED';
+    wrapper.itemSpacing = 16;
+    wrapper.fills = [];
+    wrapper.clipsContent = false;
+    wrapper.layoutAlign = tableFrame.layoutAlign;
+    wrapper.resize(tableFrame.width, 1);
+
+    try {
+        wrapper.x = tableFrame.x;
+        wrapper.y = tableFrame.y;
+    } catch {
+        // ignore (e.g. autolayout parent)
+    }
+
+    const index = (parent as any).children.indexOf(tableFrame);
+    (parent as any).insertChild(index >= 0 ? index : (parent as any).children.length, wrapper);
+
+    // Move existing table frame into the wrapper.
+    wrapper.appendChild(tableFrame);
+
+    // Keep the inner table addressable as a "table" for helpers, but avoid double "AI component" roots.
+    try {
+        tableFrame.setPluginData('is-ai-component', '');
+    } catch {}
+
+    // Wrapper becomes the new AI component root.
+    try {
+        wrapper.setPluginData('is-ai-component', 'true');
+        wrapper.setPluginData('component-id', 'table');
+        wrapper.setPluginData('params', JSON.stringify(params));
+    } catch {}
+
+    // Keep inner params in sync for table helpers.
+    writeNodeParams(tableFrame, params);
+
+    lockGeneratedContainerNode(wrapper, 'table');
+
+    return wrapper;
 }
 
 function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: SceneNode[] = []) {
@@ -611,7 +801,7 @@ async function updateTableRowCount(table: FrameNode, targetRows: number) {
                         componentId: 'table-cell',
                         params: { text: `Cell ${i + 1}`, width: column.width, height: bodyHeight }
                     };
-                    newCell = await renderComponent(cellInstance);
+	                    newCell = await renderComponent(cellInstance, { isRoot: false });
                 }
                 if (newCell) {
                     if ('layoutSizingHorizontal' in newCell) {
@@ -772,7 +962,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         return;
     }
 
-    const expectedWidth = desired === 'switch' ? 60 : 38;
+    const expectedWidth = desired === 'switch' ? 60 : 35;
 
     const tableParams = readNodeParams(table);
     const headerHeight = resolveTableHeaderHeight(tableParams);
@@ -938,6 +1128,8 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         } catch {}
     });
 
+    const rowActionPaddingLeft = 16;
+    const rowActionPaddingRight = 8;
     const populateColumnCells = async (
         columnNode: FrameNode,
         options: { header?: InstanceNode | null; body?: InstanceNode | null }
@@ -968,8 +1160,8 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         for (let i = offset; i < columnNode.children.length; i += 1) {
             const cell = columnNode.children[i];
             if (!cell || cell.removed || cell.type !== 'FRAME') continue;
-            cell.paddingLeft = 0;
-            cell.paddingRight = 0;
+            cell.paddingLeft = rowActionPaddingLeft;
+            cell.paddingRight = rowActionPaddingRight;
             cell.itemSpacing = 0;
             cell.primaryAxisAlignItems = 'CENTER';
             cell.counterAxisAlignItems = 'CENTER';
@@ -994,7 +1186,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         params: {
             text: '',
             width: expectedWidth,
-            height: headerHeight,
+            height: 40,
             paddingLeft: 0,
             paddingRight: 0,
             textAlign: 'center'
@@ -1007,8 +1199,8 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
             text: iconText,
             width: expectedWidth,
             height: bodyHeight,
-            paddingLeft: 0,
-            paddingRight: 0,
+            paddingLeft: rowActionPaddingLeft,
+            paddingRight: rowActionPaddingRight,
             textAlign: 'center'
         }
     }));
@@ -1028,7 +1220,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         children: [headerCell, ...bodyCells]
     };
 
-    const columnNode = await renderComponent(columnInstance);
+    const columnNode = await renderComponent(columnInstance, { isRoot: false });
     if (columnNode.type === 'FRAME') {
         columnNode.name = `Row Action Column (${desired})`;
         columnNode.setPluginData('isRowActionColumn', 'true');
@@ -2422,17 +2614,17 @@ async function createCheckboxGroupFromCheckboxComponents(
     frame.fills = [];
 
     for (const option of options) {
-        const checkboxNode = await renderComponent({
-            componentId: 'checkbox',
-            params: {
-                label: option,
-                showLabel: true,
-                checked: checkedValues.has(option),
-                indeterminate: false,
-                hover: false,
-                disabled: Boolean(params.disabled)
-            }
-        });
+	        const checkboxNode = await renderComponent({
+	            componentId: 'checkbox',
+	            params: {
+	                label: option,
+	                showLabel: true,
+	                checked: checkedValues.has(option),
+	                indeterminate: false,
+	                hover: false,
+	                disabled: Boolean(params.disabled)
+	            }
+	        }, { isRoot: false });
         frame.appendChild(checkboxNode);
     }
 
@@ -3074,7 +3266,7 @@ async function replaceFormFieldControlTemplate(
                 controlWidth: nextControlWidth
             });
 
-    const controlNode = await renderComponent(controlInstance);
+    const controlNode = await renderComponent(controlInstance, { isRoot: false });
     setNodeClipsContent(controlNode, false);
     replaceSceneNode(existingControlNode, controlNode);
 }
@@ -4416,10 +4608,23 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
 
 function applyColumnWidthMode(column: FrameNode, mode: 'FIXED' | 'HUG' | 'FILL', width?: number) {
   const normalized = String(mode || 'FIXED').toUpperCase() as 'FIXED' | 'HUG' | 'FILL';
+  const isAutoLayoutContainer = (node: BaseNode | null): boolean => {
+    if (!node) return false;
+    return 'layoutMode' in node && (node as any).layoutMode !== 'NONE';
+  };
+  const canSetFillSizing = (node: BaseNode): boolean => {
+    return isAutoLayoutContainer((node as any).parent as BaseNode | null);
+  };
   const applyChildrenFill = () => {
     for (const child of column.children) {
       if ('layoutSizingHorizontal' in child) {
-        (child as any).layoutSizingHorizontal = 'FILL';
+        if (canSetFillSizing(child as any)) {
+          try {
+            (child as any).layoutSizingHorizontal = 'FILL';
+          } catch (e) {
+            // ignore
+          }
+        }
         if ('layoutAlign' in child) {
           (child as any).layoutAlign = 'STRETCH';
         }
@@ -4432,15 +4637,29 @@ function applyColumnWidthMode(column: FrameNode, mode: 'FIXED' | 'HUG' | 'FILL',
   if (normalized === 'FILL') {
     column.layoutGrow = 1;
     column.counterAxisSizingMode = 'FIXED';
-    (column as any).layoutSizingHorizontal = 'FILL';
+    if (canSetFillSizing(column)) {
+      try {
+        (column as any).layoutSizingHorizontal = 'FILL';
+      } catch (e) {
+        // ignore
+      }
+    }
     applyChildrenFill();
   } else if (normalized === 'HUG') {
     column.layoutGrow = 0;
     column.counterAxisSizingMode = 'AUTO';
-    (column as any).layoutSizingHorizontal = 'HUG';
+    try {
+      (column as any).layoutSizingHorizontal = 'HUG';
+    } catch (e) {
+      // ignore
+    }
     for (const child of column.children) {
       if ('layoutSizingHorizontal' in child) {
-        (child as any).layoutSizingHorizontal = 'HUG';
+        try {
+          (child as any).layoutSizingHorizontal = 'HUG';
+        } catch (e) {
+          // ignore
+        }
         if (child.type === 'FRAME') {
           child.primaryAxisSizingMode = 'AUTO';
         }
@@ -4449,13 +4668,21 @@ function applyColumnWidthMode(column: FrameNode, mode: 'FIXED' | 'HUG' | 'FILL',
     const naturalWidth = column.width;
     column.layoutGrow = 0;
     column.counterAxisSizingMode = 'FIXED';
-    (column as any).layoutSizingHorizontal = 'FIXED';
+    try {
+      (column as any).layoutSizingHorizontal = 'FIXED';
+    } catch (e) {
+      // ignore
+    }
     column.resize(naturalWidth, column.height);
     applyChildrenFill();
   } else {
     column.layoutGrow = 0;
     column.counterAxisSizingMode = 'FIXED';
-    (column as any).layoutSizingHorizontal = 'FIXED';
+    try {
+      (column as any).layoutSizingHorizontal = 'FIXED';
+    } catch (e) {
+      // ignore
+    }
     if (typeof width === 'number' && width > 0) {
       column.resize(width, column.height);
     }
@@ -4543,7 +4770,11 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
 }
 
 // Recursive function to render a component
-async function renderComponent(instance: ComponentInstance): Promise<SceneNode> {
+async function renderComponent(
+  instance: ComponentInstance,
+  options: { isRoot?: boolean } = {}
+): Promise<SceneNode> {
+  const isRoot = options.isRoot ?? true;
   const def = COMPONENT_REGISTRY[instance.componentId];
   if (!def) throw new Error(`Unknown component type: ${instance.componentId}`);
 
@@ -4634,7 +4865,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     // Add children to Content Area
     if (instance.children) {
       for (const child of instance.children) {
-        const childNode = await renderComponent(child);
+        const childNode = await renderComponent(child, { isRoot: false });
         // Ensure child fills the content area width if it's a block element
         if (childNode.type === 'FRAME') {
              childNode.layoutAlign = 'STRETCH';
@@ -4731,7 +4962,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     // Children
     if (instance.children) {
       for (const child of instance.children) {
-        const childNode = await renderComponent(child);
+        const childNode = await renderComponent(child, { isRoot: false });
         frame.appendChild(childNode);
       }
     }
@@ -4764,7 +4995,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
 
     if (instance.children) {
         for (const child of instance.children) {
-            const childNode = await renderComponent(inheritFormFieldParams(params, child));
+            const childNode = await renderComponent(inheritFormFieldParams(params, child), { isRoot: false });
             if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && frame.counterAxisSizingMode === 'FIXED') {
                 childNode.layoutAlign = 'STRETCH';
             }
@@ -4794,7 +5025,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
 
     if (instance.children) {
         for (const child of instance.children) {
-            const childNode = await renderComponent(inheritRowFormFieldParams(params, child));
+            const childNode = await renderComponent(inheritRowFormFieldParams(params, child), { isRoot: false });
             frame.appendChild(childNode);
         }
     }
@@ -4865,8 +5096,8 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     controlColumn.clipsContent = false;
 
     const controlNode = instance.children && instance.children.length > 0
-      ? await renderComponent(instance.children[0])
-      : await renderComponent(createControlInstanceFromFormFieldParams(params));
+      ? await renderComponent(instance.children[0], { isRoot: false })
+      : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
     controlColumn.appendChild(controlNode);
 
     const messageText = String(params.errorText || params.descriptionText || params.helpText || '').trim();
@@ -4911,8 +5142,18 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
                   headerHeight: toPositiveNumber(child.params?.headerHeight) ?? headerHeight,
                   bodyHeight: toPositiveNumber(child.params?.bodyHeight) ?? bodyHeight
                 }
-              });
+              }, { isRoot: false });
               frame.appendChild(childNode);
+              if (childNode.type === 'FRAME' && childNode.getPluginData('component-id') === 'table-column') {
+                  const colParams = readNodeParams(childNode);
+                  if (typeof colParams.columnWidthMode === 'string') {
+                      applyColumnWidthMode(
+                          childNode,
+                          colParams.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
+                          colParams.width
+                      );
+                  }
+              }
           }
       } else {
           const colCount = params.columnCount || 3;
@@ -4928,8 +5169,18 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
                       bodyHeight
                   }
               };
-              const colNode = await renderComponent(colInstance);
+              const colNode = await renderComponent(colInstance, { isRoot: false });
               frame.appendChild(colNode);
+              if (colNode.type === 'FRAME' && colNode.getPluginData('component-id') === 'table-column') {
+                  const colParams = readNodeParams(colNode);
+                  if (typeof colParams.columnWidthMode === 'string') {
+                      applyColumnWidthMode(
+                          colNode,
+                          colParams.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
+                          colParams.width
+                      );
+                  }
+              }
           }
       }
       alignAllTableRows(frame);
@@ -4958,7 +5209,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
             id: 'pagination',
             componentId: 'figma-component',
             params: { componentToken: 'lib-navigation-pagination' }
-          });
+          }, { isRoot: false });
           paginationRow.appendChild(paginationNode);
           wrapper.appendChild(paginationRow);
           node = wrapper;
@@ -4995,7 +5246,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
                   paddingTop: child.params?.paddingTop ?? 0,
                   paddingBottom: child.params?.paddingBottom ?? 0
                 }
-              });
+              }, { isRoot: false });
               frame.appendChild(childNode);
           }
       } else {
@@ -5007,7 +5258,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
               componentId: 'table-header-cell',
               params: { text: params.headerText || 'Header', width: columnWidth, height: headerHeight }
           };
-          const headerNode = await renderComponent(headerInstance);
+          const headerNode = await renderComponent(headerInstance, { isRoot: false });
           frame.appendChild(headerNode);
           
           // Rows
@@ -5018,7 +5269,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
 	                  componentId: 'table-cell',
 	                  params: { text: `Cell ${i+1}`, width: columnWidth, height: bodyHeight }
 	              };
-	              const cellNode = await renderComponent(cellInstance);
+	              const cellNode = await renderComponent(cellInstance, { isRoot: false });
 	              frame.appendChild(cellNode);
 	          }
 	      }
@@ -5052,7 +5303,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     frame.itemSpacing = 8;
     frame.counterAxisAlignItems = 'CENTER'; // Center content vertically
     frame.paddingLeft = params.paddingLeft ?? 16;
-    frame.paddingRight = params.paddingRight ?? 16;
+    frame.paddingRight = params.paddingRight ?? (isHeader ? 8 : 16);
     frame.paddingTop = params.paddingTop ?? 0;
     frame.paddingBottom = params.paddingBottom ?? 0;
     frame.resize(explicitHugWidth ? 1 : cellWidth, cellHeight);
@@ -5153,17 +5404,17 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     }
     // 2. Avatar Cell
     else if (instance.componentId === 'table-cell-avatar') {
-        const avatarInstance = await createFigmaComponentInstanceByToken('lib-data-display-avatar');
+        const avatarInstance = await createFigmaComponentInstanceByToken('lib-data-display-avataricon');
         if (avatarInstance) {
             try {
-                avatarInstance.resize(24, 24);
+                avatarInstance.resize(20, 20);
             } catch {
                 // ignore
             }
             frame.appendChild(avatarInstance);
         } else {
             const avatar = figma.createEllipse();
-            avatar.resize(24, 24);
+            avatar.resize(20, 20);
             avatar.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
             frame.appendChild(avatar);
         }
@@ -5183,7 +5434,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
         inputFrame.primaryAxisSizingMode = 'FIXED';
         inputFrame.counterAxisSizingMode = 'AUTO';
         inputFrame.layoutGrow = 1;
-        inputFrame.resize(100, Math.max(24, Math.min(28, cellHeight - 12)));
+        inputFrame.resize(100, 24);
         inputFrame.paddingLeft = 8;
         inputFrame.paddingRight = 8;
         inputFrame.cornerRadius = 4;
@@ -5334,7 +5585,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
         const textColor = isHeader ? '#42464E' : '#0C0D0E';
         await applyColorVariable(textNode, isHeader ? 'table-header-text-key' : 'table-cell-text-key', textColor);
         
-        if (!explicitHugWidth) {
+        if (!explicitHugWidth && !isHeader) {
             textNode.layoutGrow = 1;
         }
         frame.appendChild(textNode);
@@ -5605,41 +5856,66 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
         node = frame;
     }
   }
-  // --- FILTER GROUP ---
-  else if (instance.componentId === 'filter-group') {
-    const frame = figma.createFrame();
-    frame.layoutMode = 'HORIZONTAL';
-    frame.primaryAxisSizingMode = 'AUTO';
-    frame.counterAxisSizingMode = 'AUTO';
-    frame.counterAxisAlignItems = 'CENTER';
-    frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 12;
-    frame.fills = [];
-    frame.clipsContent = false;
+	  // --- FILTER GROUP ---
+	  else if (instance.componentId === 'filter-group') {
+	    const frame = figma.createFrame();
+	    frame.layoutMode = 'HORIZONTAL';
+	    frame.primaryAxisSizingMode = 'AUTO';
+	    frame.counterAxisSizingMode = 'AUTO';
+	    frame.counterAxisAlignItems = 'CENTER';
+	    frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 12;
+	    frame.fills = [];
+	    frame.clipsContent = false;
 
-    const itemWidth = Number(params.itemWidth) > 0 ? Number(params.itemWidth) : 240;
-    const items = parseFilterGroupItems(params.itemsText ?? params.items);
+	    const widthExplicit = Boolean(
+	      instance.params && Object.prototype.hasOwnProperty.call(instance.params, 'width')
+	    );
+	    const widthFromParams = Number(params.width);
+	    const width = isRoot && !widthExplicit ? 1000 : widthFromParams;
+	    if (isRoot && !widthExplicit) {
+	      (params as any).width = width;
+	    }
+	    if (Number.isFinite(width) && width > 0) {
+	      frame.primaryAxisSizingMode = 'FIXED';
+	      frame.resize(width, frame.height);
+	    }
 
-    for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        const selectNode = await renderComponent({
-            id: `${instance.id}-filter-${index}`,
-            componentId: 'select',
-            params: {
-                width: itemWidth,
-                size: params.size,
-                state: params.state,
-                disabled: Boolean(params.disabled),
-                selectType: 'Label 内置标签',
-                value: ''
-            }
-        });
+	    const itemWidthRaw = Number(params.itemWidth);
+	    const hasFixedItemWidth = Number.isFinite(itemWidthRaw) && itemWidthRaw > 0;
+	    const items = parseFilterGroupItems(params.itemsText ?? params.items);
 
-        await applyFilterGroupItemToSelectNode(selectNode, item);
-        frame.appendChild(selectNode);
-    }
+	    for (let index = 0; index < items.length; index += 1) {
+	      const item = items[index];
+	      const selectNode = await renderComponent(
+	        {
+	          id: `${instance.id}-filter-${index}`,
+	          componentId: 'select',
+	          params: {
+	            ...(hasFixedItemWidth ? { width: itemWidthRaw } : {}),
+	            size: params.size,
+	            state: params.state,
+	            disabled: Boolean(params.disabled),
+	            selectType: 'Label 内置标签',
+	            value: ''
+	          }
+	        },
+	        { isRoot: false }
+	      );
 
-    node = frame;
-  }
+	      await applyFilterGroupItemToSelectNode(selectNode, item);
+	      if (!hasFixedItemWidth) {
+	        try {
+	          (selectNode as any).layoutGrow = 1;
+	        } catch {}
+	        try {
+	          (selectNode as any).layoutSizingHorizontal = 'FILL';
+	        } catch {}
+	      }
+	      frame.appendChild(selectNode);
+	    }
+
+	    node = frame;
+	  }
   // --- CHECKBOX ---
   else if (instance.componentId === 'checkbox') {
     const templateNode = await createCheckboxFromFigmaTemplate(def, params);
@@ -5869,7 +6145,7 @@ async function renderComponent(instance: ComponentInstance): Promise<SceneNode> 
     // Recursively render children
     if (instance.children) {
       for (const child of instance.children) {
-        const childNode = await renderComponent(child);
+        const childNode = await renderComponent(child, { isRoot: false });
         frame.appendChild(childNode);
       }
     }
@@ -6212,7 +6488,13 @@ figma.ui.onmessage = async (msg) => {
     const { params } = msg;
     const selection = figma.currentPage.selection;
     if (selection.length === 1) {
-      const node = selection[0];
+      let node = selection[0] as SceneNode;
+      if (node.getPluginData('is-ai-component') !== 'true') {
+        const resolved = findAiComponentNode(node);
+        if (resolved) {
+          node = resolved;
+        }
+      }
       const componentId = node.getPluginData('component-id');
       
       if (componentId) {
