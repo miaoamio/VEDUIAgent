@@ -2,6 +2,8 @@ import React from 'react';
 
 import styles from './index.module.scss';
 
+const imgSrc = (fileName) => new URL(`../image/${fileName}`, import.meta.url).toString();
+
 const Component = () => {
   return (
     <div className={styles.frame1912056450}>
@@ -36,42 +38,42 @@ const Component = () => {
           <div className={styles.grid}>
             <div className={styles.instance2}>
               <div className={styles.frame1912056441}>
-                <img src="../image/mmbmikny-tn6jqxh.svg" className={styles.frame} />
+                <img src={imgSrc('mmbmikny-tn6jqxh.svg')} className={styles.frame} />
                 <div className={styles.frame6}>
                   <img
-                    src="../image/mmbmikny-f21hoje.svg"
+                    src={imgSrc('mmbmikny-f21hoje.svg')}
                     className={styles.frame2}
                   />
                   <div className={styles.frame4}>
                     <img
-                      src="../image/mmbmikny-udc04ty.svg"
+                      src={imgSrc('mmbmikny-udc04ty.svg')}
                       className={styles.frame3}
                     />
                   </div>
                   <img
-                    src="../image/mmbmikny-h1vt038.svg"
+                    src={imgSrc('mmbmikny-h1vt038.svg')}
                     className={styles.frame5}
                   />
                   <img
-                    src="../image/mmbmikny-82glfff.svg"
+                    src={imgSrc('mmbmikny-82glfff.svg')}
                     className={styles.gridLine3}
                   />
                   <img
-                    src="../image/mmbmikny-82glfff.svg"
+                    src={imgSrc('mmbmikny-82glfff.svg')}
                     className={styles.gridLine4}
                   />
                 </div>
               </div>
               <img
-                src="../image/mmbmikny-82glfff.svg"
+                src={imgSrc('mmbmikny-82glfff.svg')}
                 className={styles.gridLine1}
               />
               <img
-                src="../image/mmbmikny-82glfff.svg"
+                src={imgSrc('mmbmikny-82glfff.svg')}
                 className={styles.gridLine2}
               />
               <img
-                src="../image/mmbmikny-82glfff.svg"
+                src={imgSrc('mmbmikny-82glfff.svg')}
                 className={styles.gridLine5}
               />
             </div>
