@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VED Color Tokens (Light)</title>
+    <style>
+        :root {
+            /* 基础背景与文字 */
+            --ved-bg-canvas: #FFFFFF;
+            --ved-text-primary: #18181B;
+            --ved-text-secondary: #71717A;
+
+            /* 按钮 (Button) */
+            --ved-btn-primary-bg: #18181B;
+            --ved-btn-primary-text: #FFFFFF;
+            --ved-btn-secondary-bg: #FFFFFF;
+            --ved-btn-secondary-border: #D4D4D8;
+            --ved-btn-hover: #F4F4F5;
+
+            /* 输入与选择器 (Input/Select) */
+            --ved-input-bg: #FFFFFF;
+            --ved-input-border: #E4E4E7;
+            --ved-input-focus: #18181B;
+
+            /* 开关 (Switch) */
+            --ved-switch-off: #E4E4E7;
+            --ved-switch-on: #18181B;
+            --ved-switch-thumb: #FFFFFF;
+
+            /* 标签 (Tag) */
+            --ved-tag-neutral: #F4F4F5;
+            --ved-tag-blue-bg: #EFF6FF;
+            --ved-tag-blue-text: #2563EB;
+
+            /* 状态 (Status) */
+            --ved-status-success: #16A34A;
+            --ved-status-error: #DC2626;
+            --ved-status-warning: #D97706;
+
+            /* --- 1. 思考与逻辑区块 (Thought & Terminal) --- */ 
+            --ved-bg-thought: #F8F9FA;           /* 思考逻辑区块的极浅灰背景 */ 
+            --ved-bg-terminal: #09090B;          /* npm install 等指令的黑底背景 */ 
+            --ved-text-terminal: #F4F4F5;        /* 终端命令文本颜色 */ 
+            --ved-text-terminal-comment: #71717A;/* 终端内 $ 符号或注释的灰色 */ 
+            --ved-icon-thought: #71717A;         /* “思考”大脑图标颜色 */ 
+            --ved-icon-loading: #3B82F6;         /* 任务旁转圈的蓝色 Loading */ 
+            
+            /* --- 2. 任务进度板 (Task Progress Board) --- */ 
+            --ved-bg-progress-bar: #F4F4F5;      /* 进度条底色背景 */ 
+            --ved-bg-progress-fill: #18181B;     /* 进度条填充颜色 */ 
+            --ved-text-progress: #71717A;        /* 进度百分比文字颜色 (如 "12%") */ 
+            --ved-status-pending: #A1A1AA;       /* 等待中任务的虚线圈/文字颜色 */ 
+            --ved-status-running: #3B82F6;       /* 执行中任务的高亮蓝色 */ 
+            --ved-status-done: #16A34A;          /* 已完成任务的绿色勾选/文字 */ 
+            
+            /* --- 3. 动作标识与标签 (Actions & Tags) --- */ 
+            --ved-icon-draw: #71717A;            /* “绘制”井号图标颜色 */ 
+            --ved-icon-read: #71717A;            /* “读取”搜索图标颜色 */ 
+            --ved-bg-tag-sandbox: #F4F4F5;       /* “在沙箱中”等标签背景 */
+
+            /* --- 4. 字体样式 (Typography) --- */
+            /* --- 字体族定义 --- */ 
+            --ved-font-family: "Roboto", "PingFang SC", "Microsoft YaHei", sans-serif; 
+            --ved-font-mono: "Roboto Mono", monospace; 
+            
+            /* --- 字体字号层级 --- */ 
+            --ved-font-size-h1: 13px; 
+            --ved-font-size-body: 13px; 
+            --ved-font-size-label: 12px; 
+            --ved-font-size-caption: 11px; 
+            --ved-font-size-tiny: 10px; 
+            
+            /* --- 组合样式 --- */ 
+            /* 13px - 标题 */ 
+            --ved-style-h1: 600 var(--ved-font-size-h1)/1.5 var(--ved-font-family); 
+            
+            /* 13px - 常规正文 */ 
+            --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family); 
+            
+            /* 12px - 按钮与标签 */ 
+            --ved-style-label: 500 var(--ved-font-size-label)/1.5 var(--ved-font-family); 
+            
+            /* 12px - 等宽代码 */ 
+            --ved-style-mono: 400 var(--ved-font-size-label)/1.5 var(--ved-font-mono); 
+            
+            /* 11px - 辅助/进度信息 */ 
+            --ved-style-caption: 400 var(--ved-font-size-caption)/1.4 var(--ved-font-family); 
+            
+            /* 10px - 极小标识 */ 
+            --ved-style-tiny: 700 var(--ved-font-size-tiny)/1.2 var(--ved-font-family);
+        }
+
+        body {
+            background-color: var(--ved-bg-canvas);
+            color: var(--ved-text-primary);
+            font-family: var(--ved-font-family);
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            font: var(--ved-style-h1);
+            font-size: 24px; /* Override for page title */
+            margin-bottom: 8px;
+            color: var(--ved-text-primary);
+        }
+
+        p.subtitle {
+            font: var(--ved-style-body);
+            color: var(--ved-text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font: var(--ved-style-label);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--ved-text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            background-color: #FFFFFF;
+            border: 1px solid var(--ved-input-border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            border-color: var(--ved-text-secondary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .swatch {
+            height: 48px;
+            width: 100%;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .token-name {
+            font: var(--ved-style-mono);
+            color: var(--ved-text-primary);
+        }
+
+        .token-value {
+            font: var(--ved-style-mono);
+            font-size: 11px;
+            color: var(--ved-text-secondary);
+        }
+
+        .token-desc {
+            font: var(--ved-style-caption);
+            color: var(--ved-text-secondary);
+            margin-top: 8px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background-color: var(--ved-text-primary);
+            color: var(--ved-bg-canvas);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font: var(--ved-style-label);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .typography-preview {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .type-row {
+            display: flex;
+            align-items: baseline;
+            padding: 12px;
+            border-bottom: 1px solid var(--ved-input-border);
+        }
+        
+        .type-label {
+            width: 120px;
+            font: var(--ved-style-mono);
+            color: var(--ved-text-secondary);
+            flex-shrink: 0;
+        }
+        
+        .type-sample {
+            color: var(--ved-text-primary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>VED Design Tokens (Light)</h1>
+        <p class="subtitle">Click any card to copy the CSS variable.</p>
+
+        <!-- Typography Section -->
+        <div class="section">
+            <div class="section-title">Typography</div>
+            <div class="card" style="cursor: default;">
+                <div class="typography-preview">
+                    <div class="type-row" onclick="copyToken('--ved-style-h1')">
+                        <div class="type-label">--ved-style-h1</div>
+                        <div class="type-sample" style="font: var(--ved-style-h1)">The quick brown fox jumps over the lazy dog</div>
+                    </div>
+                    <div class="type-row" onclick="copyToken('--ved-style-body')">
+                        <div class="type-label">--ved-style-body</div>
+                        <div class="type-sample" style="font: var(--ved-style-body)">The quick brown fox jumps over the lazy dog</div>
+                    </div>
+                    <div class="type-row" onclick="copyToken('--ved-style-label')">
+                        <div class="type-label">--ved-style-label</div>
+                        <div class="type-sample" style="font: var(--ved-style-label)">The quick brown fox jumps over the lazy dog</div>
+                    </div>
+                    <div class="type-row" onclick="copyToken('--ved-style-mono')">
+                        <div class="type-label">--ved-style-mono</div>
+                        <div class="type-sample" style="font: var(--ved-style-mono)">const ved = "awesome";</div>
+                    </div>
+                    <div class="type-row" onclick="copyToken('--ved-style-caption')">
+                        <div class="type-label">--ved-style-caption</div>
+                        <div class="type-sample" style="font: var(--ved-style-caption)">The quick brown fox jumps over the lazy dog</div>
+                    </div>
+                    <div class="type-row" onclick="copyToken('--ved-style-tiny')">
+                        <div class="type-label">--ved-style-tiny</div>
+                        <div class="type-sample" style="font: var(--ved-style-tiny)">THE QUICK BROWN FOX</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Base Background & Text -->
+        <div class="section">
+            <div class="section-title">Base (Background & Text)</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-bg-canvas')">
+                    <div class="swatch" style="background-color: var(--ved-bg-canvas)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-canvas</div>
+                        <div class="token-value">#FFFFFF</div>
+                        <div class="token-desc">基础背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-primary')">
+                    <div class="swatch" style="background-color: var(--ved-text-primary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-primary</div>
+                        <div class="token-value">#18181B</div>
+                        <div class="token-desc">主要文字</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-secondary')">
+                    <div class="swatch" style="background-color: var(--ved-text-secondary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-secondary</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">次要文字</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="section">
+            <div class="section-title">Buttons</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-btn-primary-bg')">
+                    <div class="swatch" style="background-color: var(--ved-btn-primary-bg)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-btn-primary-bg</div>
+                        <div class="token-value">#18181B</div>
+                        <div class="token-desc">主按钮背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-btn-primary-text')">
+                    <div class="swatch" style="background-color: var(--ved-btn-primary-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-btn-primary-text</div>
+                        <div class="token-value">#FFFFFF</div>
+                        <div class="token-desc">主按钮文字</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-btn-secondary-bg')">
+                    <div class="swatch" style="background-color: var(--ved-btn-secondary-bg)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-btn-secondary-bg</div>
+                        <div class="token-value">#FFFFFF</div>
+                        <div class="token-desc">次按钮背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-btn-secondary-border')">
+                    <div class="swatch" style="background-color: var(--ved-btn-secondary-border)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-btn-secondary-border</div>
+                        <div class="token-value">#D4D4D8</div>
+                        <div class="token-desc">次按钮边框</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-btn-hover')">
+                    <div class="swatch" style="background-color: var(--ved-btn-hover)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-btn-hover</div>
+                        <div class="token-value">#F4F4F5</div>
+                        <div class="token-desc">按钮悬停</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Thought & Terminal -->
+        <div class="section">
+            <div class="section-title">Thought & Terminal</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-bg-thought')">
+                    <div class="swatch" style="background-color: var(--ved-bg-thought)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-thought</div>
+                        <div class="token-value">#F8F9FA</div>
+                        <div class="token-desc">思考逻辑区块背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-bg-terminal')">
+                    <div class="swatch" style="background-color: var(--ved-bg-terminal)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-terminal</div>
+                        <div class="token-value">#09090B</div>
+                        <div class="token-desc">终端背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-terminal')">
+                    <div class="swatch" style="background-color: var(--ved-text-terminal)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-terminal</div>
+                        <div class="token-value">#F4F4F5</div>
+                        <div class="token-desc">终端文字</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-terminal-comment')">
+                    <div class="swatch" style="background-color: var(--ved-text-terminal-comment)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-terminal-comment</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">终端注释</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-thought')">
+                    <div class="swatch" style="background-color: var(--ved-icon-thought)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-thought</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">思考图标</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-loading')">
+                    <div class="swatch" style="background-color: var(--ved-icon-loading)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-loading</div>
+                        <div class="token-value">#3B82F6</div>
+                        <div class="token-desc">Loading 图标</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Progress -->
+        <div class="section">
+            <div class="section-title">Task Progress Board</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-bg-progress-bar')">
+                    <div class="swatch" style="background-color: var(--ved-bg-progress-bar)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-progress-bar</div>
+                        <div class="token-value">#F4F4F5</div>
+                        <div class="token-desc">进度条底色</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-bg-progress-fill')">
+                    <div class="swatch" style="background-color: var(--ved-bg-progress-fill)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-progress-fill</div>
+                        <div class="token-value">#18181B</div>
+                        <div class="token-desc">进度条填充</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-progress')">
+                    <div class="swatch" style="background-color: var(--ved-text-progress)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-progress</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">进度文字</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-status-pending')">
+                    <div class="swatch" style="background-color: var(--ved-status-pending)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-pending</div>
+                        <div class="token-value">#A1A1AA</div>
+                        <div class="token-desc">等待状态</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-status-running')">
+                    <div class="swatch" style="background-color: var(--ved-status-running)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-running</div>
+                        <div class="token-value">#3B82F6</div>
+                        <div class="token-desc">运行状态</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-status-done')">
+                    <div class="swatch" style="background-color: var(--ved-status-done)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-done</div>
+                        <div class="token-value">#16A34A</div>
+                        <div class="token-desc">完成状态</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions & Tags -->
+        <div class="section">
+            <div class="section-title">Actions & Tags</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-icon-draw')">
+                    <div class="swatch" style="background-color: var(--ved-icon-draw)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-draw</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">绘制图标</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-read')">
+                    <div class="swatch" style="background-color: var(--ved-icon-read)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-read</div>
+                        <div class="token-value">#71717A</div>
+                        <div class="token-desc">读取图标</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-bg-tag-sandbox')">
+                    <div class="swatch" style="background-color: var(--ved-bg-tag-sandbox)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-bg-tag-sandbox</div>
+                        <div class="token-value">#F4F4F5</div>
+                        <div class="token-desc">沙箱标签背景</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input / Select -->
+        <div class="section">
+            <div class="section-title">Input & Select</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-input-bg')">
+                    <div class="swatch" style="background-color: var(--ved-input-bg)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-input-bg</div>
+                        <div class="token-value">#FFFFFF</div>
+                        <div class="token-desc">输入框背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-input-border')">
+                    <div class="swatch" style="background-color: var(--ved-input-border)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-input-border</div>
+                        <div class="token-value">#E4E4E7</div>
+                        <div class="token-desc">输入框边框</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-input-focus')">
+                    <div class="swatch" style="background-color: var(--ved-input-focus)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-input-focus</div>
+                        <div class="token-value">#18181B</div>
+                        <div class="token-desc">输入框聚焦</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Switch -->
+        <div class="section">
+            <div class="section-title">Switch</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-switch-off')">
+                    <div class="swatch" style="background-color: var(--ved-switch-off)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-switch-off</div>
+                        <div class="token-value">#E4E4E7</div>
+                        <div class="token-desc">开关关闭</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-switch-on')">
+                    <div class="swatch" style="background-color: var(--ved-switch-on)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-switch-on</div>
+                        <div class="token-value">#18181B</div>
+                        <div class="token-desc">开关开启</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-switch-thumb')">
+                    <div class="swatch" style="background-color: var(--ved-switch-thumb)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-switch-thumb</div>
+                        <div class="token-value">#FFFFFF</div>
+                        <div class="token-desc">开关滑块</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="section">
+            <div class="section-title">Tags</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-tag-neutral')">
+                    <div class="swatch" style="background-color: var(--ved-tag-neutral)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-tag-neutral</div>
+                        <div class="token-value">#F4F4F5</div>
+                        <div class="token-desc">中性标签</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-tag-blue-bg')">
+                    <div class="swatch" style="background-color: var(--ved-tag-blue-bg)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-tag-blue-bg</div>
+                        <div class="token-value">#EFF6FF</div>
+                        <div class="token-desc">蓝色标签背景</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-tag-blue-text')">
+                    <div class="swatch" style="background-color: var(--ved-tag-blue-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-tag-blue-text</div>
+                        <div class="token-value">#2563EB</div>
+                        <div class="token-desc">蓝色标签文字</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="section">
+            <div class="section-title">Status</div>
+            <div class="grid">
+                <div class="card" onclick="copyToken('--ved-status-success')">
+                    <div class="swatch" style="background-color: var(--ved-status-success)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-success</div>
+                        <div class="token-value">#16A34A</div>
+                        <div class="token-desc">成功状态</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-status-error')">
+                    <div class="swatch" style="background-color: var(--ved-status-error)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-error</div>
+                        <div class="token-value">#DC2626</div>
+                        <div class="token-desc">错误状态</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-status-warning')">
+                    <div class="swatch" style="background-color: var(--ved-status-warning)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-status-warning</div>
+                        <div class="token-value">#D97706</div>
+                        <div class="token-desc">警告状态</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Copied to clipboard!</div>
+
+    <script>
+        function copyToken(tokenName) {
+            navigator.clipboard.writeText(`var(${tokenName})`).then(() => {
+                showToast(`Copied: var(${tokenName})`);
+            });
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
