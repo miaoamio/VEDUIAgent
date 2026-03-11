@@ -1,0 +1,31 @@
+* {
+  box-sizing: border-box;
+}
+
+.instance {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 8px;
+  border-radius: 4px;
+  box-shadow: var(
+    --shadow-Assembly-Button-Gray-Default-Disabled,
+    0px 0px 0px 1px #dde2e9,
+    0px 2px 1px 0px #00000014
+  );
+  background: var(--Background-color-bg-1, #ffffff);
+  padding: 3px 16px;
+  width: 59px;
+  height: 28px;
+  overflow: hidden;
+
+  .buttonTitle {
+    flex-shrink: 0;
+    line-height: 22px;
+    letter-spacing: 0.04px;
+    color: var(--Text-color-text-2, #42464e);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+  }
+}
