@@ -6797,200 +6797,102 @@ StepD:
               {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
             </div>
           )}
-          {chartOverlayOpen && (
-            <div className="chart-overlay">
-              <div className="chart-overlay-backdrop" onClick={() => setChartOverlayOpen(false)} />
-              <div className="chart-overlay-panel">
-                <div className="chart-overlay-header">
-                  <div className="chart-overlay-title">AI Chart</div>
-                  <button
-                    type="button"
-                    className="chart-overlay-close"
-                    onClick={() => setChartOverlayOpen(false)}
-                  >
-                    关闭
-                  </button>
-                </div>
-                <iframe className="chart-overlay-iframe" srcDoc={AI_CHART_UI_HTML} />
-              </div>
-            </div>
-          )}
-              {(isChartSelection || chartPromptMode) && (
-                <div className="composer-shortcuts">
-                  {chartTypeShortcuts.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      className={`composer-chip${item.label === '折线图' && chartShortcutActive === '折线图' ? ' active' : ''}`}
-                      onClick={() => {
-                        replaceQuickPrompt(item.prompt);
-                        setChartPromptMode(true);
-                        setChartShortcutActive(item.label);
-                        setChartOverlayOpen(item.label === '折线图');
-                        composerTextareaRef.current?.focus();
-                      }}
-                      disabled={loading}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <textarea 
-                className="composer-textarea"
-                value={userInput}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
-                  setUserInput(nextValue);
-                  if (!nextValue.trim()) {
-                    setChartPromptMode(false);
-                    setChartShortcutActive(null);
-                  }
-                }}
-                onPaste={handlePaste}
-                placeholder="让 VED UI Agent 绘制..."
-                disabled={loading}
-                rows={4}
-                ref={composerTextareaRef}
-              />
-              <div className="composer-footer">
-                <div className="composer-left">
+              <div className="composer-box">
+                <textarea
+                  className="composer-textarea"
+                  value={userInput}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setUserInput(nextValue);
+                    if (!nextValue.trim()) {
+                      setChartPromptMode(false);
+                      setChartShortcutActive(null);
+                    }
+                  }}
+                  onPaste={handlePaste}
+                  placeholder="让 VED UI Agent 绘制..."
+                  disabled={loading}
+                  rows={4}
+                  ref={composerTextareaRef}
+                />
+                <div className="composer-footer">
                   <div className="composer-attach" ref={composerAttachRef}>
-                  <button
-                    type="button"
-                    className="composer-icon-button"
-                    onClick={() => setAttachmentMenuOpen((prev) => !prev)}
-                    disabled={loading}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M9 3.75V14.25" stroke="#4B5563" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M3.75 9H14.25" stroke="#4B5563" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                  {attachmentMenuOpen && (
-                    <div className="composer-menu">
-                      <button
-                        type="button"
-                        className="composer-menu-item"
-                        onClick={() => {
-                          setAttachmentMenuOpen(false);
-                          imageInputRef.current?.click();
-                        }}
-                        disabled={loading}
-                      >
-                        <span className="composer-menu-icon">
-                          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5.25 2.25H12.75C13.9926 2.25 15 3.25736 15 4.5V13.5C15 14.7426 13.9926 15.75 12.75 15.75H5.25C4.00736 15.75 3 14.7426 3 13.5V4.5C3 3.25736 4.00736 2.25 5.25 2.25Z" stroke="#111827" strokeWidth="1.5"/>
-                            <path d="M6 11.25L8.25 9L10.125 10.875L12 9" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            <circle cx="6.375" cy="6.375" r="1.125" stroke="#111827" strokeWidth="1.5"/>
-                          </svg>
-                        </span>
-                        上传截图
-                      </button>
-                      <button
-                        type="button"
-                        className="composer-menu-item"
-                        onClick={() => {
-                          setAttachmentMenuOpen(false);
-                          tableInputRef.current?.click();
-                        }}
-                        disabled={loading}
-                      >
-                        <span className="composer-menu-icon">
-                          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="3" y="2.25" width="12" height="13.5" rx="1.5" stroke="#111827" strokeWidth="1.5"/>
-                            <path d="M6.75 6H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                            <path d="M6.75 9H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                            <path d="M6.75 12H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          </svg>
-                        </span>
-                        上传表格
-                      </button>
-                    </div>
-                  )}
-                </div>
-                  <div className="composer-divider" />
-                  <div className="composer-shortcuts">
                     <button
                       type="button"
-                      className="composer-chip"
-                      onClick={() => {
-                        applyQuickPrompt('生成一个表格');
-                        setChartPromptMode(false);
-                        setChartShortcutActive(null);
-                        setAttachmentMenuOpen(false);
-                        composerTextareaRef.current?.focus();
-                      }}
+                      className="composer-icon-button"
+                      onClick={() => setAttachmentMenuOpen((prev) => !prev)}
                       disabled={loading}
                     >
-                      <span className="composer-chip-icon">
-                        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="2.75" y="3.25" width="12.5" height="11.5" rx="1.5" stroke="#111827" strokeWidth="1.5"/>
-                          <path d="M2.75 7H15.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M7 3.25V14.75" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </span>
-                      表格
+                      <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 3.75V14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M3.75 9H14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
                     </button>
-                    <button
-                      type="button"
-                      className="composer-chip"
-                      onClick={() => {
-                        applyQuickPrompt('生成一个表单');
-                        setChartPromptMode(false);
-                        setChartShortcutActive(null);
-                        setAttachmentMenuOpen(false);
-                        composerTextareaRef.current?.focus();
-                      }}
-                      disabled={loading}
-                    >
-                      <span className="composer-chip-icon">
-                        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="3" y="2.5" width="12" height="13" rx="1.5" stroke="#111827" strokeWidth="1.5"/>
-                          <path d="M6 6.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M6 9.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M6 12.5H10.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </span>
-                      表单
-                    </button>
-                    <button
-                      type="button"
-                      className="composer-chip"
-                      onClick={() => {
-                        replaceQuickPrompt('生成一个图表');
-                        setChartPromptMode(true);
-                        setChartShortcutActive(null);
-                        setChartOverlayOpen(false);
-                        setAttachmentMenuOpen(false);
-                        composerTextareaRef.current?.focus();
-                      }}
-                      disabled={loading}
-                    >
-                      <span className="composer-chip-icon">
-                        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M3.5 13.5V9.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M9 13.5V6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M14.5 13.5V4.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                          <path d="M3 14H15" stroke="#111827" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </span>
-                      图表
-                    </button>
+                    {attachmentMenuOpen && (
+                      <div className="composer-menu">
+                        <button
+                          type="button"
+                          className="composer-menu-item"
+                          onClick={() => {
+                            setAttachmentMenuOpen(false);
+                            imageInputRef.current?.click();
+                          }}
+                          disabled={loading}
+                        >
+                          <span className="composer-menu-icon">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path
+                                d="M5.25 2.25H12.75C13.9926 2.25 15 3.25736 15 4.5V13.5C15 14.7426 13.9926 15.75 12.75 15.75H5.25C4.00736 15.75 3 14.7426 3 13.5V4.5C3 3.25736 4.00736 2.25 5.25 2.25Z"
+                                stroke="#111827"
+                                strokeWidth="1.5"
+                              />
+                              <path
+                                d="M6 11.25L8.25 9L10.125 10.875L12 9"
+                                stroke="#111827"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <circle cx="6.375" cy="6.375" r="1.125" stroke="#111827" strokeWidth="1.5" />
+                            </svg>
+                          </span>
+                          上传截图
+                        </button>
+                        <button
+                          type="button"
+                          className="composer-menu-item"
+                          onClick={() => {
+                            setAttachmentMenuOpen(false);
+                            tableInputRef.current?.click();
+                          }}
+                          disabled={loading}
+                        >
+                          <span className="composer-menu-icon">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <rect x="3" y="2.25" width="12" height="13.5" rx="1.5" stroke="#111827" strokeWidth="1.5" />
+                              <path d="M6.75 6H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                              <path d="M6.75 9H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                              <path d="M6.75 12H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          </span>
+                          上传表格
+                        </button>
+                      </div>
+                    )}
                   </div>
+                  <button className="composer-send" onClick={onSend} disabled={loading || !canSend}>
+                    {loading ? (
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="6" y="6" width="8" height="8" rx="2" fill="white" />
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 16V5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M6 9L10 5L14 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
-                <button className="composer-send" onClick={onSend} disabled={loading || !canSend}>
-                  {loading ? (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="6" y="6" width="8" height="8" rx="2" fill="white"/>
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M4 10H16" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M11 5L16 10L11 15" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </button>
               </div>
             </div>
           </div>

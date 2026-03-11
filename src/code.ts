@@ -18,7 +18,7 @@ import {
 import { createInspectDrivenTagFallbackNode } from './tag.fallback';
 
 // This shows the HTML page in "ui.html".
-figma.showUI(__html__, { width: 500, height: 680 });
+figma.showUI(__html__, { width: 398, height: 680 });
 
 function findAiComponentNode(node: SceneNode | null): SceneNode | null {
   let current: BaseNode | null = node;
