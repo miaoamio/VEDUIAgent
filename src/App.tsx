@@ -6753,7 +6753,7 @@ StepD:
                 type="button"
                 className="composer-quick-chip"
                 onClick={() => {
-                  applyQuickPrompt('生成一个表格');
+                  replaceQuickPrompt('生成一个表格');
                   setChartPromptMode(false);
                   setChartShortcutActive(null);
                   setAttachmentMenuOpen(false);
@@ -6774,7 +6774,7 @@ StepD:
                 type="button"
                 className="composer-quick-chip"
                 onClick={() => {
-                  applyQuickPrompt('生成一个表单');
+                  replaceQuickPrompt('生成一个表单');
                   setChartPromptMode(false);
                   setChartShortcutActive(null);
                   setAttachmentMenuOpen(false);
