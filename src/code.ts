@@ -574,27 +574,74 @@ async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
     const existing = findPaginationRow(tableRoot);
     if (existing) {
         existing.visible = true;
+        existing.fills = [];
+        existing.clipsContent = false;
+        existing.layoutAlign = 'STRETCH';
+        existing.primaryAxisAlignItems = 'MAX';
+        existing.primaryAxisSizingMode = 'FIXED';
+        existing.counterAxisSizingMode = 'AUTO';
+        if ('layoutSizingHorizontal' in existing) {
+            try {
+                (existing as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingVertical' in existing) {
+            try {
+                (existing as any).layoutSizingVertical = 'HUG';
+            } catch {
+                // ignore
+            }
+        }
         return;
     }
 
     const paginationRow = figma.createFrame();
     paginationRow.setPluginData('table-role', 'pagination-row');
+    paginationRow.name = 'Pagination Row';
     paginationRow.layoutMode = 'HORIZONTAL';
     paginationRow.primaryAxisSizingMode = 'FIXED';
     paginationRow.counterAxisSizingMode = 'AUTO';
-	    paginationRow.primaryAxisAlignItems = 'MAX';
-	    paginationRow.layoutAlign = 'STRETCH';
-	    paginationRow.fills = [];
-	    // Layout-only container: avoid clipping child strokes/effects.
-	    paginationRow.clipsContent = false;
-	    paginationRow.resize(width, 1);
+    paginationRow.primaryAxisAlignItems = 'MAX';
+    paginationRow.layoutAlign = 'STRETCH';
+    paginationRow.fills = [];
+    // Layout-only container: avoid clipping child strokes/effects.
+    paginationRow.clipsContent = false;
+    paginationRow.resize(width, 1);
+    // Some Figma versions reset sizing modes when resize() is called.
+    paginationRow.primaryAxisSizingMode = 'FIXED';
+    paginationRow.counterAxisSizingMode = 'AUTO';
+    if ('layoutSizingHorizontal' in paginationRow) {
+        try {
+            (paginationRow as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+    }
+    if ('layoutSizingVertical' in paginationRow) {
+        try {
+            (paginationRow as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
 
-	    const paginationNode = await renderComponent({
-	        id: `pagination-${Date.now()}`,
-	        componentId: 'figma-component',
-	        params: { componentToken: 'lib-navigation-pagination' }
-	    }, { isRoot: false });
+    const paginationNode = await renderComponent({
+        id: `pagination-${Date.now()}`,
+        componentId: 'figma-component',
+        params: { componentToken: 'lib-navigation-pagination' }
+    }, { isRoot: false });
     paginationRow.appendChild(paginationNode);
+    // Re-assert hug sizing after child insertion to avoid 1px-height frames.
+    paginationRow.counterAxisSizingMode = 'AUTO';
+    if ('layoutSizingVertical' in paginationRow) {
+        try {
+            (paginationRow as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
     tableRoot.appendChild(paginationRow);
 }
 
@@ -603,6 +650,327 @@ function removePaginationRow(tableRoot: FrameNode) {
     if (!existing) return;
     try {
         existing.remove();
+    } catch {
+        // ignore
+    }
+}
+
+function findTableContentStack(tableRoot: FrameNode): FrameNode | null {
+    const existing = tableRoot.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'content-stack'
+    );
+    return existing && existing.type === 'FRAME' ? (existing as FrameNode) : null;
+}
+
+function ensureTableContentStack(tableRoot: FrameNode, tableContent: FrameNode): FrameNode {
+    const width = tableContent.width;
+    let stack = findTableContentStack(tableRoot);
+    if (!stack) {
+        stack = figma.createFrame();
+        stack.setPluginData('table-role', 'content-stack');
+        stack.name = 'Table Content';
+        stack.layoutMode = 'VERTICAL';
+        stack.primaryAxisSizingMode = 'AUTO';
+        stack.counterAxisSizingMode = 'FIXED';
+        stack.itemSpacing = 20;
+        stack.layoutAlign = 'STRETCH';
+        stack.fills = [];
+        stack.clipsContent = false;
+        stack.resize(width, 1);
+        // Some Figma versions reset sizing modes when resize() is called.
+        stack.primaryAxisSizingMode = 'AUTO';
+        stack.counterAxisSizingMode = 'FIXED';
+        if ('layoutSizingHorizontal' in stack) {
+            try {
+                (stack as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingVertical' in stack) {
+            try {
+                (stack as any).layoutSizingVertical = 'HUG';
+            } catch {
+                // ignore
+            }
+        }
+
+        const paginationRow = findPaginationRow(tableRoot);
+        const insertionIndex = paginationRow ? tableRoot.children.indexOf(paginationRow) : tableRoot.children.length;
+        tableRoot.insertChild(insertionIndex >= 0 ? insertionIndex : tableRoot.children.length, stack);
+    } else {
+        // Keep stack config stable.
+        stack.layoutMode = 'VERTICAL';
+        stack.primaryAxisSizingMode = 'AUTO';
+        stack.counterAxisSizingMode = 'FIXED';
+        stack.itemSpacing = 20;
+        stack.layoutAlign = 'STRETCH';
+        stack.fills = [];
+        stack.clipsContent = false;
+        if (Number.isFinite(width) && width > 0) {
+            try {
+                stack.resize(width, stack.height);
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingHorizontal' in stack) {
+            try {
+                (stack as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingVertical' in stack) {
+            try {
+                (stack as any).layoutSizingVertical = 'HUG';
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    if (tableContent.parent !== stack) {
+        try {
+            stack.appendChild(tableContent);
+        } catch {
+            // ignore
+        }
+    }
+
+    // Ensure the inner table expands horizontally inside the stack.
+    try {
+        tableContent.layoutAlign = 'STRETCH';
+    } catch {
+        // ignore
+    }
+    if ('layoutSizingHorizontal' in tableContent) {
+        try {
+            (tableContent as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+    }
+    if ('layoutSizingVertical' in tableContent) {
+        try {
+            (tableContent as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
+
+    return stack;
+}
+
+function findManagedTableFilterGroup(contentStack: FrameNode): FrameNode | null {
+    const existing = contentStack.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+    );
+    return existing && existing.type === 'FRAME' ? (existing as FrameNode) : null;
+}
+
+function findManagedTableFilterGroupInParent(parent: FrameNode): FrameNode | null {
+    const existing = parent.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+    );
+    return existing && existing.type === 'FRAME' ? (existing as FrameNode) : null;
+}
+
+async function ensureTableFilterGroup(contentStack: FrameNode, width: number) {
+    const existing = findManagedTableFilterGroup(contentStack);
+    if (existing) {
+        existing.visible = true;
+        existing.fills = [];
+        existing.clipsContent = false;
+        existing.layoutAlign = 'STRETCH';
+        if (Number.isFinite(width) && width > 0) {
+            try {
+                existing.primaryAxisSizingMode = 'FIXED';
+                existing.resize(width, existing.height);
+            } catch {
+            }
+        }
+        if ('layoutSizingHorizontal' in existing) {
+            try {
+                (existing as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+            }
+        }
+        if ('layoutSizingVertical' in existing) {
+            try {
+                (existing as any).layoutSizingVertical = 'HUG';
+            } catch {
+            }
+        }
+        const index = contentStack.children.indexOf(existing);
+        if (index > 0) {
+            try {
+                contentStack.insertChild(0, existing);
+            } catch {
+                // ignore
+            }
+        }
+        return;
+    }
+
+    const filterNode = await renderComponent(
+        {
+            id: `table-filter-${Date.now()}`,
+            componentId: 'filter-group',
+            params: { width }
+        },
+        { isRoot: false }
+    );
+
+    try {
+        filterNode.setPluginData('table-role', 'filter-group');
+    } catch {
+    }
+    if (filterNode.type === 'FRAME') {
+        filterNode.layoutAlign = 'STRETCH';
+        if ('layoutSizingHorizontal' in filterNode) {
+            try {
+                (filterNode as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+            }
+        }
+        if ('layoutSizingVertical' in filterNode) {
+            try {
+                (filterNode as any).layoutSizingVertical = 'HUG';
+            } catch {
+            }
+        }
+    }
+
+    contentStack.insertChild(0, filterNode);
+}
+
+async function ensureTableFilterGroupInParent(parent: FrameNode, tableRoot: FrameNode, width: number) {
+    const existing = findManagedTableFilterGroupInParent(parent);
+    if (existing) {
+        existing.visible = true;
+        existing.fills = [];
+        existing.clipsContent = false;
+        existing.layoutAlign = 'STRETCH';
+        if (Number.isFinite(width) && width > 0) {
+            try {
+                existing.primaryAxisSizingMode = 'FIXED';
+                existing.resize(width, existing.height);
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingHorizontal' in existing) {
+            try {
+                (existing as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingVertical' in existing) {
+            try {
+                (existing as any).layoutSizingVertical = 'HUG';
+            } catch {
+                // ignore
+            }
+        }
+        const tableIndex = parent.children.indexOf(tableRoot);
+        const currentIndex = parent.children.indexOf(existing);
+        if (tableIndex >= 0 && currentIndex !== tableIndex - 1) {
+            try {
+                parent.insertChild(Math.max(0, tableIndex), existing);
+            } catch {
+                // ignore
+            }
+        }
+        return;
+    }
+
+    const filterNode = await renderComponent(
+        {
+            id: `table-filter-${Date.now()}`,
+            componentId: 'filter-group',
+            params: { width }
+        },
+        { isRoot: false }
+    );
+
+    try {
+        filterNode.setPluginData('table-role', 'filter-group');
+    } catch {
+        // ignore
+    }
+    if (filterNode.type === 'FRAME') {
+        filterNode.layoutAlign = 'STRETCH';
+        if ('layoutSizingHorizontal' in filterNode) {
+            try {
+                (filterNode as any).layoutSizingHorizontal = 'FILL';
+            } catch {
+                // ignore
+            }
+        }
+        if ('layoutSizingVertical' in filterNode) {
+            try {
+                (filterNode as any).layoutSizingVertical = 'HUG';
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    const tableIndex = parent.children.indexOf(tableRoot);
+    if (tableIndex >= 0) {
+        parent.insertChild(Math.max(0, tableIndex), filterNode);
+    } else {
+        parent.appendChild(filterNode);
+    }
+}
+
+function removeTableFilterGroup(contentStack: FrameNode) {
+    const nodes = contentStack.children.filter(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+    ) as FrameNode[];
+    for (const node of nodes) {
+        try {
+            node.remove();
+        } catch {
+        }
+    }
+}
+
+function removeTableFilterGroupFromParent(parent: FrameNode) {
+    const nodes = parent.children.filter(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+    ) as FrameNode[];
+    for (const node of nodes) {
+        try {
+            node.remove();
+        } catch {
+            // ignore
+        }
+    }
+}
+
+function clearNodeStrokes(node: SceneNode) {
+    try {
+        if ('strokes' in node) {
+            (node as any).strokes = [];
+        }
+        if ('strokeWeight' in node) {
+            (node as any).strokeWeight = 0;
+        }
+        if ('strokeTopWeight' in node) {
+            (node as any).strokeTopWeight = 0;
+        }
+        if ('strokeRightWeight' in node) {
+            (node as any).strokeRightWeight = 0;
+        }
+        if ('strokeBottomWeight' in node) {
+            (node as any).strokeBottomWeight = 0;
+        }
+        if ('strokeLeftWeight' in node) {
+            (node as any).strokeLeftWeight = 0;
+        }
     } catch {
         // ignore
     }
@@ -622,6 +990,23 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
     wrapper.clipsContent = false;
     wrapper.layoutAlign = tableFrame.layoutAlign;
     wrapper.resize(tableFrame.width, 1);
+    // Some Figma versions reset sizing modes when resize() is called.
+    wrapper.primaryAxisSizingMode = 'AUTO';
+    wrapper.counterAxisSizingMode = 'FIXED';
+    if ('layoutSizingHorizontal' in wrapper) {
+        try {
+            (wrapper as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+    }
+    if ('layoutSizingVertical' in wrapper) {
+        try {
+            (wrapper as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
 
     try {
         wrapper.x = tableFrame.x;
@@ -635,6 +1020,34 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
 
     // Move existing table frame into the wrapper.
     wrapper.appendChild(tableFrame);
+    // Ensure the inner table expands horizontally and does not collapse its height.
+    tableFrame.layoutAlign = 'STRETCH';
+    if (tableFrame.layoutMode !== 'NONE') {
+        tableFrame.counterAxisSizingMode = 'AUTO';
+    }
+    if ('layoutSizingHorizontal' in tableFrame) {
+        try {
+            (tableFrame as any).layoutSizingHorizontal = 'FILL';
+        } catch {
+            // ignore
+        }
+    }
+    if ('layoutSizingVertical' in tableFrame) {
+        try {
+            (tableFrame as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
+    // Re-assert wrapper hug height after child insertion.
+    wrapper.primaryAxisSizingMode = 'AUTO';
+    if ('layoutSizingVertical' in wrapper) {
+        try {
+            (wrapper as any).layoutSizingVertical = 'HUG';
+        } catch {
+            // ignore
+        }
+    }
 
     // Keep the inner table addressable as a "table" for helpers, but avoid double "AI component" roots.
     try {
@@ -995,33 +1408,69 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         return null;
     };
 
-    const createHeaderControl = async (): Promise<InstanceNode | null> => {
-        const token = 'table.rowAction.header';
-        const resolved = resolveComponentTokenProfile(token);
-        const componentKey = resolved?.profile.componentKey || '';
-        if (!componentKey) return null;
-        try {
-            const inst = await createFigmaComponentInstance({
-                componentKey,
-                fallbackName: resolved?.profile.displayName || 'Row Action Header',
-                variantCriteria: {
-                    'Check 多选': desired === 'multiple',
-                    'Expand 展开': desired === 'expand',
-                    'Size 尺寸': resolveSizeVariant(headerHeight)
-                }
-            });
-            try {
-                const patch: Record<string, any> = {};
-                const fixedHeaderKey = findInstanceComponentPropertyName(inst, 'Fixdrow 固定表头');
-                if (fixedHeaderKey) patch[fixedHeaderKey] = 'False';
-                const alignKey = findInstanceComponentPropertyName(inst, 'Align 排列方式');
-                if (alignKey) patch[alignKey] = 'Left 左';
-                if (Object.keys(patch).length > 0) {
-                    inst.setProperties(patch);
-                }
-            } catch {}
-            inst.setPluginData('rowActionHeaderType', desired);
-            inst.name = `RowActionHeader:${desired}`;
+	    const createHeaderControl = async (): Promise<InstanceNode | null> => {
+	        const token = 'table.rowAction.header';
+	        const resolved = resolveComponentTokenProfile(token);
+	        const componentKey = resolved?.profile.componentKey || '';
+	        if (!componentKey) return null;
+	        try {
+	            const inst = await createFigmaComponentInstance({
+	                componentKey,
+	                fallbackName: resolved?.profile.displayName || 'Row Action Header',
+	                variantCriteria: {
+	                    'Check 多选': desired === 'multiple',
+	                    'Expand 展开': desired === 'expand',
+	                    'Size 尺寸': resolveSizeVariant(headerHeight)
+	                }
+	            });
+	            try {
+	                const findPropKey = (candidates: string[]): string | null => {
+	                    for (const candidate of candidates) {
+	                        const found = findInstanceComponentPropertyName(inst, candidate);
+	                        if (found) return found;
+	                    }
+	                    return null;
+	                };
+	                const resolvePropValue = (key: string, value: string | boolean): string | boolean | undefined => {
+	                    const prop = inst.componentProperties?.[key];
+	                    const type = prop?.type;
+
+	                    if (type === 'BOOLEAN') {
+	                        return typeof value === 'boolean' ? value : undefined;
+	                    }
+
+	                    if (typeof value === 'boolean') {
+	                        if (type === 'VARIANT') {
+	                            const current = typeof prop?.value === 'string' ? prop.value.trim().toLowerCase() : '';
+	                            if (current === 'on' || current === 'off') return value ? 'On' : 'Off';
+	                            if (current === 'yes' || current === 'no') return value ? 'Yes' : 'No';
+	                            if (current === 'true' || current === 'false') return value ? 'True' : 'False';
+	                            return toVariantBoolean(value);
+	                        }
+	                        return value;
+	                    }
+
+	                    return value;
+	                };
+
+	                const patch: Record<string, any> = {};
+	                const setPatchValue = (key: string | null, value: string | boolean) => {
+	                    if (!key) return;
+	                    const resolved = resolvePropValue(key, value);
+	                    if (resolved !== undefined) patch[key] = resolved;
+	                };
+
+	                setPatchValue(findPropKey(['Check 多选', 'Check']), desired === 'multiple');
+	                setPatchValue(findPropKey(['Expand 展开', 'Expand']), desired === 'expand');
+	                setPatchValue(findPropKey(['Size 尺寸', 'Size']), resolveSizeVariant(headerHeight));
+	                setPatchValue(findPropKey(['Fixdrow 固定表头', 'Fixdrow']), false);
+	                setPatchValue(findPropKey(['Align 排列方式', 'Align']), 'Left 左');
+	                if (Object.keys(patch).length > 0) {
+	                    inst.setProperties(patch);
+	                }
+	            } catch {}
+	            inst.setPluginData('rowActionHeaderType', desired);
+	            inst.name = `RowActionHeader:${desired}`;
             return inst;
         } catch (e) {
             console.warn('[RowAction] failed to create header control', e);
@@ -5133,12 +5582,16 @@ async function renderComponent(
       frame.layoutAlign = 'STRETCH';
       const headerHeight = resolveTableHeaderHeight(params);
       const bodyHeight = resolveTableBodyHeight(params);
+      const wantsPagination = params.hasPagination === true;
+      const wantsFilter = params.hasFilter === true;
       frame.resize(params.width || 1176, 100);
       frame.cornerRadius = params.cornerRadius || 0;
       frame.clipsContent = true;
-      if (params.borderWidth && params.borderWidth > 0) {
+      if (!wantsPagination && params.borderWidth && params.borderWidth > 0) {
           await applyStrokeColorVariable(frame, 'table-border-key', params.borderColor || '#EAEDF1');
           frame.strokeWeight = params.borderWidth;
+      } else if (wantsPagination) {
+          clearNodeStrokes(frame);
       }
       if (instance.children && instance.children.length > 0) {
           for (const child of instance.children) {
@@ -5194,33 +5647,178 @@ async function renderComponent(
       if (params.rowAction) {
           await applyRowActionColumn(frame, String(params.rowAction));
       }
-	      if (params.hasPagination) {
-	          const wrapper = figma.createFrame();
-	          wrapper.layoutMode = 'VERTICAL';
-	          wrapper.primaryAxisSizingMode = 'AUTO';
-	          wrapper.counterAxisSizingMode = 'FIXED';
-	          wrapper.itemSpacing = 16;
-	          wrapper.fills = [];
-	          wrapper.clipsContent = false;
-	          wrapper.layoutAlign = 'STRETCH';
-	          wrapper.resize(frame.width, 1);
-	          wrapper.appendChild(frame);
-	          const paginationRow = figma.createFrame();
-          paginationRow.layoutMode = 'HORIZONTAL';
-          paginationRow.primaryAxisSizingMode = 'FIXED';
-          paginationRow.counterAxisSizingMode = 'AUTO';
-	          paginationRow.primaryAxisAlignItems = 'MAX';
-	          paginationRow.layoutAlign = 'STRETCH';
-	          paginationRow.fills = [];
-	          paginationRow.clipsContent = false;
-	          paginationRow.resize(frame.width, 1);
-	          const paginationNode = await renderComponent({
-	            id: 'pagination',
-	            componentId: 'figma-component',
-            params: { componentToken: 'lib-navigation-pagination' }
-          }, { isRoot: false });
-          paginationRow.appendChild(paginationNode);
-          wrapper.appendChild(paginationRow);
+      if (wantsPagination || wantsFilter) {
+          const wrapper = figma.createFrame();
+          wrapper.layoutMode = 'VERTICAL';
+          wrapper.primaryAxisSizingMode = 'AUTO';
+          wrapper.counterAxisSizingMode = 'FIXED';
+          wrapper.itemSpacing = 16;
+          wrapper.fills = [];
+          wrapper.clipsContent = false;
+          wrapper.layoutAlign = 'STRETCH';
+          wrapper.resize(frame.width, 1);
+          // Some Figma versions reset sizing modes when resize() is called.
+          wrapper.primaryAxisSizingMode = 'AUTO';
+          wrapper.counterAxisSizingMode = 'FIXED';
+          if ('layoutSizingHorizontal' in wrapper) {
+              try {
+                  (wrapper as any).layoutSizingHorizontal = 'FILL';
+              } catch {
+                  // ignore
+              }
+          }
+          if ('layoutSizingVertical' in wrapper) {
+              try {
+                  (wrapper as any).layoutSizingVertical = 'HUG';
+              } catch {
+                  // ignore
+              }
+          }
+          clearNodeStrokes(wrapper);
+
+          const contentStack = figma.createFrame();
+          contentStack.setPluginData('table-role', 'content-stack');
+          contentStack.name = 'Table Content';
+          contentStack.layoutMode = 'VERTICAL';
+          contentStack.primaryAxisSizingMode = 'AUTO';
+          contentStack.counterAxisSizingMode = 'FIXED';
+          contentStack.itemSpacing = 20;
+          contentStack.fills = [];
+          contentStack.clipsContent = false;
+          contentStack.layoutAlign = 'STRETCH';
+          contentStack.resize(frame.width, 1);
+          // Some Figma versions reset sizing modes when resize() is called.
+          contentStack.primaryAxisSizingMode = 'AUTO';
+          contentStack.counterAxisSizingMode = 'FIXED';
+          if ('layoutSizingHorizontal' in contentStack) {
+              try {
+                  (contentStack as any).layoutSizingHorizontal = 'FILL';
+              } catch {
+                  // ignore
+              }
+          }
+          if ('layoutSizingVertical' in contentStack) {
+              try {
+                  (contentStack as any).layoutSizingVertical = 'HUG';
+              } catch {
+                  // ignore
+              }
+          }
+          clearNodeStrokes(contentStack);
+
+          if (wantsFilter) {
+              const filterNode = await renderComponent(
+                  {
+                      id: `${instance.id}-filter`,
+                      componentId: 'filter-group',
+                      params: { width: frame.width }
+                  },
+                  { isRoot: false }
+              );
+              try {
+                  filterNode.setPluginData('table-role', 'filter-group');
+              } catch {
+                  // ignore
+              }
+              if (filterNode.type === 'FRAME') {
+                  filterNode.layoutAlign = 'STRETCH';
+                  if ('layoutSizingHorizontal' in filterNode) {
+                      try {
+                          (filterNode as any).layoutSizingHorizontal = 'FILL';
+                      } catch {
+                          // ignore
+                      }
+                  }
+                  if ('layoutSizingVertical' in filterNode) {
+                      try {
+                          (filterNode as any).layoutSizingVertical = 'HUG';
+                      } catch {
+                          // ignore
+                      }
+                  }
+              }
+              contentStack.appendChild(filterNode);
+          }
+
+          // Ensure the inner table expands horizontally inside the stack.
+          frame.layoutAlign = 'STRETCH';
+          if ('layoutSizingHorizontal' in frame) {
+              try {
+                  (frame as any).layoutSizingHorizontal = 'FILL';
+              } catch {
+                  // ignore
+              }
+          }
+          if ('layoutSizingVertical' in frame) {
+              try {
+                  (frame as any).layoutSizingVertical = 'HUG';
+              } catch {
+                  // ignore
+              }
+          }
+          contentStack.appendChild(frame);
+          wrapper.appendChild(contentStack);
+
+          if (wantsPagination) {
+              const paginationRow = figma.createFrame();
+              paginationRow.setPluginData('table-role', 'pagination-row');
+              paginationRow.name = 'Pagination Row';
+              paginationRow.layoutMode = 'HORIZONTAL';
+              paginationRow.primaryAxisSizingMode = 'FIXED';
+              paginationRow.counterAxisSizingMode = 'AUTO';
+              paginationRow.primaryAxisAlignItems = 'MAX';
+              paginationRow.layoutAlign = 'STRETCH';
+              paginationRow.fills = [];
+              paginationRow.clipsContent = false;
+              paginationRow.resize(frame.width, 1);
+              // Some Figma versions reset sizing modes when resize() is called.
+              paginationRow.primaryAxisSizingMode = 'FIXED';
+              paginationRow.counterAxisSizingMode = 'AUTO';
+              if ('layoutSizingHorizontal' in paginationRow) {
+                  try {
+                      (paginationRow as any).layoutSizingHorizontal = 'FILL';
+                  } catch {
+                      // ignore
+                  }
+              }
+              if ('layoutSizingVertical' in paginationRow) {
+                  try {
+                      (paginationRow as any).layoutSizingVertical = 'HUG';
+                  } catch {
+                      // ignore
+                  }
+              }
+              clearNodeStrokes(paginationRow);
+              const paginationNode = await renderComponent(
+                  {
+                      id: 'pagination',
+                      componentId: 'figma-component',
+                      params: { componentToken: 'lib-navigation-pagination' }
+                  },
+                  { isRoot: false }
+              );
+              paginationRow.appendChild(paginationNode);
+              // Re-assert hug sizing after child insertion to avoid 1px-height frames.
+              paginationRow.counterAxisSizingMode = 'AUTO';
+              if ('layoutSizingVertical' in paginationRow) {
+                  try {
+                      (paginationRow as any).layoutSizingVertical = 'HUG';
+                  } catch {
+                      // ignore
+                  }
+              }
+              wrapper.appendChild(paginationRow);
+          }
+
+          // Re-assert wrapper hug height after child insertion.
+          wrapper.primaryAxisSizingMode = 'AUTO';
+          if ('layoutSizingVertical' in wrapper) {
+              try {
+                  (wrapper as any).layoutSizingVertical = 'HUG';
+              } catch {
+                  // ignore
+              }
+          }
           node = wrapper;
       } else {
           node = frame;
@@ -6837,22 +7435,121 @@ figma.ui.onmessage = async (msg) => {
             }
         }
 
-        if (componentId === 'table' && node.type === 'FRAME') {
-            if (params.size || params.headerHeight || params.bodyHeight || params.rowHeight || params.height) {
-                const headerHeight = resolveTableHeaderHeight(params);
-                const bodyHeight = resolveTableBodyHeight(params);
-                applyTableSizeToCells(node, headerHeight, bodyHeight);
-            }
-            if (params.rowCount !== undefined) {
-                const nextRowCount = Number(params.rowCount);
-                if (Number.isFinite(nextRowCount)) {
-                    await updateTableRowCount(node, nextRowCount);
+	        if (componentId === 'table' && node.type === 'FRAME') {
+	            let tableRoot = node;
+	            let tableContent = resolveTableContentFrame(tableRoot);
+
+	            // Keep inner table params in sync so sizing / row-action helpers read correct values.
+	            if (tableContent !== tableRoot) {
+	                writeNodeParams(tableContent, params);
+	            }
+
+	            const wantsPagination = params.hasPagination === true;
+	            const wantsFilter = params.hasFilter === true;
+            if (wantsPagination && hasDirectTableColumns(tableRoot)) {
+                const wrapped = createTableWrapperFromTableFrame(tableRoot, params);
+                if (wrapped) {
+                    tableRoot = wrapped;
+                    tableContent = resolveTableContentFrame(tableRoot);
+                    figma.currentPage.selection = [tableRoot];
+                } else {
+                    figma.ui.postMessage({
+                        type: 'action-done',
+                        message: '无法为表格添加分页器：缺少可写入的父容器'
+                    });
                 }
             }
-            if (params.rowAction !== undefined) {
-                await applyRowActionColumn(node, String(params.rowAction || 'none'));
+
+            if (wantsFilter) {
+                tableContent = resolveTableContentFrame(tableRoot);
+                if (tableContent !== tableRoot) {
+                    const contentStack = ensureTableContentStack(tableRoot, tableContent);
+                    await ensureTableFilterGroup(contentStack, tableContent.width);
+                } else if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
+                    await ensureTableFilterGroupInParent(tableRoot.parent as FrameNode, tableRoot, tableRoot.width);
+                } else {
+                    figma.ui.postMessage({ type: 'action-done', message: '无法为表格添加筛选器：缺少可写入的父容器' });
+                }
+            } else {
+                const contentStack = findTableContentStack(tableRoot);
+                if (contentStack) {
+                    removeTableFilterGroup(contentStack);
+                }
+                if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
+                    removeTableFilterGroupFromParent(tableRoot.parent as FrameNode);
+                }
             }
-        }
+
+	            if (wantsPagination) {
+	                // Ensure footer pagination exists under the vertical wrapper.
+	                if (tableContent !== tableRoot) {
+	                    await ensurePaginationRow(tableRoot, tableContent.width);
+	                }
+	            } else {
+	                removePaginationRow(tableRoot);
+	            }
+
+		            // Re-resolve after structural updates.
+		            tableContent = resolveTableContentFrame(tableRoot);
+		            writeNodeParams(tableContent, params);
+		            if (tableContent !== tableRoot) {
+		                // Ensure wrapper hugs content height (avoid 1px-height table wrappers).
+		                tableRoot.primaryAxisSizingMode = 'AUTO';
+		                tableRoot.counterAxisSizingMode = 'FIXED';
+		                tableRoot.clipsContent = false;
+		                tableRoot.fills = [];
+		                if ('layoutSizingHorizontal' in tableRoot) {
+		                    try {
+		                        (tableRoot as any).layoutSizingHorizontal = 'FILL';
+		                    } catch {
+		                        // ignore
+		                    }
+		                }
+		                if ('layoutSizingVertical' in tableRoot) {
+		                    try {
+		                        (tableRoot as any).layoutSizingVertical = 'HUG';
+		                    } catch {
+		                        // ignore
+		                    }
+		                }
+		            }
+
+		            if (params.size || params.headerHeight || params.bodyHeight || params.rowHeight || params.height) {
+		                const headerHeight = resolveTableHeaderHeight(params);
+		                const bodyHeight = resolveTableBodyHeight(params);
+		                applyTableSizeToCells(tableContent, headerHeight, bodyHeight);
+	            }
+	            if (params.rowCount !== undefined) {
+	                const nextRowCount = Number(params.rowCount);
+	                if (Number.isFinite(nextRowCount)) {
+	                    await updateTableRowCount(tableContent, nextRowCount);
+	                }
+	            }
+	            if (params.rowAction !== undefined) {
+	                await applyRowActionColumn(tableContent, String(params.rowAction || 'none'));
+	            }
+
+	            // Pagination rule: when pagination is enabled, the table should not render an outer border.
+	            if (wantsPagination) {
+	                clearNodeStrokes(tableRoot);
+	                clearNodeStrokes(tableContent);
+	            } else {
+	                // Keep wrapper layout-only (no border), and apply border to the inner table frame.
+	                if (tableContent !== tableRoot) {
+	                    clearNodeStrokes(tableRoot);
+	                }
+
+	                const borderWidth = Number(params.borderWidth ?? 0);
+	                if (Number.isFinite(borderWidth) && borderWidth > 0) {
+	                    await applyStrokeColorVariable(tableContent, 'table-border-key', params.borderColor || '#EAEDF1');
+	                    tableContent.strokeWeight = borderWidth;
+	                } else {
+	                    clearNodeStrokes(tableContent);
+	                }
+	            }
+
+	            checkSelection();
+	        }
 
 	        if (componentId === 'table-column' && node.type === 'FRAME') {
 	            if (typeof params.columnWidthMode === 'string') {
@@ -6872,12 +7569,23 @@ figma.ui.onmessage = async (msg) => {
 	                    }
 	                }
 	            }
-	            if (params.headerType !== undefined) {
-	                const headerCellNode = node.children.find(
-	                    (child) => child.getPluginData('component-id') === 'table-header-cell'
-	                ) as SceneNode | undefined;
-	                await applyTableHeaderElementToHeaderCell(headerCellNode, params.headerType);
-	            }
+            if (params.headerText !== undefined) {
+                const headerCellNode = node.children.find(
+                    (child) => child.getPluginData('component-id') === 'table-header-cell'
+                ) as SceneNode | undefined;
+                const nextHeaderText = String(params.headerText ?? '');
+                mergeNodeParams(node, { headerText: nextHeaderText });
+                if (headerCellNode) {
+                    mergeNodeParams(headerCellNode, { text: nextHeaderText });
+                    await setSceneText(headerCellNode, nextHeaderText);
+                }
+            }
+            if (params.headerType !== undefined) {
+                const headerCellNode = node.children.find(
+                    (child) => child.getPluginData('component-id') === 'table-header-cell'
+                ) as SceneNode | undefined;
+                await applyTableHeaderElementToHeaderCell(headerCellNode, params.headerType);
+            }
 	        }
 
         if (isTableCellComponentId(componentId)) {

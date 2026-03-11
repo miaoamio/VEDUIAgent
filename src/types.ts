@@ -3,6 +3,7 @@ export interface ComponentParam {
   default: any;
   options?: string[]; // For select type
   description: string;
+  uiRole?: 'editable' | 'generation-only';
 }
 
 export interface ColorVariableBindingSpec {

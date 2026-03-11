@@ -67,6 +67,12 @@ export const BASE_COLOR_TOKEN_PACK: Record<string, BaseColorTokenProfile> = {
   'color-border-2': {
     token: 'color-border-2'
   },
+  // Alias for design token naming consistency (e.g. in Figma Variables).
+  // Prefer using `border-2` for component border bindings (table, etc.).
+  'border-2': {
+    token: 'border-2',
+    nameCandidates: ['border-2', 'color-border-2', '@border-2', '@color-border-2']
+  },
   'bg-base': baseTokenWithVariableId('bg-base', TABLE_VARIABLE_IDS['bg-white'], {
     nameCandidates: ['color-bg-1', 'fill/输入类组件填充 @color-bg-white', '@color-bg-white']
   }),
@@ -117,7 +123,8 @@ export const SEMANTIC_COLOR_TOKEN_PACK: Record<string, SemanticColorTokenProfile
   'layout.bg': { token: 'layout.bg', baseToken: 'bg-base' },
   'layout.border': { token: 'layout.border', baseToken: 'border-base' },
   'table.cell.bg': { token: 'table.cell.bg', baseToken: 'bg-base' },
-  'table.border': { token: 'table.border', baseToken: 'border-base' },
+  // Table grid/border should use the stronger border token.
+  'table.border': { token: 'table.border', baseToken: 'border-2' },
   'table.cell.text': { token: 'table.cell.text', baseToken: 'text-1' },
   'table.header.bg': { token: 'table.header.bg', baseToken: 'color-bg-4' },
   'table.header.text': { token: 'table.header.text', baseToken: 'text-2' },
