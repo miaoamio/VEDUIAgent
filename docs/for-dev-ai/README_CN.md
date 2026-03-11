@@ -20,6 +20,7 @@
 
 | 文档 | 内容 |
 |------|------|
+| [项目架构总览](../for-humans/overview/IMPLEMENTATION_SUMMARY_CN.md) | 整体架构与运行机制概览 |
 | [Spec Coding 全文指南](coding-specs/SPEC_CODING_GUIDE_CN.md) | 代码规范、实现约定 |
 | [注册表规范 v2](coding-specs/SPEC_REGISTRY_V2_CN.md) | 组件 Registry 数据结构和扩展方式 |
 | [渲染引擎规范](coding-specs/SPEC_RENDER_ENGINE_CN.md) | Figma 节点渲染、patch 执行器细节 |

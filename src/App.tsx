@@ -1,6 +1,7 @@
 import * as React from 'react';
 import CP_EXCEL_BUNDLE_SOURCE from 'codepage/dist/cpexcel.full.js?raw';
 import XLSX_BUNDLE_SOURCE from 'xlsx/dist/xlsx.full.min.js?raw';
+import AI_CHART_UI_HTML from './ai-chart-ui.html?raw';
 import { COMPONENT_REGISTRY } from './registry';
 import { loadRegistryV2 } from './registry.loader';
 import { ComponentDefinitionV2 } from './registry.v2.types';
@@ -842,6 +843,10 @@ function compactStructureResult(item: any): any {
 
 function App() {
   const [userInput, setUserInput] = React.useState('');
+  const composerTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [chartPromptMode, setChartPromptMode] = React.useState(false);
+  const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
+  const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [response, setResponse] = React.useState<string | null>(null);
   const [chatHistory, setChatHistory] = React.useState<{role: string, content: string}[]>([]);
@@ -900,6 +905,7 @@ function App() {
       }
       
       if (type === 'selection-update') {
+        setUserInput('');
         if (data.componentId) {
           setSelectedComponent(data);
           setSelectionAnalysis(null);
@@ -1095,6 +1101,21 @@ function App() {
   const applyQuickPrompt = React.useCallback((prompt: string) => {
     setUserInput((prev) => (prev.trim() ? `${prev}\n${prompt}` : prompt));
   }, []);
+  const replaceQuickPrompt = React.useCallback((prompt: string) => {
+    setUserInput(prompt);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const pluginMessage = event.data?.pluginMessage;
+      if (!pluginMessage || pluginMessage.type !== 'generate-chart') return;
+      window.parent.postMessage({ pluginMessage }, '*');
+    };
+    window.addEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+    };
+  }, []);
 
   const updateLastAiMessage = React.useCallback((content: string) => {
     setUiMessages((prev) => {
@@ -1231,6 +1252,7 @@ function App() {
    - 当目标是创建查询表单、筛选区或编辑表单时，优先读取 form 系列 spec 后直接调用 draw_form。
    - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
    - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
+   - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
    - draw_form payload 使用紧凑结构，例如：
      {
        "align": "top",
@@ -4810,7 +4832,7 @@ StepD:
                             specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
                         }
                         if (id === 'form' || id.startsWith('form-')) {
-                            specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }.\n`;
+                            specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
                         }
                         if (id === 'filter-group') {
                             specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
@@ -5299,6 +5321,20 @@ StepD:
   const isFormComponent = (componentId: string) => ['form', 'form-row', 'form-field'].includes(componentId);
   const isTableCellComponent = (componentId: string) =>
     componentId === 'table-header-cell' || componentId.startsWith('table-cell');
+  const isChartSelection = (() => {
+    if (!selectedComponent) return false;
+    if (selectedComponent.componentId.startsWith('chart-')) return true;
+    const def = COMPONENT_REGISTRY[selectedComponent.componentId];
+    return def?.category === 'Data' && selectedComponent.componentId.includes('chart');
+  })();
+  const chartTypeShortcuts = [
+    { label: '折线图', prompt: '生成一个折线图' },
+    { label: '饼图', prompt: '生成一个饼图' },
+    { label: '环形图', prompt: '生成一个环形图' },
+    { label: '柱状图', prompt: '生成一个柱状图' },
+    { label: '条形图', prompt: '生成一个条形图' },
+    { label: '面积图', prompt: '生成一个面积图' }
+  ];
 
   const normalizeFormOption = (value: unknown) => String(value || '').trim().toLowerCase();
 
@@ -6742,17 +6778,64 @@ StepD:
                       </button>
                     </div>
                   ))}
-                  {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
+              {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
+            </div>
+          )}
+          {chartOverlayOpen && (
+            <div className="chart-overlay">
+              <div className="chart-overlay-backdrop" onClick={() => setChartOverlayOpen(false)} />
+              <div className="chart-overlay-panel">
+                <div className="chart-overlay-header">
+                  <div className="chart-overlay-title">AI Chart</div>
+                  <button
+                    type="button"
+                    className="chart-overlay-close"
+                    onClick={() => setChartOverlayOpen(false)}
+                  >
+                    关闭
+                  </button>
+                </div>
+                <iframe className="chart-overlay-iframe" srcDoc={AI_CHART_UI_HTML} />
+              </div>
+            </div>
+          )}
+              {(isChartSelection || chartPromptMode) && (
+                <div className="composer-shortcuts">
+                  {chartTypeShortcuts.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      className={`composer-chip${item.label === '折线图' && chartShortcutActive === '折线图' ? ' active' : ''}`}
+                      onClick={() => {
+                        replaceQuickPrompt(item.prompt);
+                        setChartPromptMode(true);
+                        setChartShortcutActive(item.label);
+                        setChartOverlayOpen(item.label === '折线图');
+                        composerTextareaRef.current?.focus();
+                      }}
+                      disabled={loading}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
               )}
               <textarea 
                 className="composer-textarea"
                 value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setUserInput(nextValue);
+                  if (!nextValue.trim()) {
+                    setChartPromptMode(false);
+                    setChartShortcutActive(null);
+                  }
+                }}
                 onPaste={handlePaste}
                 placeholder="让 VED UI Agent 绘制..."
                 disabled={loading}
                 rows={4}
+                ref={composerTextareaRef}
               />
               <div className="composer-footer">
                 <div className="composer-left">
@@ -6817,7 +6900,10 @@ StepD:
                       className="composer-chip"
                       onClick={() => {
                         applyQuickPrompt('生成一个表格');
+                        setChartPromptMode(false);
+                        setChartShortcutActive(null);
                         setAttachmentMenuOpen(false);
+                        composerTextareaRef.current?.focus();
                       }}
                       disabled={loading}
                     >
@@ -6835,7 +6921,10 @@ StepD:
                       className="composer-chip"
                       onClick={() => {
                         applyQuickPrompt('生成一个表单');
+                        setChartPromptMode(false);
+                        setChartShortcutActive(null);
                         setAttachmentMenuOpen(false);
+                        composerTextareaRef.current?.focus();
                       }}
                       disabled={loading}
                     >
@@ -6853,8 +6942,12 @@ StepD:
                       type="button"
                       className="composer-chip"
                       onClick={() => {
-                        applyQuickPrompt('生成一个图表');
+                        replaceQuickPrompt('生成一个图表');
+                        setChartPromptMode(true);
+                        setChartShortcutActive(null);
+                        setChartOverlayOpen(false);
                         setAttachmentMenuOpen(false);
+                        composerTextareaRef.current?.focus();
                       }}
                       disabled={loading}
                     >

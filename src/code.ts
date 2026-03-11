@@ -582,10 +582,12 @@ async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
     paginationRow.layoutMode = 'HORIZONTAL';
     paginationRow.primaryAxisSizingMode = 'FIXED';
     paginationRow.counterAxisSizingMode = 'AUTO';
-    paginationRow.primaryAxisAlignItems = 'MAX';
-    paginationRow.layoutAlign = 'STRETCH';
-    paginationRow.fills = [];
-    paginationRow.resize(width, 1);
+	    paginationRow.primaryAxisAlignItems = 'MAX';
+	    paginationRow.layoutAlign = 'STRETCH';
+	    paginationRow.fills = [];
+	    // Layout-only container: avoid clipping child strokes/effects.
+	    paginationRow.clipsContent = false;
+	    paginationRow.resize(width, 1);
 
 	    const paginationNode = await renderComponent({
 	        id: `pagination-${Date.now()}`,
@@ -2575,15 +2577,16 @@ async function createCheckboxFromFigmaTemplate(
         const labelPropertyName = Object.keys(importedInstance.componentProperties || {}).find(
             (key) => key === 'label 标签' || key.startsWith('label 标签#')
         );
-        if (labelPropertyName) {
-            importedInstance.setProperties({ [labelPropertyName]: showLabel });
-        }
+	        if (labelPropertyName) {
+	            importedInstance.setProperties({ [labelPropertyName]: showLabel });
+	        }
 
-        const detached = importedInstance.detachInstance();
-        if (showLabel) {
-            const labelNode = findCheckboxLabelTextNode(detached);
-            if (labelNode) {
-                await updateTextNodeCharacters(labelNode, label);
+	        const detached = importedInstance.detachInstance();
+	        setNodeClipsContent(detached, false);
+	        if (showLabel) {
+	            const labelNode = findCheckboxLabelTextNode(detached);
+	            if (labelNode) {
+	                await updateTextNodeCharacters(labelNode, label);
             }
         }
 
@@ -2609,11 +2612,13 @@ async function createCheckboxGroupFromCheckboxComponents(
     frame.layoutMode = direction;
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
-    frame.counterAxisAlignItems = direction === 'VERTICAL' ? 'MIN' : 'CENTER';
-    frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-    frame.fills = [];
+	    frame.counterAxisAlignItems = direction === 'VERTICAL' ? 'MIN' : 'CENTER';
+	    frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
+	    frame.fills = [];
+	    // Layout-only container: avoid clipping child checkbox borders.
+	    frame.clipsContent = false;
 
-    for (const option of options) {
+	    for (const option of options) {
 	        const checkboxNode = await renderComponent({
 	            componentId: 'checkbox',
 	            params: {
@@ -2728,20 +2733,21 @@ async function createCheckboxGroupFromFigmaTemplate(
     const itemCount = Math.min(8, Math.max(2, options.length));
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
-            componentKey,
-            fallbackName: def.name,
-            variantCriteria: {
-                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
+	        const importedInstance = await createFigmaComponentInstance({
+	            componentKey,
+	            fallbackName: def.name,
+	            variantCriteria: {
+	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
                 'Items 数量': String(itemCount)
-            }
-        });
+	            }
+	        });
 
-        await applyCheckboxGroupItems(importedInstance, params);
-        importedInstance.name = def.name;
-        return importedInstance;
-    } catch (e) {
-        console.warn('[CheckboxGroupTemplate] failed to create checkbox group from original Figma component', e);
+	        setNodeClipsContent(importedInstance, false);
+	        await applyCheckboxGroupItems(importedInstance, params);
+	        importedInstance.name = def.name;
+	        return importedInstance;
+	    } catch (e) {
+	        console.warn('[CheckboxGroupTemplate] failed to create checkbox group from original Figma component', e);
         return null;
     }
 }
@@ -2837,21 +2843,22 @@ async function createRadioGroupFromFigmaTemplate(
     const itemCount = Math.min(8, Math.max(2, options.length));
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
-            componentKey,
-            fallbackName: def.name,
-            variantCriteria: {
-                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
+	        const importedInstance = await createFigmaComponentInstance({
+	            componentKey,
+	            fallbackName: def.name,
+	            variantCriteria: {
+	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
                 'Items 数量': String(itemCount),
                 'Language': resolveRadioGroupLanguageVariantLabel(params.language)
-            }
-        });
+	            }
+	        });
 
-        await applyRadioGroupItems(importedInstance, params);
-        importedInstance.name = def.name;
-        return importedInstance;
-    } catch (e) {
-        console.warn('[RadioGroupTemplate] failed to create radio group from original Figma component', e);
+	        setNodeClipsContent(importedInstance, false);
+	        await applyRadioGroupItems(importedInstance, params);
+	        importedInstance.name = def.name;
+	        return importedInstance;
+	    } catch (e) {
+	        console.warn('[RadioGroupTemplate] failed to create radio group from original Figma component', e);
         return null;
     }
 }
@@ -5187,27 +5194,29 @@ async function renderComponent(
       if (params.rowAction) {
           await applyRowActionColumn(frame, String(params.rowAction));
       }
-      if (params.hasPagination) {
-          const wrapper = figma.createFrame();
-          wrapper.layoutMode = 'VERTICAL';
-          wrapper.primaryAxisSizingMode = 'AUTO';
-          wrapper.counterAxisSizingMode = 'FIXED';
-          wrapper.itemSpacing = 16;
-          wrapper.fills = [];
-          wrapper.layoutAlign = 'STRETCH';
-          wrapper.resize(frame.width, 1);
-          wrapper.appendChild(frame);
-          const paginationRow = figma.createFrame();
+	      if (params.hasPagination) {
+	          const wrapper = figma.createFrame();
+	          wrapper.layoutMode = 'VERTICAL';
+	          wrapper.primaryAxisSizingMode = 'AUTO';
+	          wrapper.counterAxisSizingMode = 'FIXED';
+	          wrapper.itemSpacing = 16;
+	          wrapper.fills = [];
+	          wrapper.clipsContent = false;
+	          wrapper.layoutAlign = 'STRETCH';
+	          wrapper.resize(frame.width, 1);
+	          wrapper.appendChild(frame);
+	          const paginationRow = figma.createFrame();
           paginationRow.layoutMode = 'HORIZONTAL';
           paginationRow.primaryAxisSizingMode = 'FIXED';
           paginationRow.counterAxisSizingMode = 'AUTO';
-          paginationRow.primaryAxisAlignItems = 'MAX';
-          paginationRow.layoutAlign = 'STRETCH';
-          paginationRow.fills = [];
-          paginationRow.resize(frame.width, 1);
-          const paginationNode = await renderComponent({
-            id: 'pagination',
-            componentId: 'figma-component',
+	          paginationRow.primaryAxisAlignItems = 'MAX';
+	          paginationRow.layoutAlign = 'STRETCH';
+	          paginationRow.fills = [];
+	          paginationRow.clipsContent = false;
+	          paginationRow.resize(frame.width, 1);
+	          const paginationNode = await renderComponent({
+	            id: 'pagination',
+	            componentId: 'figma-component',
             params: { componentToken: 'lib-navigation-pagination' }
           }, { isRoot: false });
           paginationRow.appendChild(paginationNode);
@@ -5227,9 +5236,10 @@ async function renderComponent(
       const columnWidth = params.width || 150;
       const headerHeight = resolveTableHeaderHeight(params);
       const bodyHeight = resolveTableBodyHeight(params);
-      frame.resize(columnWidth, 100);
-      frame.fills = [];
-      const widthMode = typeof params.columnWidthMode === 'string' ? params.columnWidthMode : 'FILL';
+	      frame.resize(columnWidth, 100);
+	      frame.fills = [];
+	      frame.clipsContent = false;
+	      const widthMode = typeof params.columnWidthMode === 'string' ? params.columnWidthMode : 'FILL';
       
       // If children are provided, render them (prioritize children over params)
       if (instance.children && instance.children.length > 0) {
@@ -5644,28 +5654,31 @@ async function renderComponent(
     const templateNode = await createButtonFromFigmaTemplate(def, params);
     if (templateNode) {
         node = templateNode;
-    } else {
-        const frame = figma.createFrame();
-        frame.layoutMode = 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'AUTO';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.paddingTop = THEME_CONSTANTS['button'].paddingTop;
-        frame.paddingBottom = THEME_CONSTANTS['button'].paddingBottom;
-        frame.paddingLeft = THEME_CONSTANTS['button'].paddingLeft;
-        frame.paddingRight = THEME_CONSTANTS['button'].paddingRight;
-        frame.cornerRadius = THEME_CONSTANTS['button'].cornerRadius;
-        frame.itemSpacing = 8;
+	    } else {
+	        const frame = figma.createFrame();
+	        frame.layoutMode = 'HORIZONTAL';
+	        frame.primaryAxisSizingMode = 'AUTO';
+	        frame.counterAxisSizingMode = 'AUTO';
+	        // Buttons should not clip their own stroke/effects in auto-layout.
+	        frame.clipsContent = false;
+	        frame.paddingTop = THEME_CONSTANTS['button'].paddingTop;
+	        frame.paddingBottom = THEME_CONSTANTS['button'].paddingBottom;
+	        frame.paddingLeft = THEME_CONSTANTS['button'].paddingLeft;
+	        frame.paddingRight = THEME_CONSTANTS['button'].paddingRight;
+	        frame.cornerRadius = THEME_CONSTANTS['button'].cornerRadius;
+	        frame.itemSpacing = 8;
 
         if (params.variant === 'secondary') {
             await applyColorVariable(frame, "btn-secondary-bg", "#E6E6E6");
-        } else if (params.variant === 'outline') {
-            frame.fills = [];
-            frame.strokes = [{ type: 'SOLID', color: { r: 0.09, g: 0.63, b: 0.98 } }];
-            frame.strokeWeight = 1;
-        } else if (params.variant === 'text') {
-            frame.fills = [];
-            frame.strokes = [];
-            frame.strokeWeight = 0;
+	        } else if (params.variant === 'outline') {
+	            frame.fills = [];
+	            frame.strokes = [{ type: 'SOLID', color: { r: 0.09, g: 0.63, b: 0.98 } }];
+	            frame.strokeWeight = 1;
+	            frame.strokesIncludedInLayout = true;
+	        } else if (params.variant === 'text') {
+	            frame.fills = [];
+	            frame.strokes = [];
+	            frame.strokeWeight = 0;
         } else {
             await applyColorVariable(frame, "btn-primary-bg", "#1890FF");
         }
@@ -5934,19 +5947,22 @@ async function renderComponent(
         const frame = figma.createFrame();
         frame.layoutMode = 'HORIZONTAL';
         frame.primaryAxisSizingMode = 'AUTO';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.counterAxisAlignItems = 'CENTER';
-        frame.itemSpacing = 8;
-        frame.fills = [];
+	        frame.counterAxisSizingMode = 'AUTO';
+	        frame.counterAxisAlignItems = 'CENTER';
+	        frame.itemSpacing = 8;
+	        frame.fills = [];
+	        frame.clipsContent = false;
 
-        const box = figma.createFrame();
-        box.layoutMode = 'VERTICAL';
-        box.primaryAxisSizingMode = 'FIXED';
-        box.counterAxisSizingMode = 'FIXED';
+	        const box = figma.createFrame();
+	        box.layoutMode = 'VERTICAL';
+	        box.primaryAxisSizingMode = 'FIXED';
+	        box.counterAxisSizingMode = 'FIXED';
         box.primaryAxisAlignItems = 'CENTER';
-        box.counterAxisAlignItems = 'CENTER';
-        box.resize(14, 14);
-        box.cornerRadius = 2;
+	        box.counterAxisAlignItems = 'CENTER';
+	        box.resize(14, 14);
+	        box.cornerRadius = 2;
+	        box.clipsContent = false;
+	        box.strokesIncludedInLayout = true;
 
         const checkedNow = checked || indeterminate;
         if (checkedNow) {
@@ -5990,19 +6006,21 @@ async function renderComponent(
         const frame = figma.createFrame();
         frame.layoutMode = String(params.direction || 'horizontal').trim().toLowerCase() === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
         frame.primaryAxisSizingMode = 'AUTO';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.counterAxisAlignItems = 'MIN';
-        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-        frame.fills = [];
+	        frame.counterAxisSizingMode = 'AUTO';
+	        frame.counterAxisAlignItems = 'MIN';
+	        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
+	        frame.fills = [];
+	        frame.clipsContent = false;
 
-        for (const option of options) {
-            const item = figma.createFrame();
-            item.layoutMode = 'HORIZONTAL';
-            item.primaryAxisSizingMode = 'AUTO';
+	        for (const option of options) {
+	            const item = figma.createFrame();
+	            item.layoutMode = 'HORIZONTAL';
+	            item.primaryAxisSizingMode = 'AUTO';
             item.counterAxisSizingMode = 'AUTO';
-            item.counterAxisAlignItems = 'CENTER';
-            item.itemSpacing = 8;
-            item.fills = [];
+	            item.counterAxisAlignItems = 'CENTER';
+	            item.itemSpacing = 8;
+	            item.fills = [];
+	            item.clipsContent = false;
 
             const checkedNow = checked.has(option);
             const box = figma.createFrame();
@@ -6011,9 +6029,11 @@ async function renderComponent(
             box.counterAxisSizingMode = 'FIXED';
             box.primaryAxisAlignItems = 'CENTER';
             box.counterAxisAlignItems = 'CENTER';
-            box.resize(14, 14);
-            box.cornerRadius = 3;
-            box.strokeWeight = 1;
+	            box.resize(14, 14);
+	            box.cornerRadius = 3;
+	            box.strokeWeight = 1;
+	            box.clipsContent = false;
+	            box.strokesIncludedInLayout = true;
             if (checkedNow) {
                 await applyColorVariable(box, 'checkbox-checked-bg', '#1664FF');
                 box.strokes = [];
@@ -6057,19 +6077,21 @@ async function renderComponent(
         const frame = figma.createFrame();
         frame.layoutMode = String(params.direction || 'horizontal').trim().toLowerCase() === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
         frame.primaryAxisSizingMode = 'AUTO';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.counterAxisAlignItems = 'MIN';
-        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-        frame.fills = [];
+	        frame.counterAxisSizingMode = 'AUTO';
+	        frame.counterAxisAlignItems = 'MIN';
+	        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
+	        frame.fills = [];
+	        frame.clipsContent = false;
 
-        for (const option of options) {
-            const item = figma.createFrame();
-            item.layoutMode = 'HORIZONTAL';
-            item.primaryAxisSizingMode = 'AUTO';
+	        for (const option of options) {
+	            const item = figma.createFrame();
+	            item.layoutMode = 'HORIZONTAL';
+	            item.primaryAxisSizingMode = 'AUTO';
             item.counterAxisSizingMode = 'AUTO';
-            item.counterAxisAlignItems = 'CENTER';
-            item.itemSpacing = 8;
-            item.fills = [];
+	            item.counterAxisAlignItems = 'CENTER';
+	            item.itemSpacing = 8;
+	            item.fills = [];
+	            item.clipsContent = false;
 
             const selectedNow = option === selectedValue;
             const circle = figma.createFrame();
@@ -6078,9 +6100,11 @@ async function renderComponent(
             circle.counterAxisSizingMode = 'FIXED';
             circle.primaryAxisAlignItems = 'CENTER';
             circle.counterAxisAlignItems = 'CENTER';
-            circle.resize(14, 14);
-            circle.cornerRadius = 7;
-            circle.strokeWeight = 1;
+	            circle.resize(14, 14);
+	            circle.cornerRadius = 7;
+	            circle.strokeWeight = 1;
+	            circle.clipsContent = false;
+	            circle.strokesIncludedInLayout = true;
             await applyColorVariable(circle, 'radio-bg', '#FFFFFF');
             await applyStrokeColorVariable(circle, selectedNow ? 'radio-selected-border' : 'radio-border', selectedNow ? '#1664FF' : '#EAEDF1');
 
@@ -6172,10 +6196,11 @@ async function renderComponent(
     chartArea.layoutMode = 'HORIZONTAL';
     chartArea.primaryAxisAlignItems = 'SPACE_BETWEEN';
     chartArea.counterAxisAlignItems = 'MAX';
-    chartArea.layoutGrow = 1;
-    chartArea.resize(280, 150);
-    chartArea.paddingTop = 20;
-    chartArea.fills = [];
+	    chartArea.layoutGrow = 1;
+	    chartArea.resize(280, 150);
+	    chartArea.paddingTop = 20;
+	    chartArea.fills = [];
+	    chartArea.clipsContent = false;
     
     // Mock bars
     for (let i = 0; i < 5; i++) {
@@ -6294,6 +6319,194 @@ function resolveAppendParent(parentId?: string): BaseNode | null {
   return parentNode;
 }
 
+async function drawAiChart(data: any, options: any) {
+  await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+  await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+
+  const frame = figma.createFrame();
+  frame.name = 'AI Chart';
+  frame.layoutMode = 'VERTICAL';
+  frame.primaryAxisSizingMode = 'AUTO';
+  frame.counterAxisSizingMode = 'AUTO';
+  frame.paddingLeft = 16;
+  frame.paddingRight = 16;
+  frame.paddingTop = 16;
+  frame.paddingBottom = 16;
+  frame.itemSpacing = 16;
+  frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+  frame.cornerRadius = 8;
+  frame.effects = [{
+    type: 'DROP_SHADOW',
+    color: { r: 0, g: 0, b: 0, a: 0.1 },
+    offset: { x: 0, y: 2 },
+    radius: 10,
+    visible: true,
+    blendMode: 'NORMAL'
+  }];
+
+  const chartArea = figma.createFrame();
+	  chartArea.name = 'Chart Area';
+	  chartArea.resize(600, 300);
+	  chartArea.layoutMode = 'NONE';
+	  chartArea.fills = [];
+	  chartArea.clipsContent = false;
+	  frame.appendChild(chartArea);
+
+  let maxVal = -Infinity;
+  let minVal = Infinity;
+  data.datasets.forEach((ds: any) => {
+    ds.data.forEach((v: number) => {
+      if (v > maxVal) maxVal = v;
+      if (v < minVal) minVal = v;
+    });
+  });
+
+  const niceMax = Math.ceil(maxVal / 10) * 10;
+  const niceMin = Math.floor(minVal / 10) * 10;
+  const range = niceMax - niceMin;
+
+  const width = 600;
+  const height = 300;
+  const padding = 16;
+  const graphWidth = width - padding * 2;
+  const graphHeight = height - padding * 2;
+
+  const gridSteps = 5;
+  for (let i = 0; i <= gridSteps; i++) {
+    const value = niceMin + (range * i) / gridSteps;
+    const y = height - padding - (i / gridSteps) * graphHeight;
+
+    const line = figma.createLine();
+    line.resize(graphWidth, 0);
+    line.x = padding;
+    line.y = y;
+    line.strokes = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }];
+    line.strokeCap = 'ROUND';
+    line.dashPattern = [4, 4];
+    chartArea.appendChild(line);
+
+    const label = figma.createText();
+    label.characters = Math.round(value).toString();
+    label.fontSize = 10;
+    label.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
+    label.x = 0;
+    label.y = y - 6;
+    label.resize(padding - 8, 12);
+    label.textAlignHorizontal = 'RIGHT';
+    chartArea.appendChild(label);
+  }
+
+  const stepX = graphWidth / (data.labels.length - 1);
+  data.labels.forEach((text: string, i: number) => {
+    const x = padding + i * stepX;
+    const label = figma.createText();
+    label.characters = text;
+    label.fontSize = 10;
+    label.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
+    label.x = x - 20;
+    label.y = height - padding + 8;
+    label.resize(40, 12);
+    label.textAlignHorizontal = 'CENTER';
+    chartArea.appendChild(label);
+  });
+
+  data.datasets.forEach((ds: any) => {
+    const pathData = ds.data.map((val: number, i: number) => {
+      const x = padding + i * stepX;
+      const y = height - padding - ((val - niceMin) / (range || 1)) * graphHeight;
+      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+    }).join(' ');
+
+    const vector = figma.createVector();
+    vector.vectorPaths = [{
+      windingRule: 'NONZERO',
+      data: pathData
+    }];
+    const rgb = hexToRgb(ds.color);
+    vector.strokes = [{ type: 'SOLID', color: rgb }];
+    vector.strokeWeight = 2;
+    vector.strokeJoin = 'ROUND';
+    vector.strokeCap = 'ROUND';
+    chartArea.appendChild(vector);
+
+    ds.data.forEach((val: number, i: number) => {
+      const x = padding + i * stepX;
+      const y = height - padding - ((val - niceMin) / (range || 1)) * graphHeight;
+      const dot = figma.createEllipse();
+      dot.resize(6, 6);
+      dot.x = x - 3;
+      dot.y = y - 3;
+      dot.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      dot.strokes = [{ type: 'SOLID', color: rgb }];
+      dot.strokeWeight = 2;
+      chartArea.appendChild(dot);
+    });
+  });
+
+  if (options.type === 'threshold') {
+    const thresholdY = height - padding - 0.8 * graphHeight;
+    const line = figma.createLine();
+    line.resize(graphWidth, 0);
+    line.x = padding;
+    line.y = thresholdY;
+    line.strokes = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }];
+    line.dashPattern = [4, 4];
+    chartArea.appendChild(line);
+
+    const label = figma.createText();
+    label.characters = 'Threshold';
+    label.fontSize = 10;
+    label.fills = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }];
+    label.x = width - padding + 4;
+    label.y = thresholdY - 6;
+    chartArea.appendChild(label);
+  }
+
+  const legendFrame = figma.createFrame();
+	  legendFrame.layoutMode = 'HORIZONTAL';
+	  legendFrame.counterAxisSizingMode = 'AUTO';
+	  legendFrame.itemSpacing = 16;
+	  legendFrame.fills = [];
+	  legendFrame.clipsContent = false;
+
+  data.datasets.forEach((ds: any, i: number) => {
+    const item = figma.createFrame();
+    item.layoutMode = 'HORIZONTAL';
+	    item.counterAxisSizingMode = 'AUTO';
+	    item.itemSpacing = 8;
+	    item.fills = [];
+	    item.clipsContent = false;
+	    item.verticalPadding = 4;
+	    item.horizontalPadding = 4;
+
+    const rect = figma.createRectangle();
+    rect.resize(12, 12);
+    rect.cornerRadius = 2;
+    rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
+    item.appendChild(rect);
+
+    const label = figma.createText();
+    label.characters = `Series ${i + 1}`;
+    label.fontSize = 12;
+    item.appendChild(label);
+
+    legendFrame.appendChild(item);
+  });
+  frame.appendChild(legendFrame);
+
+  figma.currentPage.selection = [frame];
+  figma.viewport.scrollAndZoomIntoView([frame]);
+}
+
+function hexToRgb(hex: string) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16) / 255,
+    g: parseInt(result[2], 16) / 255,
+    b: parseInt(result[3], 16) / 255
+  } : { r: 0, g: 0, b: 0 };
+}
+
 function appendToResolvedParent(node: SceneNode, parentId?: string): boolean {
   const appendParent = resolveAppendParent(parentId);
   if (!appendParent) return false;
@@ -6318,6 +6531,13 @@ function appendToResolvedParent(node: SceneNode, parentId?: string): boolean {
   return true;
 }
 
+function centerNodeInViewport(node: SceneNode): void {
+  const width = typeof (node as any).width === 'number' ? (node as any).width : 0;
+  const height = typeof (node as any).height === 'number' ? (node as any).height : 0;
+  node.x = figma.viewport.center.x - width / 2;
+  node.y = figma.viewport.center.y - height / 2;
+}
+
 // Calls to "parent.postMessage" from within the HTML page will trigger this
 // callback. The callback will be passed the "pluginMessage" property of the
 // posted message.
@@ -6334,8 +6554,12 @@ figma.ui.onmessage = async (msg) => {
 
     if (result.ok && result.rootNodeId) {
       const rootNode = figma.getNodeById(result.rootNodeId);
+      let appendedToParent = false;
       if (requestedParentId && rootNode && rootNode.type !== 'PAGE') {
-        appendToResolvedParent(rootNode as SceneNode, requestedParentId);
+        appendedToParent = appendToResolvedParent(rootNode as SceneNode, requestedParentId);
+      }
+      if (result.intent === 'create' && !appendedToParent && rootNode && rootNode.type !== 'PAGE') {
+        centerNodeInViewport(rootNode as SceneNode);
       }
       if (rootNode && 'getPluginData' in rootNode) {
         const rootComponentId = rootNode.getPluginData('component-id') || undefined;
@@ -6349,6 +6573,11 @@ figma.ui.onmessage = async (msg) => {
     }
 
     figma.ui.postMessage({ type: 'apply-result', result });
+  }
+
+  if (msg.type === 'generate-chart') {
+    const { data, options } = msg;
+    await drawAiChart(data, options);
   }
 
   if (msg.type === 'switch-theme') {
