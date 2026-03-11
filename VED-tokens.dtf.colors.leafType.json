@@ -1,0 +1,76 @@
+{
+  "color": {
+    "layout": {
+      "bg": { "$type": "color", "$value": "#FFFFFF" }
+    },
+    "text": {
+      "primary": { "$type": "color", "$value": "#18181B" },
+      "secondary": { "$type": "color", "$value": "#71717A" },
+      "disabled": { "$type": "color", "$value": "#A1A1AA" },
+      "placeholder": { "$type": "color", "$value": "#A1A1AA" }
+    },
+    "border": {
+      "default": { "$type": "color", "$value": "#E4E4E7" },
+      "subtle": { "$type": "color", "$value": "#F4F4F5" },
+      "error": { "$type": "color", "$value": "#FCA5A5" }
+    },
+    "button": {
+      "primary": {
+        "bg": { "$type": "color", "$value": "#18181B" },
+        "text": { "$type": "color", "$value": "#FFFFFF" }
+      },
+      "secondary": {
+        "bg": { "$type": "color", "$value": "#FFFFFF" },
+        "border": { "$type": "color", "$value": "#D4D4D8" }
+      },
+      "hover": {
+        "bg": { "$type": "color", "$value": "#F4F4F5" }
+      }
+    },
+    "input": {
+      "bg": { "$type": "color", "$value": "#FFFFFF" },
+      "border": { "$type": "color", "$value": "#E4E4E7" },
+      "focus": { "$type": "color", "$value": "#18181B" }
+    },
+    "switch": {
+      "off": { "bg": { "$type": "color", "$value": "#E4E4E7" } },
+      "on": { "bg": { "$type": "color", "$value": "#18181B" } },
+      "thumb": { "bg": { "$type": "color", "$value": "#FFFFFF" } }
+    },
+    "tag": {
+      "neutral": { "bg": { "$type": "color", "$value": "#F4F4F5" } },
+      "blue": {
+        "bg": { "$type": "color", "$value": "#EFF6FF" },
+        "text": { "$type": "color", "$value": "#2563EB" }
+      },
+      "sandbox": { "bg": { "$type": "color", "$value": "#F4F4F5" } }
+    },
+    "status": {
+      "success": { "$type": "color", "$value": "#16A34A" },
+      "done": { "$type": "color", "$value": "{color.status.success}" },
+      "error": { "$type": "color", "$value": "#DC2626" },
+      "warning": { "$type": "color", "$value": "#D97706" },
+      "pending": { "$type": "color", "$value": "#A1A1AA" },
+      "running": { "$type": "color", "$value": "#3B82F6" }
+    },
+    "thought": {
+      "bg": { "$type": "color", "$value": "#F8F9FA" }
+    },
+    "terminal": {
+      "bg": { "$type": "color", "$value": "#09090B" },
+      "text": { "$type": "color", "$value": "#F4F4F5" },
+      "comment": { "$type": "color", "$value": "#71717A" }
+    },
+    "icon": {
+      "thought": { "$type": "color", "$value": "#71717A" },
+      "loading": { "$type": "color", "$value": "#3B82F6" },
+      "draw": { "$type": "color", "$value": "#71717A" },
+      "read": { "$type": "color", "$value": "#71717A" }
+    },
+    "progress": {
+      "bar": { "bg": { "$type": "color", "$value": "#F4F4F5" } },
+      "fill": { "bg": { "$type": "color", "$value": "#18181B" } },
+      "text": { "$type": "color", "$value": "#71717A" }
+    }
+  }
+}

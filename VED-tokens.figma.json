@@ -1,0 +1,514 @@
+{
+  "meta": {
+    "source": "VED-colors.html",
+    "mode": "Light"
+  },
+  "collections": [
+    {
+      "name": "VED",
+      "modes": [
+        {
+          "id": "light",
+          "name": "Light"
+        }
+      ],
+      "variables": [
+        {
+          "name": "layout.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#FFFFFF"
+          },
+          "source": {
+            "cssVar": "--ved-layout-bg"
+          }
+        },
+        {
+          "name": "text.primary",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#18181B"
+          },
+          "source": {
+            "cssVar": "--ved-text-primary"
+          }
+        },
+        {
+          "name": "text.secondary",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-text-secondary"
+          }
+        },
+        {
+          "name": "button.primary.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#18181B"
+          },
+          "source": {
+            "cssVar": "--ved-button-primary-bg"
+          }
+        },
+        {
+          "name": "button.primary.text",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#FFFFFF"
+          },
+          "source": {
+            "cssVar": "--ved-button-primary-text"
+          }
+        },
+        {
+          "name": "button.secondary.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#FFFFFF"
+          },
+          "source": {
+            "cssVar": "--ved-button-secondary-bg"
+          }
+        },
+        {
+          "name": "button.secondary.border",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#D4D4D8"
+          },
+          "source": {
+            "cssVar": "--ved-button-secondary-border"
+          }
+        },
+        {
+          "name": "button.hover.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F4F4F5"
+          },
+          "source": {
+            "cssVar": "--ved-button-hover"
+          }
+        },
+        {
+          "name": "input.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#FFFFFF"
+          },
+          "source": {
+            "cssVar": "--ved-input-bg"
+          }
+        },
+        {
+          "name": "input.border",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#E4E4E7"
+          },
+          "source": {
+            "cssVar": "--ved-input-border"
+          }
+        },
+        {
+          "name": "input.focus",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#18181B"
+          },
+          "source": {
+            "cssVar": "--ved-input-focus"
+          }
+        },
+        {
+          "name": "switch.off.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#E4E4E7"
+          },
+          "source": {
+            "cssVar": "--ved-switch-off"
+          }
+        },
+        {
+          "name": "switch.on.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#18181B"
+          },
+          "source": {
+            "cssVar": "--ved-switch-on"
+          }
+        },
+        {
+          "name": "switch.thumb.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#FFFFFF"
+          },
+          "source": {
+            "cssVar": "--ved-switch-thumb"
+          }
+        },
+        {
+          "name": "tag.neutral.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F4F4F5"
+          },
+          "source": {
+            "cssVar": "--ved-tag-neutral"
+          }
+        },
+        {
+          "name": "tag.blue.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#EFF6FF"
+          },
+          "source": {
+            "cssVar": "--ved-tag-blue-bg"
+          }
+        },
+        {
+          "name": "tag.blue.text",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#2563EB"
+          },
+          "source": {
+            "cssVar": "--ved-tag-blue-text"
+          }
+        },
+        {
+          "name": "status.success",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#16A34A"
+          },
+          "source": {
+            "cssVar": "--ved-status-success"
+          }
+        },
+        {
+          "name": "status.error",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#DC2626"
+          },
+          "source": {
+            "cssVar": "--ved-status-error"
+          }
+        },
+        {
+          "name": "status.warning",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#D97706"
+          },
+          "source": {
+            "cssVar": "--ved-status-warning"
+          }
+        },
+        {
+          "name": "thought.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F8F9FA"
+          },
+          "source": {
+            "cssVar": "--ved-bg-thought"
+          }
+        },
+        {
+          "name": "terminal.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#09090B"
+          },
+          "source": {
+            "cssVar": "--ved-bg-terminal"
+          }
+        },
+        {
+          "name": "terminal.text",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F4F4F5"
+          },
+          "source": {
+            "cssVar": "--ved-text-terminal"
+          }
+        },
+        {
+          "name": "terminal.text.comment",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-text-terminal-comment"
+          }
+        },
+        {
+          "name": "icon.thought",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-icon-thought"
+          }
+        },
+        {
+          "name": "icon.loading",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#3B82F6"
+          },
+          "source": {
+            "cssVar": "--ved-icon-loading"
+          }
+        },
+        {
+          "name": "progress.bar.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F4F4F5"
+          },
+          "source": {
+            "cssVar": "--ved-bg-progress-bar"
+          }
+        },
+        {
+          "name": "progress.fill.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#18181B"
+          },
+          "source": {
+            "cssVar": "--ved-bg-progress-fill"
+          }
+        },
+        {
+          "name": "progress.text",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-text-progress"
+          }
+        },
+        {
+          "name": "status.pending",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#A1A1AA"
+          },
+          "source": {
+            "cssVar": "--ved-status-pending"
+          }
+        },
+        {
+          "name": "status.running",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#3B82F6"
+          },
+          "source": {
+            "cssVar": "--ved-status-running"
+          }
+        },
+        {
+          "name": "status.done",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#16A34A"
+          },
+          "source": {
+            "cssVar": "--ved-status-done"
+          }
+        },
+        {
+          "name": "icon.draw",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-icon-draw"
+          }
+        },
+        {
+          "name": "icon.read",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#71717A"
+          },
+          "source": {
+            "cssVar": "--ved-icon-read"
+          }
+        },
+        {
+          "name": "tag.sandbox.bg",
+          "type": "COLOR",
+          "modeValues": {
+            "light": "#F4F4F5"
+          },
+          "source": {
+            "cssVar": "--ved-bg-tag-sandbox"
+          }
+        },
+        {
+          "name": "font.family",
+          "type": "STRING",
+          "modeValues": {
+            "light": "\"Roboto\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif"
+          },
+          "source": {
+            "cssVar": "--ved-font-family"
+          }
+        },
+        {
+          "name": "font.mono",
+          "type": "STRING",
+          "modeValues": {
+            "light": "\"Roboto Mono\", monospace"
+          },
+          "source": {
+            "cssVar": "--ved-font-mono"
+          }
+        },
+        {
+          "name": "font.size.h1",
+          "type": "FLOAT",
+          "modeValues": {
+            "light": 13
+          },
+          "meta": {
+            "unit": "px"
+          },
+          "source": {
+            "cssVar": "--ved-font-size-h1"
+          }
+        },
+        {
+          "name": "font.size.body",
+          "type": "FLOAT",
+          "modeValues": {
+            "light": 13
+          },
+          "meta": {
+            "unit": "px"
+          },
+          "source": {
+            "cssVar": "--ved-font-size-body"
+          }
+        },
+        {
+          "name": "font.size.label",
+          "type": "FLOAT",
+          "modeValues": {
+            "light": 12
+          },
+          "meta": {
+            "unit": "px"
+          },
+          "source": {
+            "cssVar": "--ved-font-size-label"
+          }
+        },
+        {
+          "name": "font.size.caption",
+          "type": "FLOAT",
+          "modeValues": {
+            "light": 11
+          },
+          "meta": {
+            "unit": "px"
+          },
+          "source": {
+            "cssVar": "--ved-font-size-caption"
+          }
+        },
+        {
+          "name": "font.size.tiny",
+          "type": "FLOAT",
+          "modeValues": {
+            "light": 10
+          },
+          "meta": {
+            "unit": "px"
+          },
+          "source": {
+            "cssVar": "--ved-font-size-tiny"
+          }
+        },
+        {
+          "name": "textStyle.h1",
+          "type": "STRING",
+          "modeValues": {
+            "light": "600 var(--ved-font-size-h1)/1.5 var(--ved-font-family)"
+          },
+          "source": {
+            "cssVar": "--ved-style-h1"
+          }
+        },
+        {
+          "name": "textStyle.body",
+          "type": "STRING",
+          "modeValues": {
+            "light": "400 var(--ved-font-size-body)/1.5 var(--ved-font-family)"
+          },
+          "source": {
+            "cssVar": "--ved-style-body"
+          }
+        },
+        {
+          "name": "textStyle.label",
+          "type": "STRING",
+          "modeValues": {
+            "light": "500 var(--ved-font-size-label)/1.5 var(--ved-font-family)"
+          },
+          "source": {
+            "cssVar": "--ved-style-label"
+          }
+        },
+        {
+          "name": "textStyle.mono",
+          "type": "STRING",
+          "modeValues": {
+            "light": "400 var(--ved-font-size-label)/1.5 var(--ved-font-mono)"
+          },
+          "source": {
+            "cssVar": "--ved-style-mono"
+          }
+        },
+        {
+          "name": "textStyle.caption",
+          "type": "STRING",
+          "modeValues": {
+            "light": "400 var(--ved-font-size-caption)/1.4 var(--ved-font-family)"
+          },
+          "source": {
+            "cssVar": "--ved-style-caption"
+          }
+        },
+        {
+          "name": "textStyle.tiny",
+          "type": "STRING",
+          "modeValues": {
+            "light": "700 var(--ved-font-size-tiny)/1.2 var(--ved-font-family)"
+          },
+          "source": {
+            "cssVar": "--ved-style-tiny"
+          }
+        }
+      ]
+    }
+  ]
+}

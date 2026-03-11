@@ -1,0 +1,37 @@
+{
+  "typography": {
+    "fontFamily": {
+      "base": {
+        "$type": "string",
+        "$value": "\"Roboto\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif"
+      },
+      "mono": {
+        "$type": "string",
+        "$value": "\"Roboto Mono\", monospace"
+      }
+    },
+    "fontSize": {
+      "h1": { "$type": "dimension", "$value": "13px" },
+      "body": { "$type": "dimension", "$value": "13px" },
+      "label": { "$type": "dimension", "$value": "12px" },
+      "caption": { "$type": "dimension", "$value": "11px" },
+      "tiny": { "$type": "dimension", "$value": "10px" }
+    },
+    "lineHeight": {
+      "h1": { "$type": "number", "$value": 1.5 },
+      "body": { "$type": "number", "$value": 1.5 },
+      "label": { "$type": "number", "$value": 1.5 },
+      "mono": { "$type": "number", "$value": 1.5 },
+      "caption": { "$type": "number", "$value": 1.4 },
+      "tiny": { "$type": "number", "$value": 1.2 }
+    },
+    "fontWeight": {
+      "h1": { "$type": "number", "$value": 600 },
+      "body": { "$type": "number", "$value": 400 },
+      "label": { "$type": "number", "$value": 500 },
+      "mono": { "$type": "number", "$value": 400 },
+      "caption": { "$type": "number", "$value": 400 },
+      "tiny": { "$type": "number", "$value": 700 }
+    }
+  }
+}
