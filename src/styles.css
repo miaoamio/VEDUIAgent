@@ -291,7 +291,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   border-radius: 8px;
   box-shadow: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
   background: #FFFFFF;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .composer-textarea {
@@ -324,10 +324,13 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .composer-attach {
   position: relative;
+  z-index: 2;
 }
 
 .composer-icon-button {
@@ -384,36 +387,43 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 .composer-menu {
   position: absolute;
   left: 0;
-  bottom: 54px;
-  min-width: 160px;
+  bottom: calc(100% + 4px);
+  width: max-content;
+  border: 1px solid #EAEDF1;
+  border-radius: 4px;
+  box-shadow: 0px 15px 35px -2px rgba(0, 0, 0, 0.05), 0px 5px 15px 0px rgba(0, 0, 0, 0.05);
   background: #FFFFFF;
-  border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
-  padding: 8px;
+  padding: 5px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  z-index: 20;
+  row-gap: 2px;
+  z-index: 999;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .composer-menu-item {
-  width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  column-gap: 6px;
+  padding: 3px 6px;
+  height: 28px;
+  box-sizing: border-box;
+  flex-shrink: 0;
   border: none;
-  background: transparent;
-  border-radius: 10px;
+  background: #FFFFFF;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: #111827;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 22px;
+  letter-spacing: 0.04px;
+  color: #18181B;
   text-align: left;
 }
 
 .composer-menu-item:hover {
-  background: #F3F4F6;
+  background: #F4F4F5;
 }
 
 .composer-menu-item:disabled {
@@ -423,10 +433,15 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 
 .composer-menu-icon {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   align-items: center;
   justify-content: center;
+}
+
+.composer-menu-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .attachment-toolbar {

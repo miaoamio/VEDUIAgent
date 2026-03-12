@@ -1,0 +1,79 @@
+* {
+  box-sizing: border-box;
+}
+
+.frame3 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid var(--Line-color-border-2, #eaedf1);
+  border-radius: 4px;
+  box-shadow: var(
+    --shadow-card-2-dropdown-pop,
+    0px 15px 35px -2px #0000000d,
+    0px 5px 15px 0px #0000000d
+  );
+  background: var(--Background-color-bg-8, #ffffff);
+  padding: 5px;
+  width: 99px;
+  height: 70px;
+  overflow: hidden;
+  row-gap: 2px;
+
+  .frame {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    align-self: stretch;
+    column-gap: 6px;
+    border-radius: 4px;
+    background: var(--Fill-color-bg-white, #ffffff);
+    padding: 3px 6px;
+
+    .frame2119904198 {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+    }
+
+    .rowLabel {
+      flex-shrink: 0;
+      line-height: 22px;
+      letter-spacing: 0.04px;
+      color: var(--color-text-primary, #18181b);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+      font-size: 13px;
+    }
+  }
+
+  .frame2 {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    align-self: stretch;
+    column-gap: 6px;
+    border-radius: 4px;
+    background: var(--Fill-color-bg-white, #ffffff);
+    padding: 3px 6px;
+
+    .spreadsheetFile {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      overflow: hidden;
+    }
+
+    .rowLabel2 {
+      flex-grow: 1;
+      height: 22px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 22px;
+      letter-spacing: 0.04px;
+      white-space: nowrap;
+      color: var(--color-text-primary, #18181b);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+      font-size: 13px;
+    }
+  }
+}

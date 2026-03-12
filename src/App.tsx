@@ -6938,20 +6938,18 @@ StepD:
                           disabled={loading}
                         >
                           <span className="composer-menu-icon">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <svg
+                              className="icon-screenshot"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
                               <path
-                                d="M5.25 2.25H12.75C13.9926 2.25 15 3.25736 15 4.5V13.5C15 14.7426 13.9926 15.75 12.75 15.75H5.25C4.00736 15.75 3 14.7426 3 13.5V4.5C3 3.25736 4.00736 2.25 5.25 2.25Z"
-                                stroke="#111827"
-                                strokeWidth="1.5"
+                                d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
+                                fill="#18181B"
                               />
-                              <path
-                                d="M6 11.25L8.25 9L10.125 10.875L12 9"
-                                stroke="#111827"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <circle cx="6.375" cy="6.375" r="1.125" stroke="#111827" strokeWidth="1.5" />
                             </svg>
                           </span>
                           上传截图
@@ -6966,11 +6964,27 @@ StepD:
                           disabled={loading}
                         >
                           <span className="composer-menu-icon">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <rect x="3" y="2.25" width="12" height="13.5" rx="1.5" stroke="#111827" strokeWidth="1.5" />
-                              <path d="M6.75 6H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                              <path d="M6.75 9H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                              <path d="M6.75 12H11.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
+                            <svg
+                              className="icon-spreadsheet-file"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <g clipPath="url(#clip0_icon_spreadsheet_file)">
+                                <path
+                                  fillRule="evenodd"
+                                  clipRule="evenodd"
+                                  d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
+                                  fill="#18181B"
+                                />
+                              </g>
+                              <defs>
+                                <clipPath id="clip0_icon_spreadsheet_file">
+                                  <rect width="16" height="16" fill="white" />
+                                </clipPath>
+                              </defs>
                             </svg>
                           </span>
                           上传表格

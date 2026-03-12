@@ -23,6 +23,23 @@
         "bg": { "$type": "color", "$value": "#FFFFFF" },
         "border": { "$type": "color", "$value": "#D4D4D8" }
       },
+      "ghost": {
+        "primary": {
+          "text": { "$type": "color", "$value": "{color.text.primary}" }
+        },
+        "secondary": {
+          "text": { "$type": "color", "$value": "{color.text.secondary}" }
+        },
+        "accent": {
+          "text": { "$type": "color", "$value": "{color.tag.blue.text}" }
+        },
+        "disabled": {
+          "text": { "$type": "color", "$value": "{color.text.disabled}" }
+        },
+        "hover": {
+          "bg": { "$type": "color", "$value": "{color.button.hover.bg}" }
+        }
+      },
       "hover": {
         "bg": { "$type": "color", "$value": "#F4F4F5" }
       }
