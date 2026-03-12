@@ -269,11 +269,18 @@ h2 {
   display: flex;
   flex-direction: column;
   row-gap: 12px;
-  border-width: 0 0 1px;
-  border-style: solid;
-  border-color: #F1F5F9;
   background: #FFFFFF;
   padding: 8px 16px;
+}
+
+div#react-page > div.container {
+  height: 100%;
+}
+
+div#react-page > div.container > div.chat-layout > div.input-section > div.composer {
+  padding-left: 0px;
+  padding-right: 0px;
+  padding-bottom: 0px;
 }
 
 .composer-box {
@@ -339,6 +346,11 @@ h2 {
 
 .composer-icon-button:hover {
   border-color: #D4D4D8;
+}
+
+.composer-icon-button:hover,
+.composer-icon-button:active {
+  background: var(--ved-button-hover, #F4F4F5);
 }
 
 .composer-icon-button:disabled {
