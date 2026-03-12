@@ -2,6 +2,7 @@ import * as React from 'react';
 import CP_EXCEL_BUNDLE_SOURCE from 'codepage/dist/cpexcel.full.js?raw';
 import XLSX_BUNDLE_SOURCE from 'xlsx/dist/xlsx.full.min.js?raw';
 import AI_CHART_UI_HTML from './ai-chart-ui.html?raw';
+import ECHARTS_BUNDLE_SOURCE from 'echarts/dist/echarts.min.js?raw';
 import { COMPONENT_REGISTRY } from './registry';
 import { loadRegistryV2 } from './registry.loader';
 import { ComponentDefinitionV2 } from './registry.v2.types';
@@ -856,6 +857,14 @@ function App() {
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
+  const chartUiHtml = React.useMemo(
+    () =>
+      AI_CHART_UI_HTML.replace(
+        '<script src="lib/echarts.min.js"></script>',
+        `<script>${ECHARTS_BUNDLE_SOURCE}</script>`
+      ),
+    []
+  );
   const [loading, setLoading] = React.useState(false);
   const [response, setResponse] = React.useState<string | null>(null);
   const [chatHistory, setChatHistory] = React.useState<{role: string, content: string}[]>([]);
@@ -6815,6 +6824,28 @@ StepD:
                 图表
               </button>
             </div>
+            {chartPromptMode && (
+              <div className="composer-quick-actions">
+                {chartTypeShortcuts.map((shortcut) => (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    className={`composer-quick-chip ${chartShortcutActive === shortcut.label ? 'active' : ''}`}
+                    onClick={() => {
+                      replaceQuickPrompt(shortcut.prompt);
+                      setChartPromptMode(true);
+                      setChartShortcutActive(shortcut.label);
+                      setChartOverlayOpen(true);
+                      setAttachmentMenuOpen(false);
+                      composerTextareaRef.current?.focus();
+                    }}
+                    disabled={loading}
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="composer">
               {(uploadedImages.length > 0 || uploadedTables.length > 0 || attachmentError) && (
                 <div className="attachment-list">
@@ -6968,6 +6999,24 @@ StepD:
         renderSelectionPage()
       ) : (
         renderDocs()
+      )}
+      {chartOverlayOpen && (
+        <div className="chart-overlay">
+          <div className="chart-overlay-backdrop" onClick={() => setChartOverlayOpen(false)} />
+          <div className="chart-overlay-panel">
+            <div className="chart-overlay-header">
+              <div className="chart-overlay-title">AI Chart</div>
+              <button
+                type="button"
+                className="chart-overlay-close"
+                onClick={() => setChartOverlayOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <iframe className="chart-overlay-iframe" srcDoc={chartUiHtml} title="AI Chart" />
+          </div>
+        </div>
       )}
     </div>
   );

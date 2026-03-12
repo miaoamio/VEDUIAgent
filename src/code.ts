@@ -5199,8 +5199,11 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
     }
     
     // Special handling for text content mapping
-    if (currentParams.text && newDef.params.tagText && !newParams.tagText) {
-        newParams.tagText = currentParams.text;
+    if (currentParams.text && newDef.params.tagText) {
+        const defaultTagText = defaultParams.tagText;
+        if (!newParams.tagText || newParams.tagText === defaultTagText) {
+            newParams.tagText = currentParams.text;
+        }
     }
     if (currentParams.text && newDef.params.value && !newParams.value) { // for input
         newParams.value = currentParams.text;
@@ -7627,7 +7630,7 @@ figma.ui.onmessage = async (msg) => {
           }
 
           const templateComponentId = sourceCell?.getPluginData?.('component-id') || componentId;
-          if (sourceCell) {
+          if (sourceCell && templateComponentId === componentId) {
             const offset = getTableHeaderOffset(column);
             const children = [...column.children];
             for (let index = offset; index < children.length; index += 1) {

@@ -179,8 +179,8 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
       '类型标签: { "componentId": "table-cell-tag", "params": { "tagKind": "type", "tagText": "企业", "tagType": "Outline 线型标签" } }'
     ],
     params: extendParams(baseCellParams, {
-        tagKind: { type: 'select', default: 'status', options: ['status', 'type'], description: '标签类型：status=状态标签，type=类型/分类标签' },
-        componentToken: { type: 'string', default: 'lib-data-display-status-tag', description: 'Figma 组件 token；status 默认 Status Tag，type 默认 Tag（可留空由系统按 tagKind 推断）' },
+        tagKind: { type: 'select', default: 'type', options: ['status', 'type'], description: '标签类型：status=状态标签，type=类型/分类标签' },
+        componentToken: { type: 'string', default: 'lib-data-display-tag', description: 'Figma 组件 token；status 默认 Status Tag，type 默认 Tag（可留空由系统按 tagKind 推断）' },
         tagText: { type: 'string', default: 'Tag', description: '标签文本' },
         statusTheme: {
           type: 'select',
@@ -202,7 +202,7 @@ export const COMPONENT_REGISTRY: { [key: string]: ComponentDefinition } = {
         },
         tagType: {
           type: 'select',
-          default: 'Outline 线型标签',
+          default: 'Solid 面型标签',
           options: ['Default 默认标签', 'Solid 面型标签', 'Outline 线型标签', 'Text 文字标签'],
           description: '类型/分类标签样式；仅 tagKind=type 时生效'
         },

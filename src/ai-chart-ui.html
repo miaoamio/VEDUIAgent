@@ -817,6 +817,23 @@
 
   <script src="lib/echarts.min.js"></script>
   <script>
+    // #region debug-point
+    const DEBUG_API_URL = 'http://127.0.0.1:7777/event';
+    const sendDebugEvent = (event, payload) => {
+      try {
+        fetch(DEBUG_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event,
+            payload,
+            ts: new Date().toISOString(),
+            source: 'ai-chart-ui'
+          })
+        });
+      } catch {}
+    };
+    // #endregion debug-point
     // State
     let currentChartType = 'comparison';
     let currentPalette = 0;
@@ -849,9 +866,21 @@
 
     // Initialize
     window.onload = () => {
+      // #region debug-point
+      const echartsScript = document.querySelector('script[src*="echarts"]')?.getAttribute('src');
+      sendDebugEvent('ai_chart_ui_onload', {
+        echartsScript,
+        hasEcharts: typeof echarts !== 'undefined'
+      });
+      // #endregion debug-point
       if (typeof echarts === 'undefined') {
         document.getElementById('configDisplay').textContent = 'Error: ECharts library not loaded. Please check src/lib/echarts.min.js';
         document.getElementById('configDisplay').style.display = 'block';
+        // #region debug-point
+        sendDebugEvent('ai_chart_ui_missing_echarts', {
+          echartsScript
+        });
+        // #endregion debug-point
         return;
       }
       try {

@@ -135,6 +135,12 @@ h2 {
   border-color: #D1D5DB;
 }
 
+.composer-quick-chip.active {
+  border-color: #1D4ED8;
+  color: #1D4ED8;
+  background: #EFF6FF;
+}
+
 .composer-quick-chip:disabled {
   opacity: 0.6;
   cursor: not-allowed;
