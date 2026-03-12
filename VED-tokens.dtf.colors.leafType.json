@@ -6,7 +6,8 @@
     "text": {
       "primary": { "$type": "color", "$value": "#18181B" },
       "secondary": { "$type": "color", "$value": "#71717A" },
-      "disabled": { "$type": "color", "$value": "#A1A1AA" },
+      "tertiary": { "$type": "color", "$value": "#A1A1AA" },
+      "disabled": { "$type": "color", "$value": "#D4D4D8" },
       "placeholder": { "$type": "color", "$value": "#A1A1AA" }
     },
     "border": {
@@ -25,13 +26,16 @@
       },
       "ghost": {
         "primary": {
-          "text": { "$type": "color", "$value": "{color.text.primary}" }
+          "text": { "$type": "color", "$value": "{color.text.primary}" },
+          "hover": { "text": { "$type": "color", "$value": "#52525B" } }
         },
         "secondary": {
-          "text": { "$type": "color", "$value": "{color.text.secondary}" }
+          "text": { "$type": "color", "$value": "{color.text.secondary}" },
+          "hover": { "text": { "$type": "color", "$value": "{color.text.disabled}" } }
         },
         "accent": {
-          "text": { "$type": "color", "$value": "{color.tag.blue.text}" }
+          "text": { "$type": "color", "$value": "{color.tag.blue.text}" },
+          "hover": { "text": { "$type": "color", "$value": "#60A5FA" } }
         },
         "disabled": {
           "text": { "$type": "color", "$value": "{color.text.disabled}" }
@@ -79,6 +83,10 @@
       "comment": { "$type": "color", "$value": "#71717A" }
     },
     "icon": {
+      "primary": { "$type": "color", "$value": "{color.text.primary}" },
+      "secondary": { "$type": "color", "$value": "{color.text.secondary}" },
+      "tertiary": { "$type": "color", "$value": "#A1A1AA" },
+      "disabled": { "$type": "color", "$value": "#D4D4D8" },
       "thought": { "$type": "color", "$value": "#71717A" },
       "loading": { "$type": "color", "$value": "#3B82F6" },
       "draw": { "$type": "color", "$value": "#71717A" },

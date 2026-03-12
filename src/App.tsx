@@ -886,6 +886,9 @@ function App() {
   const [uiMessages, setUiMessages] = React.useState<{ role: 'user' | 'ai'; content: string }[]>([]);
   
   // State for selected AI component
+  const [selectionCount, setSelectionCount] = React.useState(0);
+  const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
+  const [manualTooltipOpen, setManualTooltipOpen] = React.useState(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -924,6 +927,8 @@ function App() {
       
       if (type === 'selection-update') {
         setUserInput('');
+        setSelectionCount(data?.selectionCount ?? 1);
+        setCanvasHint(data?.canvasHint ?? 'mixed');
         if (data.componentId) {
           setSelectedComponent(data);
           setSelectionAnalysis(null);
@@ -931,17 +936,36 @@ function App() {
           setSelectionAnalysis(data.analysis);
           setSelectedComponent(null);
         }
-        
-        // Switch to selection editor when a component is selected
-        if (activeTab !== 'selection') setActiveTab('selection');
+      }
+
+      if (type === 'selection-multi-update') {
+        setSelectionCount(data?.count ?? 0);
+        setCanvasHint(data?.canvasHint ?? 'mixed');
+        setSelectedComponent(null);
+        setSelectionAnalysis(null);
       }
       
       if (type === 'selection-cleared') {
+        setSelectionCount(0);
+        setCanvasHint(data?.canvasHint ?? 'mixed');
         setSelectedComponent(null);
         setSelectionAnalysis(null);
       }
     };
   }, [activeTab]);
+
+  const manualTooltipText = React.useMemo(() => {
+    if (canvasHint === 'table') {
+      return '请在画布中选择一个表格、行、列或具体的单元格，即可激\n活精细化调试面板。';
+    }
+    if (canvasHint === 'form') {
+      return '请在画布中选择一个表单、字段、具体的Label或者输入项，即可激活精细化调试面板。';
+    }
+    if (canvasHint === 'chart') {
+      return '请在画布中选择一个图表，即可激活精细化调试面板。';
+    }
+    return '请在画布中选择任意一个元素，即可激活精细化调试面板。';
+  }, [canvasHint]);
 
   React.useEffect(() => {
     if (!agentPlan) {
@@ -6737,25 +6761,47 @@ StepD:
               }}
             />
             <div className="chat-selection-bar">
-              {getSelectionTitle() ? (
-                <>
-                  <span className="chat-selection-chip">
-                    {selectedComponent?.componentId === 'table-column' ? '列：' : '已选中：'}
-                    {getSelectionTitle()}
+              {selectionCount <= 0 ? (
+                <span className="chat-selection-label">未选中画布内任何元素</span>
+              ) : selectionCount > 1 ? (
+                <span className="chat-selection-label">已选中 {selectionCount} 个元素</span>
+              ) : selectedComponent?.componentId === 'table-column' && getSelectionTitle() ? (
+                <span className="chat-selection-group">
+                  <span className="chat-selection-label">已选中</span>
+                  <span className="chat-selection-tag">
+                    <span className="chat-selection-tag-text">列：{getSelectionTitle()}</span>
                   </span>
-                  <span className="chat-selection-state">已选中</span>
-                </>
+                </span>
               ) : (
-                <span className="chat-selection-empty">未选中</span>
+                <span className="chat-selection-label">已选中</span>
               )}
-              <button
-                type="button"
-                className="chat-selection-action"
-                onClick={() => setActiveTab('selection')}
-                disabled={!selectedComponent && !selectionAnalysis}
+              <div
+                className="chat-selection-action-wrap"
+                onMouseEnter={() => {
+                  if (selectionCount <= 0) setManualTooltipOpen(true);
+                }}
+                onMouseLeave={() => setManualTooltipOpen(false)}
               >
-                手动调整
-              </button>
+                <button
+                  type="button"
+                  className="chat-selection-action"
+                  onClick={() => setActiveTab('selection')}
+                  disabled={selectionCount <= 0}
+                >
+                  手动调整
+                </button>
+                {selectionCount <= 0 && manualTooltipOpen && (
+                  <div className="manual-tooltip" role="tooltip">
+                    <div className="manual-tooltip-label">
+                      <p className="manual-tooltip-text">{manualTooltipText}</p>
+                    </div>
+                    <svg className="manual-tooltip-arrow" width="12" height="6" viewBox="0 0 12 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M6 6L12 0H0L6 6Z" fill="white" />
+                      <path d="M6 6L0 0L1.40039 0L6 4.59961L10.5996 0L12 0L6 6Z" fill="#F4F4F5" />
+                    </svg>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="composer-quick-actions">
               <button
@@ -6945,7 +6991,11 @@ StepD:
                               viewBox="0 0 16 16"
                               fill="none"
                               xmlns="http://www.w3.org/2000/svg"
+                              role="img"
+                              aria-label="截图图标"
+                              focusable="false"
                             >
+                              <title>截图图标</title>
                               <path
                                 d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
                                 fill="#18181B"
@@ -6971,7 +7021,11 @@ StepD:
                               viewBox="0 0 16 16"
                               fill="none"
                               xmlns="http://www.w3.org/2000/svg"
+                              role="img"
+                              aria-label="表格文件图标"
+                              focusable="false"
                             >
+                              <title>表格文件图标</title>
                               <g clipPath="url(#clip0_icon_spreadsheet_file)">
                                 <path
                                   fillRule="evenodd"

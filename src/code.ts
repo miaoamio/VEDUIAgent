@@ -31,9 +31,47 @@ function findAiComponentNode(node: SceneNode | null): SceneNode | null {
   return null;
 }
 
+type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
+
+function classifyCanvasComponentId(componentId: string): CanvasHint {
+  const id = componentId.toLowerCase();
+  if (id.startsWith('table')) return 'table';
+  if (id.startsWith('chart')) return 'chart';
+  if (id.includes('form')) return 'form';
+  return 'mixed';
+}
+
+function getCanvasHint(): CanvasHint {
+  const nodes = figma.currentPage.findAll((node) => {
+    try {
+      return node.getPluginData('is-ai-component') === 'true' && Boolean(node.getPluginData('component-id'));
+    } catch {
+      return false;
+    }
+  });
+
+  const kinds = new Set<CanvasHint>();
+  for (const node of nodes) {
+    const componentId = node.getPluginData('component-id');
+    if (!componentId) continue;
+    kinds.add(classifyCanvasComponentId(componentId));
+  }
+  if (kinds.size === 1) return Array.from(kinds)[0];
+  return 'mixed';
+}
+
 // Helper to check selection and notify UI
 function checkSelection() {
+  const canvasHint = getCanvasHint();
   const selection = figma.currentPage.selection;
+  if (selection.length === 0) {
+    figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
+    return;
+  }
+  if (selection.length > 1) {
+    figma.ui.postMessage({ type: 'selection-multi-update', data: { count: selection.length, canvasHint } });
+    return;
+  }
   if (selection.length === 1) {
     const node = selection[0];
     const targetNode =
@@ -79,6 +117,8 @@ function checkSelection() {
         figma.ui.postMessage({ 
           type: 'selection-update', 
           data: {
+            selectionCount: selection.length,
+            canvasHint,
             componentId,
             params: normalizedParams,
             childComponentId, // Optional: for columns
@@ -90,7 +130,7 @@ function checkSelection() {
     }
   }
   // Clear selection if not an AI container
-  figma.ui.postMessage({ type: 'selection-cleared' });
+  figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
 }
 
 // Listen for selection changes

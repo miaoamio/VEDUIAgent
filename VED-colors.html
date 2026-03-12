@@ -10,7 +10,8 @@
             --ved-layout-bg: #FFFFFF; /* 对应 layout.bg */
             --ved-text-primary: #18181B; /* 对应 text.primary */
             --ved-text-secondary: #71717A; /* 对应 text.secondary */
-            --ved-text-disabled: #A1A1AA; /* 对应 text.disabled */
+            --ved-text-tertiary: #A1A1AA; /* 对应 text.tertiary */
+            --ved-text-disabled: #D4D4D8; /* 对应 text.disabled */
 
             /* 按钮 (Button) */
             --ved-button-primary-bg: #18181B; /* 对应 button.primary.bg */
@@ -19,9 +20,12 @@
             --ved-button-secondary-border: #D4D4D8; /* 对应 button.secondary.border (Project Extended) */
             --ved-button-hover: #F4F4F5; /* 对应 button.hover (Project Extended) */
             --ved-button-ghost-primary-text: var(--ved-text-primary); /* 对应 button.ghost.primary.text */
+            --ved-button-ghost-primary-hover-text: #52525B; /* 对应 button.ghost.primary.hover.text */
             --ved-button-ghost-secondary-text: var(--ved-text-secondary); /* 对应 button.ghost.secondary.text */
+            --ved-button-ghost-secondary-hover-text: var(--ved-text-disabled); /* 对应 button.ghost.secondary.hover.text */
             --ved-button-ghost-accent-text: var(--ved-tag-blue-text); /* 对应 button.ghost.accent.text */
-            --ved-button-ghost-disabled-text: #A1A1AA; /* 对应 button.ghost.disabled.text */
+            --ved-button-ghost-accent-hover-text: #60A5FA; /* 对应 button.ghost.accent.hover.text */
+            --ved-button-ghost-disabled-text: var(--ved-text-disabled); /* 对应 button.ghost.disabled.text */
             --ved-button-ghost-hover-bg: var(--ved-button-hover); /* 对应 button.ghost.hover.bg */
 
             /* 输入与选择器 (Input/Select) */
@@ -51,6 +55,10 @@
             --ved-text-terminal-comment: #71717A;/* 终端内 $ 符号或注释的灰色 */ 
             --ved-icon-thought: #71717A;         /* “思考”大脑图标颜色 */ 
             --ved-icon-loading: #3B82F6;         /* 任务旁转圈的蓝色 Loading */ 
+            --ved-icon-primary: var(--ved-text-primary);
+            --ved-icon-secondary: var(--ved-text-secondary);
+            --ved-icon-tertiary: #A1A1AA;
+            --ved-icon-disabled: #D4D4D8;
             
             /* --- 2. 任务进度板 (Task Progress Board) --- */ 
             --ved-bg-progress-bar: #F4F4F5;      /* 进度条底色背景 */ 
@@ -303,6 +311,22 @@
                         <div class="token-desc">次要文字 (text.secondary)</div>
                     </div>
                 </div>
+                <div class="card" onclick="copyToken('--ved-text-tertiary')">
+                    <div class="swatch" style="background-color: var(--ved-text-tertiary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-tertiary</div>
+                        <div class="token-value">#A1A1AA</div>
+                        <div class="token-desc">三级文字 (text.tertiary)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-text-disabled')">
+                    <div class="swatch" style="background-color: var(--ved-text-disabled)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-text-disabled</div>
+                        <div class="token-value">#D4D4D8</div>
+                        <div class="token-desc">禁用文字 (text.disabled)</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -348,6 +372,70 @@
                         <div class="token-name">--ved-button-hover</div>
                         <div class="token-value">#F4F4F5</div>
                         <div class="token-desc">按钮悬停</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-primary-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-primary-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-primary-text</div>
+                        <div class="token-value">var(--ved-text-primary)</div>
+                        <div class="token-desc">Ghost 主文字 (button.ghost.primary.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-primary-hover-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-primary-hover-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-primary-hover-text</div>
+                        <div class="token-value">#52525B</div>
+                        <div class="token-desc">Ghost 主文字 Hover (button.ghost.primary.hover.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-secondary-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-secondary-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-secondary-text</div>
+                        <div class="token-value">var(--ved-text-secondary)</div>
+                        <div class="token-desc">Ghost 次文字 (button.ghost.secondary.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-secondary-hover-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-secondary-hover-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-secondary-hover-text</div>
+                        <div class="token-value">var(--ved-text-disabled)</div>
+                        <div class="token-desc">Ghost 次文字 Hover (button.ghost.secondary.hover.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-accent-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-accent-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-accent-text</div>
+                        <div class="token-value">var(--ved-tag-blue-text)</div>
+                        <div class="token-desc">Ghost 强调文字 (button.ghost.accent.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-accent-hover-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-accent-hover-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-accent-hover-text</div>
+                        <div class="token-value">#60A5FA</div>
+                        <div class="token-desc">Ghost 强调文字 Hover (button.ghost.accent.hover.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-disabled-text')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-disabled-text)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-disabled-text</div>
+                        <div class="token-value">var(--ved-text-disabled)</div>
+                        <div class="token-desc">Ghost 禁用文字 (button.ghost.disabled.text)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-button-ghost-hover-bg')">
+                    <div class="swatch" style="background-color: var(--ved-button-ghost-hover-bg)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-button-ghost-hover-bg</div>
+                        <div class="token-value">var(--ved-button-hover)</div>
+                        <div class="token-desc">Ghost 悬停背景 (button.ghost.hover.bg)</div>
                     </div>
                 </div>
             </div>
@@ -403,6 +491,38 @@
                         <div class="token-name">--ved-icon-loading</div>
                         <div class="token-value">#3B82F6</div>
                         <div class="token-desc">Loading 图标</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-primary')">
+                    <div class="swatch" style="background-color: var(--ved-icon-primary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-primary</div>
+                        <div class="token-value">var(--ved-text-primary)</div>
+                        <div class="token-desc">主图标 (icon.primary)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-secondary')">
+                    <div class="swatch" style="background-color: var(--ved-icon-secondary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-secondary</div>
+                        <div class="token-value">var(--ved-text-secondary)</div>
+                        <div class="token-desc">次图标 (icon.secondary)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-tertiary')">
+                    <div class="swatch" style="background-color: var(--ved-icon-tertiary)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-tertiary</div>
+                        <div class="token-value">#A1A1AA</div>
+                        <div class="token-desc">三级图标 (icon.tertiary)</div>
+                    </div>
+                </div>
+                <div class="card" onclick="copyToken('--ved-icon-disabled')">
+                    <div class="swatch" style="background-color: var(--ved-icon-disabled)"></div>
+                    <div class="info">
+                        <div class="token-name">--ved-icon-disabled</div>
+                        <div class="token-value">#D4D4D8</div>
+                        <div class="token-desc">禁用图标 (icon.disabled)</div>
                     </div>
                 </div>
             </div>

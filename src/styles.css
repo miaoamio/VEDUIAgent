@@ -9,6 +9,11 @@ body {
   height: 100%;
 }
 
+:root {
+  --ved-tooltip-shadow: 0px 0px 1px 0px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.05), 0px 2px 4px 0px rgba(0, 0, 0, 0.06);
+  --ved-tooltip-shadow-filter: drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.08)) drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.05)) drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.06));
+}
+
 body {
   font-family: Inter, sans-serif;
   padding: 0;
@@ -70,44 +75,136 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 4px;
+  width: 366px;
+  height: 18px;
 }
 
-.chat-selection-chip {
+.chat-selection-group {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #F1F5F9;
-  color: #0F172A;
-  font-size: 12px;
-  font-weight: 500;
+  column-gap: 2px;
 }
 
-.chat-selection-state {
-  color: #6B7280;
+.chat-selection-label {
+  flex-shrink: 0;
+  line-height: 16px;
+  letter-spacing: 0;
+  color: #71717A;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
   font-size: 12px;
 }
 
-.chat-selection-empty {
-  color: #9CA3AF;
+.chat-selection-tag {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  column-gap: 4px;
+  border-radius: 4px;
+  background: var(--ved-tag-neutral, #F4F4F5);
+  padding: 1px 6px;
+}
+
+.chat-selection-tag-text {
+  flex-shrink: 0;
+  line-height: 16px;
+  letter-spacing: 0.04px;
+  color: #18181B;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
   font-size: 12px;
 }
 
 .chat-selection-action {
+  width: 48px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
   background: transparent;
-  color: #2563EB;
+  color: var(--ved-button-ghost-accent-text, #2563EB);
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 0;
   border: none;
   cursor: pointer;
 }
 
+.chat-selection-action:hover,
+.chat-selection-action:active {
+  background: transparent;
+  color: var(--ved-button-ghost-accent-hover-text, var(--ved-button-ghost-accent-text, #2563EB));
+}
+
+.chat-selection-action:focus,
+.chat-selection-action:focus-visible {
+  outline: none;
+  background: transparent;
+}
+
 .chat-selection-action:disabled {
-  color: #94A3B8;
+  color: var(--ved-button-ghost-disabled-text, #A1A1AA);
+  background: transparent;
   cursor: not-allowed;
+}
+
+.chat-selection-action-wrap {
+  position: relative;
+  width: 48px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.manual-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+  width: 328px;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.manual-tooltip-label {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: stretch;
+  justify-content: center;
+  border: 1px solid #F4F4F5;
+  border-radius: 4px;
+  background: var(--ved-layout-bg, #FFFFFF);
+  padding: 3px 7px;
+  box-shadow: var(--ved-tooltip-shadow);
+}
+
+.manual-tooltip-text {
+  flex-shrink: 0;
+  width: 312px;
+  line-height: 16px;
+  letter-spacing: 0;
+  color: var(--ved-text-primary, #18181B);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  white-space: pre-line;
+  margin: 0;
+}
+
+.manual-tooltip-arrow {
+  flex-shrink: 0;
+  margin-top: -1px;
+  width: 12px;
+  height: 6px;
+  align-self: flex-end;
+  margin-right: 18px;
+  filter: var(--ved-tooltip-shadow-filter);
 }
 
 .composer-quick-actions {
