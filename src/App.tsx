@@ -143,24 +143,31 @@ function formatAiDisplayText(value: string): string {
     .filter((line) => !line.trimStart().startsWith('[Raw]:'))
     .filter((line) => !line.trimStart().startsWith('[Streaming]:'))
     .map((line) => {
-      const normalized = line.trim();
       const trimmedStart = line.trimStart();
-      if (trimmedStart.startsWith('[AI]:')) return trimmedStart.replace('[AI]:', '').trimStart();
-      if (trimmedStart.startsWith('[System]:')) return trimmedStart.replace('[System]:', '系统：').trimStart();
-      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
-      if (legacySpecMatch) {
-        const rawKind = legacySpecMatch[1];
+      let displayLine = line;
+      if (trimmedStart.startsWith('[AI]:')) displayLine = trimmedStart.replace('[AI]:', '').trimStart();
+      if (trimmedStart.startsWith('[System]:')) displayLine = trimmedStart.replace('[System]:', '系统：').trimStart();
+      const normalized = displayLine.trim();
+      const toSeriesSpecText = (raw: string) => {
+        const rawKind = String(raw || '').trim();
+        const lowered = rawKind.toLowerCase();
         const kind =
-          rawKind.toLowerCase() === 'table'
+          lowered === 'table'
             ? '表格'
-            : rawKind.toLowerCase() === 'form'
+            : lowered === 'form'
               ? '表单'
-              : rawKind.toLowerCase() === 'chart'
+              : lowered === 'chart'
                 ? '图表'
                 : rawKind;
         return `读取 ${kind} 系列组件的规格说明`;
+      };
+      const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
+      if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
+      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
+      if (legacySpecMatch) {
+        return toSeriesSpecText(legacySpecMatch[1]);
       }
-      return line;
+      return displayLine;
     });
   const deduped: string[] = [];
   for (const line of processed) {
