@@ -16,6 +16,7 @@ import {
   SwitchControl,
   TextInputControl
 } from './ui/PropertyControls';
+import { Tooltip } from './ui/Tooltip';
 import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-tokens';
 import { BASE_TYPOGRAPHY_TOKEN_PACK, SEMANTIC_TYPOGRAPHY_TOKEN_PACK } from './theme.typography-tokens';
 import { BASE_COMPONENT_TOKEN_PACK, SEMANTIC_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
@@ -135,18 +136,39 @@ function normalizeDisplayText(value: string): string {
 function formatAiDisplayText(value: string): string {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
-  const filtered = lines
+  const processed = lines
     .map((line) => line.trimEnd())
     .filter((line) => line.trim() !== '')
     .filter((line) => !line.trimStart().startsWith('[JSON]:'))
     .filter((line) => !line.trimStart().startsWith('[Raw]:'))
     .filter((line) => !line.trimStart().startsWith('[Streaming]:'))
     .map((line) => {
-      if (line.startsWith('[AI]:')) return line.replace('[AI]:', '').trimStart();
-      if (line.startsWith('[System]:')) return line.replace('[System]:', '系统：').trimStart();
+      const normalized = line.trim();
+      const trimmedStart = line.trimStart();
+      if (trimmedStart.startsWith('[AI]:')) return trimmedStart.replace('[AI]:', '').trimStart();
+      if (trimmedStart.startsWith('[System]:')) return trimmedStart.replace('[System]:', '系统：').trimStart();
+      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
+      if (legacySpecMatch) {
+        const rawKind = legacySpecMatch[1];
+        const kind =
+          rawKind.toLowerCase() === 'table'
+            ? '表格'
+            : rawKind.toLowerCase() === 'form'
+              ? '表单'
+              : rawKind.toLowerCase() === 'chart'
+                ? '图表'
+                : rawKind;
+        return `读取 ${kind} 系列组件的规格说明`;
+      }
       return line;
     });
-  return filtered.join('\n');
+  const deduped: string[] = [];
+  for (const line of processed) {
+    if (deduped.length === 0 || deduped[deduped.length - 1] !== line) {
+      deduped.push(line);
+    }
+  }
+  return deduped.join('\n');
 }
 
 function SpinnerIcon({ className }: { className?: string }) {
@@ -888,7 +910,8 @@ function App() {
   // State for selected AI component
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
-  const [manualTooltipOpen, setManualTooltipOpen] = React.useState(false);
+  const llmAbortRef = React.useRef<AbortController | null>(null);
+  const stopRequestedRef = React.useRef(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -1139,6 +1162,13 @@ function App() {
   const removeTableAttachment = React.useCallback((id: string) => {
     setUploadedTables((prev) => prev.filter((table) => table.id !== id));
   }, []);
+
+  const stopGeneration = React.useCallback(() => {
+    if (!loading) return;
+    stopRequestedRef.current = true;
+    llmAbortRef.current?.abort();
+    setGenerationLock(false);
+  }, [loading]);
 
   const applyQuickPrompt = React.useCallback((prompt: string) => {
     setUserInput((prev) => (prev.trim() ? `${prev}\n${prompt}` : prompt));
@@ -4318,6 +4348,11 @@ StepD:
   const onSend = async () => {
     if (!canSend) return;
 
+    stopRequestedRef.current = false;
+    llmAbortRef.current?.abort();
+    const abortController = new AbortController();
+    llmAbortRef.current = abortController;
+
     setGenerationLock(true);
     setLoading(true);
     setResponse(null); // Clear previous response
@@ -4368,6 +4403,9 @@ StepD:
 
         while (attempt < maxRetries) {
             try {
+                if (abortController.signal.aborted) {
+                    throw new DOMException('Aborted', 'AbortError');
+                }
                 const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -4375,7 +4413,8 @@ StepD:
                         model: "ep-20260129104027-mzlwg", 
                         messages: msgs,
                         stream: true 
-                    })
+                    }),
+                    signal: abortController.signal
                 });
 
                 if (res.status === 429) {
@@ -4419,6 +4458,9 @@ StepD:
                 }
 
                 while (true) {
+                    if (abortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
                     const { done, value } = await reader.read();
                     if (done) break;
                     
@@ -4478,6 +4520,7 @@ StepD:
           executeTaskByType(task, payload, runtimePlan);
 
         while (loopCount < MAX_LOOPS) {
+            if (stopRequestedRef.current || abortController.signal.aborted) break;
             loopCount++;
             
             // 1. Get LLM response with streaming
@@ -4490,6 +4533,7 @@ StepD:
               ? [...baseMessages, { role: "system", content: buildPlanContextMessage(runtimePlan) }]
               : baseMessages;
             const content = await callLLM(messagesWithPlan, (chunk) => {
+                if (stopRequestedRef.current || abortController.signal.aborted) return;
                 streamLineBuffer += chunk;
                 const lines = streamLineBuffer.split('\n');
                 streamLineBuffer = lines.pop() || '';
@@ -4896,7 +4940,21 @@ StepD:
                 }
 
                 // Feedback to UI
-                const sysMsg = `[System]: Loaded specs for ${ids.join(', ')}`;
+                const promptHintText = String(currentTurnText || '');
+                const promptKinds = new Set<string>();
+                if (/(表格|table)/i.test(promptHintText)) promptKinds.add('表格');
+                if (/(表单|form)/i.test(promptHintText)) promptKinds.add('表单');
+                if (/(图表|chart)/i.test(promptHintText)) promptKinds.add('图表');
+                const inferredFromPrompt = promptKinds.size === 1 ? Array.from(promptKinds)[0] : null;
+                const inferredFromIds = ids.some((id) => id === 'table' || id.startsWith('table-'))
+                  ? '表格'
+                  : ids.some((id) => id === 'form' || id.startsWith('form-'))
+                    ? '表单'
+                    : ids.some((id) => id === 'chart' || id.startsWith('chart-'))
+                      ? '图表'
+                      : null;
+                const inferredKind = inferredFromPrompt || inferredFromIds;
+                const sysMsg = inferredKind ? `[AI]: 读取 ${inferredKind} 系列组件的规格说明` : `[System]: Loaded specs for ${ids.join(', ')}`;
                 accumulatedLog += '\n\n' + sysMsg;
                 setResponse(accumulatedLog);
                 
@@ -5310,12 +5368,18 @@ StepD:
         setChatHistory(messages.filter(m => m.role !== 'system' || m.content !== generateMasterPrompt()));
 
     } catch (error) {
-      console.error('Agent Loop Error:', error);
-      setResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setResponse((prev) => (prev ? `${prev}\n\n[System]: 已停止。` : `[System]: 已停止。`));
+      } else {
+        console.error('Agent Loop Error:', error);
+        setResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     } finally {
       setAgentPlan(runtimePlan);
       setLoading(false);
       setGenerationLock(false);
+      llmAbortRef.current = null;
+      stopRequestedRef.current = false;
     }
   };
 
@@ -6775,33 +6839,18 @@ StepD:
               ) : (
                 <span className="chat-selection-label">已选中</span>
               )}
-              <div
-                className="chat-selection-action-wrap"
-                onMouseEnter={() => {
-                  if (selectionCount <= 0) setManualTooltipOpen(true);
-                }}
-                onMouseLeave={() => setManualTooltipOpen(false)}
-              >
-                <button
-                  type="button"
-                  className="chat-selection-action"
-                  onClick={() => setActiveTab('selection')}
-                  disabled={selectionCount <= 0}
-                >
-                  手动调整
-                </button>
-                {selectionCount <= 0 && manualTooltipOpen && (
-                  <div className="manual-tooltip" role="tooltip">
-                    <div className="manual-tooltip-label">
-                      <p className="manual-tooltip-text">{manualTooltipText}</p>
-                    </div>
-                    <svg className="manual-tooltip-arrow" width="12" height="6" viewBox="0 0 12 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6 6L12 0H0L6 6Z" fill="white" />
-                      <path d="M6 6L0 0L1.40039 0L6 4.59961L10.5996 0L12 0L6 6Z" fill="#F4F4F5" />
-                    </svg>
-                  </div>
-                )}
-              </div>
+              <Tooltip content={manualTooltipText} enabled={selectionCount <= 0} placement="top-end">
+                <div className="chat-selection-action-wrap">
+                  <button
+                    type="button"
+                    className="chat-selection-action"
+                    onClick={() => setActiveTab('selection')}
+                    disabled={selectionCount <= 0}
+                  >
+                    手动调整
+                  </button>
+                </div>
+              </Tooltip>
             </div>
             <div className="composer-quick-actions">
               <button
@@ -7046,18 +7095,26 @@ StepD:
                       </div>
                     )}
                   </div>
-                  <button className="composer-send" onClick={onSend} disabled={loading || !canSend}>
-                    {loading ? (
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="6" y="6" width="8" height="8" rx="2" fill="white" />
-                      </svg>
-                    ) : (
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M10 16V5" stroke="white" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M6 9L10 5L14 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </button>
+                  <Tooltip content={loading ? '停止生成' : '发送'} enabled={loading || canSend} placement="top">
+                    <div className="composer-send-wrap">
+                      <button
+                        className="composer-send"
+                        onClick={loading ? stopGeneration : onSend}
+                        disabled={!loading && !canSend}
+                      >
+                      {loading ? (
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect x="6" y="6" width="8" height="8" rx="2" fill="white" />
+                        </svg>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M10 16V5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M6 9L10 5L14 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                      </button>
+                    </div>
+                  </Tooltip>
                 </div>
               </div>
             </div>

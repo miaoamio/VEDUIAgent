@@ -14,6 +14,7 @@
     "watch:ui": "vite build --watch"
   },
   "dependencies": {
+    "@floating-ui/react": "^0.27.19",
     "codepage": "^1.15.0",
     "echarts": "^5.5.0",
     "react": "^18.2.0",

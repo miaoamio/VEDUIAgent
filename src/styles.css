@@ -159,52 +159,27 @@ h2 {
   justify-content: flex-end;
 }
 
-.manual-tooltip {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  background: transparent;
-  width: 328px;
-  pointer-events: none;
+.ved-tooltip {
+  position: relative;
   z-index: 1000;
+  pointer-events: none;
+  filter: var(--ved-tooltip-shadow-filter);
 }
 
-.manual-tooltip-label {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  align-self: stretch;
-  justify-content: center;
-  border: 1px solid #F4F4F5;
+.ved-tooltip-content {
   border-radius: 4px;
-  background: var(--ved-layout-bg, #FFFFFF);
+  background: #FFFFFF;
   padding: 3px 7px;
-  box-shadow: var(--ved-tooltip-shadow);
-}
-
-.manual-tooltip-text {
-  flex-shrink: 0;
-  width: 312px;
   line-height: 16px;
   letter-spacing: 0;
-  color: var(--ved-text-primary, #18181B);
-  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-  font-size: 12px;
+  color: #18181B;
+  font-family: "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 11px;
   white-space: pre-line;
-  margin: 0;
 }
 
-.manual-tooltip-arrow {
-  flex-shrink: 0;
-  margin-top: -1px;
-  width: 12px;
-  height: 6px;
-  align-self: flex-end;
-  margin-right: 18px;
-  filter: var(--ved-tooltip-shadow-filter);
+.ved-tooltip-arrow {
+  fill: #FFFFFF;
 }
 
 .composer-quick-actions {
@@ -308,8 +283,25 @@ h2 {
 }
 
 .chat-message.user .chat-bubble {
-  background: #EEF2FF;
-  color: #1F2937;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px 0px 8px 8px;
+  background: #EDEFF2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #31353A;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0;
+  box-sizing: border-box;
 }
 
 .chat-message.ai .chat-bubble {
@@ -470,6 +462,13 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   justify-content: center;
   cursor: pointer;
   overflow: hidden;
+}
+
+.composer-send-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .composer-send:hover {
