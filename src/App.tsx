@@ -147,6 +147,99 @@ function toSeriesSpecText(raw: string): string {
   return `读取 ${kind} 系列组件的规格说明`;
 }
 
+type AiDisplayItem = {
+  kind: 'thought' | 'text';
+  text: string;
+};
+
+function parseSeriesSpecLine(text: string): { kind: string } | null {
+  const normalized = String(text || '').trim();
+  const match = normalized.match(/^(?:重新)?读取\s*(.+?)\s*系列组件的规格说明$/);
+  if (!match) return null;
+  const kind = String(match[1] || '').trim();
+  if (!kind) return null;
+  return { kind };
+}
+
+function formatSeriesSpecLine(kind: string, redo: boolean): string {
+  return `${redo ? '重新读取' : '读取'} ${String(kind || '').trim()} 系列组件的规格说明`;
+}
+
+function buildAiDisplayItems(value: string): AiDisplayItem[] {
+  const text = normalizeDisplayText(value);
+  const lines = text.split('\n');
+  const items: AiDisplayItem[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.trim() === '') continue;
+    const trimmedStart = line.trimStart();
+    if (trimmedStart.startsWith('[JSON]:')) continue;
+    if (trimmedStart.startsWith('[Raw]:')) continue;
+    if (trimmedStart.startsWith('[Streaming]:')) continue;
+
+    let kind: AiDisplayItem['kind'] = 'text';
+    let displayLine = line;
+    if (trimmedStart.startsWith('[AI]:')) {
+      kind = 'thought';
+      displayLine = trimmedStart.replace('[AI]:', '').trimStart();
+    } else if (trimmedStart.startsWith('[System]:')) {
+      displayLine = trimmedStart.replace('[System]:', '系统：').trimStart();
+    }
+
+    const normalized = displayLine.trim();
+    const normalizeExampleLine = (raw: string) => {
+      const matched = String(raw || '')
+        .trim()
+        .match(/^(生成|创建|画)\s*示例\s*(.+?)\s*[。.!！…]*$/);
+      if (!matched) return raw;
+      const subject = String(matched[2] || '').replace(/[。.!！…]+$/g, '').trim();
+      return subject ? `绘制 ${subject}` : raw;
+    };
+    const normalizeDrawLine = (raw: string) => {
+      const matched = String(raw || '')
+        .trim()
+        .match(/^画\s*(.+?)\s*[。.!！…]*$/);
+      if (!matched) return raw;
+      const subject = String(matched[1] || '').replace(/[。.!！…]+$/g, '').trim();
+      return subject ? `绘制 ${subject}` : raw;
+    };
+    if (kind !== 'thought') {
+      const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
+      if (componentSpecMatch) {
+        displayLine = toSeriesSpecText(componentSpecMatch[1]);
+      }
+      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
+      if (legacySpecMatch) {
+        displayLine = toSeriesSpecText(legacySpecMatch[1]);
+      }
+    }
+    displayLine = normalizeExampleLine(displayLine);
+    displayLine = normalizeDrawLine(displayLine);
+
+    const nextItem: AiDisplayItem = { kind, text: displayLine };
+    const last = items[items.length - 1];
+    const nextSeries = parseSeriesSpecLine(nextItem.text);
+    const lastSeries = last ? parseSeriesSpecLine(last.text) : null;
+    if (nextSeries && lastSeries && nextSeries.kind === lastSeries.kind) {
+      last.text = formatSeriesSpecLine(lastSeries.kind, true);
+      nextItem.text = formatSeriesSpecLine(nextSeries.kind, true);
+    }
+    if (last && last.text === nextItem.text) {
+      if (last.kind === 'thought') continue;
+      const lastSeriesAfter = parseSeriesSpecLine(last.text);
+      const nextSeriesAfter = parseSeriesSpecLine(nextItem.text);
+      if (!lastSeriesAfter || !nextSeriesAfter || lastSeriesAfter.kind !== nextSeriesAfter.kind) {
+        items[items.length - 1] = nextItem;
+        continue;
+      }
+    }
+    items.push(nextItem);
+  }
+
+  return items;
+}
+
 function formatAiDisplayText(value: string): string {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -162,6 +255,16 @@ function formatAiDisplayText(value: string): string {
       if (trimmedStart.startsWith('[AI]:')) displayLine = trimmedStart.replace('[AI]:', '').trimStart();
       if (trimmedStart.startsWith('[System]:')) displayLine = trimmedStart.replace('[System]:', '系统：').trimStart();
       const normalized = displayLine.trim();
+      const exampleMatch = normalized.match(/^(生成|创建|画)\s*示例\s*(.+?)\s*[。.!！…]*$/);
+      if (exampleMatch) {
+        const subject = String(exampleMatch[2] || '').replace(/[。.!！…]+$/g, '').trim();
+        if (subject) return `绘制 ${subject}`;
+      }
+      const drawMatch = normalized.match(/^画\s*(.+?)\s*[。.!！…]*$/);
+      if (drawMatch) {
+        const subject = String(drawMatch[1] || '').replace(/[。.!！…]+$/g, '').trim();
+        if (subject) return `绘制 ${subject}`;
+      }
       const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
       if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
       const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
@@ -221,6 +324,158 @@ function CheckIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function ThinkingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g clipPath="url(#clip0_thinking)">
+        <path
+          d="M8 12V3.33333"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M10 8.66667C9.4232 8.49806 8.91656 8.14708 8.556 7.66633C8.19544 7.18558 8.00036 6.60094 8 6C7.99964 6.60094 7.80456 7.18558 7.444 7.66633C7.08344 8.14708 6.5768 8.49806 6 8.66667"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M11.732 4.33342C11.8854 4.06774 11.9756 3.77034 11.9957 3.46421C12.0158 3.15809 11.9652 2.85145 11.8478 2.56801C11.7304 2.28458 11.5494 2.03195 11.3187 1.82967C11.0881 1.62739 10.814 1.48088 10.5176 1.40148C10.2213 1.32208 9.91069 1.31191 9.6098 1.37176C9.30891 1.43161 9.02583 1.55988 8.78244 1.74665C8.53906 1.93341 8.3419 2.17366 8.20623 2.44881C8.07055 2.72396 7.99999 3.02663 8 3.33342C8.00001 3.02663 7.92945 2.72396 7.79377 2.44881C7.6581 2.17366 7.46094 1.93341 7.21756 1.74665C6.97417 1.55988 6.69109 1.43161 6.3902 1.37176C6.08931 1.31191 5.77868 1.32208 5.48236 1.40148C5.18603 1.48088 4.91193 1.62739 4.68129 1.82967C4.45064 2.03195 4.26961 2.28458 4.15222 2.56801C4.03483 2.85145 3.98421 3.15809 4.00429 3.46421C4.02436 3.77034 4.11459 4.06774 4.268 4.33342"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M11.998 3.41667C12.3899 3.51743 12.7537 3.70604 13.0619 3.96821C13.3701 4.23039 13.6146 4.55925 13.7768 4.9299C13.9391 5.30055 14.0149 5.70327 13.9985 6.10755C13.982 6.51183 13.8738 6.90707 13.682 7.26334"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 11.9994C12.587 11.9994 13.1576 11.8057 13.6233 11.4483C14.089 11.091 14.4238 10.59 14.5757 10.023C14.7276 9.45596 14.6882 8.85467 14.4636 8.31235C14.239 7.77002 13.8417 7.31696 13.3333 7.02344"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M13.3114 11.655C13.3581 12.0164 13.3303 12.3837 13.2295 12.734C13.1287 13.0843 12.9572 13.4102 12.7256 13.6916C12.4939 13.973 12.207 14.2039 11.8826 14.3701C11.5582 14.5363 11.2032 14.6342 10.8394 14.6578C10.4757 14.6814 10.111 14.6302 9.76782 14.5074C9.42466 14.3845 9.11033 14.1926 8.84424 13.9435C8.57815 13.6943 8.36596 13.3933 8.22077 13.059C8.07558 12.7247 8.00047 12.3641 8.00008 11.9996C7.99969 12.3641 7.92458 12.7247 7.77939 13.059C7.6342 13.3933 7.42201 13.6943 7.15592 13.9435C6.88983 14.1926 6.5755 14.3845 6.23234 14.5074C5.88917 14.6302 5.52446 14.6814 5.16073 14.6578C4.797 14.6342 4.44197 14.5363 4.11756 14.3701C3.79315 14.2039 3.50626 13.973 3.2746 13.6916C3.04294 13.4102 2.87144 13.0843 2.77067 12.734C2.66991 12.3837 2.64202 12.0164 2.68875 11.655"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M3.9998 11.9994C3.4128 11.9994 2.84221 11.8057 2.37651 11.4483C1.91082 11.091 1.57605 10.59 1.42412 10.023C1.27219 9.45596 1.31159 8.85467 1.53621 8.31235C1.76083 7.77002 2.15812 7.31696 2.66647 7.02344"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M4.00187 3.41667C3.61001 3.51743 3.24621 3.70604 2.93803 3.96821C2.62985 4.23039 2.38536 4.55925 2.2231 4.9299C2.06084 5.30055 1.98504 5.70327 2.00146 6.10755C2.01788 6.51183 2.12608 6.90707 2.31787 7.26334"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+      <defs>
+        <clipPath id="clip0_thinking">
+          <rect width="16" height="16" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M3.5 7C3.5 5.067 5.067 3.5 7 3.5C8.933 3.5 10.5 5.067 10.5 7C10.5 7.88461 10.1718 8.69256 9.63058 9.30876L9.30876 9.63058C8.69256 10.1718 7.88461 10.5 7 10.5C5.067 10.5 3.5 8.933 3.5 7ZM9.96544 11.0261C9.13578 11.6382 8.11014 12 7 12C4.23858 12 2 9.76142 2 7C2 4.23858 4.23858 2 7 2C9.76142 2 12 4.23858 12 7C12 8.11014 11.6382 9.13578 11.0261 9.96544L14.0303 12.9697L14.5607 13.5L13.5 14.5607L12.9697 14.0303L9.96544 11.0261Z"
+        fill="#A1A1AA"
+      />
+    </svg>
+  );
+}
+
+function DrawIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g clipPath="url(#clip0_draw)">
+        <path
+          d="M14.6666 4H1.33325"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14.6666 12H1.33325"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M4 1.33333V14.6667"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 1.33333V14.6667"
+          stroke="#A1A1AA"
+          strokeWidth="1.33333"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+      <defs>
+        <clipPath id="clip0_draw">
+          <rect width="16" height="16" fill="white" />
+        </clipPath>
+      </defs>
     </svg>
   );
 }
@@ -920,6 +1175,10 @@ function App() {
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
   const stopRequestedRef = React.useRef(false);
+  const thinkingStartedAtRef = React.useRef<number | null>(null);
+  const [thinkingActive, setThinkingActive] = React.useState(false);
+  const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
+  const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -1172,11 +1431,10 @@ function App() {
   }, []);
 
   const stopGeneration = React.useCallback(() => {
-    if (!loading) return;
     stopRequestedRef.current = true;
     llmAbortRef.current?.abort();
     setGenerationLock(false);
-  }, [loading]);
+  }, []);
 
   const applyQuickPrompt = React.useCallback((prompt: string) => {
     setUserInput((prev) => (prev.trim() ? `${prev}\n${prompt}` : prompt));
@@ -1212,6 +1470,19 @@ function App() {
       return next;
     });
   }, []);
+
+  React.useEffect(() => {
+    if (!thinkingActive) return;
+    const last = uiMessages[uiMessages.length - 1];
+    if (!last || last.role !== 'ai') return;
+    if (!last.content.trim()) return;
+    if (thinkingSeconds !== null) return;
+    if (thinkingStartedAtRef.current === null) return;
+    const ms = Date.now() - thinkingStartedAtRef.current;
+    const secs = Math.max(1, Math.ceil(ms / 1000));
+    setThinkingSeconds(secs);
+    setThinkingActive(false);
+  }, [thinkingActive, thinkingSeconds, uiMessages]);
 
   React.useEffect(() => {
     if (response === null) return;
@@ -3748,18 +4019,33 @@ StepD:
 
   const createComponentNode = (component: any, parentIdVal?: string): Promise<string> => {
     return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         const { type, nodeId, message } = data;
         if (type === 'create-success') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           resolve(nodeId);
         } else if (type === 'error') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           reject(message);
         }
       };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
       window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
 
       window.parent.postMessage({
         pluginMessage: {
@@ -3777,18 +4063,33 @@ StepD:
     parentId?: string
   ): Promise<any> => {
     return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         if (data.type === 'apply-result') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           resolve(data.result);
         } else if (data.type === 'error') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           reject(data.message || 'Unknown apply error');
         }
       };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
 
       window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
       window.parent.postMessage({
         pluginMessage: {
           type: 'apply-envelope',
@@ -3896,17 +4197,32 @@ StepD:
 
   const inspectFigmaComponentProps = (payload: any): Promise<any> => {
     return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         if (data.type === 'inspect-figma-component-props-result') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           resolve(data.data || {});
         } else if (data.type === 'error') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           reject(data.message || 'inspect failed');
         }
       };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
       window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
 
       window.parent.postMessage(
         {
@@ -3922,17 +4238,32 @@ StepD:
 
   const inspectFigmaComponentStructure = (payload: any): Promise<any> => {
     return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         if (data.type === 'inspect-figma-component-structure-result') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           resolve(data.data || {});
         } else if (data.type === 'error') {
           window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
           reject(data.message || 'inspect structure failed');
         }
       };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
       window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
 
       window.parent.postMessage(
         {
@@ -4360,6 +4691,10 @@ StepD:
     llmAbortRef.current?.abort();
     const abortController = new AbortController();
     llmAbortRef.current = abortController;
+    thinkingStartedAtRef.current = Date.now();
+    setThinkingSeconds(null);
+    setThinkingActive(true);
+    setThoughtDetailsExpanded(false);
 
     setGenerationLock(true);
     setLoading(true);
@@ -4434,6 +4769,9 @@ StepD:
                     } catch (e) {
                         // ignore
                     }
+                    if (abortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
                     
                     // Show error in UI immediately if it's the first attempt or if the user wants to see it
                     setResponse(prev => (prev ? prev + '\n' : '') + `[System]: Rate limited (429): ${errorMsg}. Retrying...`);
@@ -4499,6 +4837,9 @@ StepD:
                 return fullContent;
 
             } catch (error) {
+                if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+                    throw error;
+                }
                 if (attempt === maxRetries - 1) throw error;
                 attempt++;
                 await sleep(1000 * Math.pow(2, attempt)); // Default backoff for other errors
@@ -5388,6 +5729,12 @@ StepD:
       setGenerationLock(false);
       llmAbortRef.current = null;
       stopRequestedRef.current = false;
+      if (thinkingActive && thinkingSeconds === null && thinkingStartedAtRef.current !== null) {
+        const ms = Date.now() - thinkingStartedAtRef.current;
+        const secs = Math.max(1, Math.ceil(ms / 1000));
+        setThinkingSeconds(secs);
+      }
+      setThinkingActive(false);
     }
   };
 
@@ -6786,7 +7133,116 @@ StepD:
                     );
                   })()}
                   <div className="chat-bubble">
-                    {msg.role === 'ai' ? formatAiDisplayText(msg.content) : normalizeDisplayText(msg.content)}
+                    {msg.role === 'ai' ? (
+                      <div className="ai-message">
+                        {(() => {
+                          const items = buildAiDisplayItems(msg.content);
+                          const isLast = index === uiMessages.length - 1;
+                          const showThinkingRow = isLast && (thinkingActive || thinkingSeconds !== null);
+                          const isHiddenSpecThought = (text: string) => {
+                            const normalized = String(text || '').trim();
+                            const compact = normalized.replace(/\s+/g, '').replace(/[。.!！…]+$/g, '');
+                            if ((compact.startsWith('读') || compact.startsWith('读取')) && /spec$/i.test(compact)) {
+                              return true;
+                            }
+                            return false;
+                          };
+                          const hasSpecThought = items.some((item) => item.kind === 'thought' && isHiddenSpecThought(item.text));
+                          return (
+                            <>
+                              {showThinkingRow && (
+                                <div className="ai-thought ai-thinking">
+                                  <ThinkingIcon className="ai-thought-icon" />
+                                  <p className="ai-thought-text">
+                                    {thinkingActive ? '思考中...' : `思考 ${thinkingSeconds ?? 1}s`}
+                                  </p>
+                                  {hasSpecThought && (
+                                    <button
+                                      type="button"
+                                      className={`ai-thinking-toggle ${thoughtDetailsExpanded ? 'expanded' : ''}`}
+                                      onClick={() => setThoughtDetailsExpanded((prev) => !prev)}
+                                      aria-label={thoughtDetailsExpanded ? '收起思考细节' : '展开思考细节'}
+                                    >
+                                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                          d="M4 6L8 10L12 6"
+                                          stroke="#A1A1AA"
+                                          strokeWidth="1.5"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {items.map((item, itemIndex) => {
+                                if (item.kind === 'thought') {
+                                  const shouldHide = isHiddenSpecThought(item.text);
+                                  if (shouldHide && !thoughtDetailsExpanded) return null;
+                                  const compact = String(item.text || '').replace(/\s+/g, '');
+                                  const isReadSpecsLine =
+                                    (compact.startsWith('读取') || compact.startsWith('重新读取')) &&
+                                    compact.endsWith('系列组件的规格说明');
+                                  const isDrawLine = compact.startsWith('绘制');
+                                  if (isReadSpecsLine) {
+                                    return (
+                                      <div key={`thought_${itemIndex}`} className="ai-action-line">
+                                        <SearchIcon className="ai-action-icon" />
+                                        <p className="ai-action-text">{item.text}</p>
+                                      </div>
+                                    );
+                                  }
+                                  if (isDrawLine) {
+                                    return (
+                                      <div key={`thought_${itemIndex}`} className="ai-action-line">
+                                        <DrawIcon className="ai-action-icon" />
+                                        <p className="ai-action-text">{isLast && loading ? `${item.text}...` : item.text}</p>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div key={`thought_${itemIndex}`} className="ai-thought">
+                                      <ThinkingIcon className="ai-thought-icon" />
+                                      <p className="ai-thought-text">{item.text}</p>
+                                    </div>
+                                  );
+                                }
+
+                                const compact = String(item.text || '').replace(/\s+/g, '');
+                                const isReadSpecsLine =
+                                  (compact.startsWith('读取') || compact.startsWith('重新读取')) &&
+                                  compact.endsWith('系列组件的规格说明');
+                                const isDrawLine = compact.startsWith('绘制');
+                                if (isReadSpecsLine) {
+                                  return (
+                                    <div key={`text_${itemIndex}`} className="ai-action-line">
+                                      <SearchIcon className="ai-action-icon" />
+                                      <p className="ai-action-text">{item.text}</p>
+                                    </div>
+                                  );
+                                }
+                                if (isDrawLine) {
+                                  return (
+                                    <div key={`text_${itemIndex}`} className="ai-action-line">
+                                      <DrawIcon className="ai-action-icon" />
+                                      <p className="ai-action-text">{isLast && loading ? `${item.text}...` : item.text}</p>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div key={`text_${itemIndex}`} className="ai-text-line">
+                                    {item.text}
+                                  </div>
+                                );
+                              })}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      normalizeDisplayText(msg.content)
+                    )}
                   </div>
                 </div>
               ))}

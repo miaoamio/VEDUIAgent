@@ -309,6 +309,104 @@ h2 {
   padding: 0;
 }
 
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-thought {
+  display: flex;
+  align-items: center;
+  column-gap: 8px;
+  height: 18px;
+}
+
+.ai-thought-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  overflow: hidden;
+}
+
+.ai-thought-text {
+  flex-shrink: 0;
+  overflow: hidden;
+  line-height: 18px;
+  letter-spacing: 0;
+  color: var(--ved-text-terminal-comment, #71717A);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  margin: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ai-thinking .ai-thought-text {
+  color: var(--ved-text-terminal-comment, #71717A);
+}
+
+.ai-thinking {
+  position: relative;
+}
+
+.ai-thinking-toggle {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 4px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.ai-thinking:hover .ai-thinking-toggle {
+  opacity: 1;
+}
+
+.ai-thinking-toggle:hover {
+  background: var(--ved-button-hover, #F4F4F5);
+}
+
+.ai-thinking-toggle.expanded {
+  transform: rotate(180deg);
+}
+
+.ai-action-line {
+  display: flex;
+  align-items: center;
+  column-gap: 8px;
+  height: 18px;
+}
+
+.ai-action-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  overflow: hidden;
+}
+
+.ai-action-text {
+  flex-shrink: 0;
+  overflow: hidden;
+  line-height: 18px;
+  letter-spacing: 0;
+  color: var(--ved-text-terminal-comment, #71717A);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  margin: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ai-text-line {
+  white-space: pre-wrap;
+}
+
 .selection-layout {
   display: flex;
   flex-direction: column;
