@@ -7465,7 +7465,7 @@ StepD:
                     }
                   }}
                   onPaste={handlePaste}
-                  placeholder="让 VED UI Agent 绘制..."
+                  placeholder={selectionCount > 0 ? '请输入需要调整的地方...' : '让 VED UI Agent 绘制...'}
                   disabled={loading}
                   rows={4}
                   ref={composerTextareaRef}

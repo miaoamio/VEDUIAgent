@@ -12,6 +12,9 @@ body {
 :root {
   --ved-tooltip-shadow: 0px 0px 1px 0px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.05), 0px 2px 4px 0px rgba(0, 0, 0, 0.06);
   --ved-tooltip-shadow-filter: drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.08)) drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.05)) drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.06));
+  --ved-font-family: "Roboto", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  --ved-font-size-body: 13px;
+  --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
 }
 
 body {
@@ -489,9 +492,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   border: none;
   border-radius: 0;
   box-sizing: border-box;
-  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-  font-size: 12px;
-  line-height: 16px;
+  font: var(--ved-style-body);
   letter-spacing: 0;
   color: #111827;
   resize: none;
@@ -503,6 +504,9 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 }
 
 .composer-textarea::placeholder {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
   color: #A1A1AA;
 }
 
