@@ -320,6 +320,10 @@ h2 {
   padding-bottom: 40px;
 }
 
+.user-bubble.expanded.has-overflow .user-bubble-content {
+  padding-bottom: 0;
+}
+
 .user-bubble.has-overflow.collapsed .user-bubble-content {
   overflow: hidden;
   height: 100%;
@@ -361,6 +365,12 @@ h2 {
   border-radius: 0px;
   cursor: pointer;
   color: var(--ved-button-ghost-secondary-text, #71717A);
+}
+
+.user-bubble.expanded .user-bubble-expand {
+  position: static;
+  margin-top: 8px;
+  align-self: center;
 }
 
 .user-bubble-expand:hover {

@@ -192,7 +192,7 @@ function ChevronUpIcon({ className }: { className?: string }) {
       focusable="false"
     >
       <path
-        d="M3.5 8.25L7 4.75L10.5 8.25"
+        d="M3.5 5.75L7 9.25L10.5 5.75"
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
@@ -205,30 +205,26 @@ function ChevronUpIcon({ className }: { className?: string }) {
 function UserMessageBubble({ content }: { content: string }) {
   const textRef = React.useRef<HTMLParagraphElement | null>(null);
   const [expanded, setExpanded] = React.useState(false);
-  const [overflow, setOverflow] = React.useState(false);
+  const [hasOverflow, setHasOverflow] = React.useState(false);
 
   React.useLayoutEffect(() => {
     const el = textRef.current;
     if (!el) return;
-    if (expanded) {
-      setOverflow(false);
-      return;
-    }
     const maxHeight = 200;
-    setOverflow(el.scrollHeight > maxHeight + 1);
-  }, [content, expanded]);
+    setHasOverflow(el.scrollHeight > maxHeight + 1);
+  }, [content]);
 
   return (
     <div
-      className={`user-bubble ${overflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'}`}
+      className={`user-bubble ${hasOverflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'}`}
     >
       <div className="user-bubble-content">
         <p ref={textRef} className="user-bubble-text">
           {normalizeDisplayText(content)}
         </p>
-        {overflow && !expanded && <div className="user-bubble-fade" />}
+        {hasOverflow && !expanded && <div className="user-bubble-fade" />}
       </div>
-      {overflow && (
+      {hasOverflow && (
         <button
           type="button"
           className="user-bubble-expand"
