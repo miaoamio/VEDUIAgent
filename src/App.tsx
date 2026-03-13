@@ -179,6 +179,69 @@ function normalizeComponentSpecLine(text: string): string {
   return text;
 }
 
+function ChevronUpIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.5 8.25L7 4.75L10.5 8.25"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UserMessageBubble({ content }: { content: string }) {
+  const textRef = React.useRef<HTMLParagraphElement | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [overflow, setOverflow] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    if (expanded) {
+      setOverflow(false);
+      return;
+    }
+    const maxHeight = 200;
+    setOverflow(el.scrollHeight > maxHeight + 1);
+  }, [content, expanded]);
+
+  return (
+    <div
+      className={`user-bubble ${overflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'}`}
+    >
+      <div className="user-bubble-content">
+        <p ref={textRef} className="user-bubble-text">
+          {normalizeDisplayText(content)}
+        </p>
+        {overflow && !expanded && <div className="user-bubble-fade" />}
+      </div>
+      {overflow && (
+        <button
+          type="button"
+          className="user-bubble-expand"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <ChevronUpIcon className={`user-bubble-expand-icon ${expanded ? 'expanded' : ''}`} />
+          <span className="user-bubble-expand-text">{expanded ? '收起' : '展开'}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function buildAiDisplayItems(value: string): AiDisplayItem[] {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -7272,7 +7335,7 @@ StepD:
                         })()}
                       </div>
                     ) : (
-                      normalizeDisplayText(msg.content)
+                      <UserMessageBubble content={msg.content} />
                     )}
                   </div>
                 </div>

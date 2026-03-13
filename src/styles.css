@@ -286,30 +286,98 @@ h2 {
 }
 
 .chat-message.user .chat-bubble {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  width: max-content;
+  background: transparent;
+  padding: 0;
   max-width: none;
-  height: 36px;
-  padding: 8px 12px;
-  border-radius: 8px 0px 8px 8px;
-  background: #EDEFF2;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: #31353A;
-  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  letter-spacing: 0;
-  box-sizing: border-box;
 }
 
 .chat-message.ai .chat-bubble {
   background: transparent;
   padding: 0;
+}
+
+.user-bubble {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(334px, 100%);
+  max-width: 334px;
+  border-radius: 8px 0px 8px 8px;
+  background: #EDEFF2;
+  overflow: hidden;
+}
+
+.user-bubble.has-overflow.collapsed {
+  height: 200px;
+}
+
+.user-bubble-content {
+  position: relative;
+  padding: 8px 12px;
+}
+
+.user-bubble.has-overflow .user-bubble-content {
+  padding-bottom: 40px;
+}
+
+.user-bubble.has-overflow.collapsed .user-bubble-content {
+  overflow: hidden;
+  height: 100%;
+}
+
+.user-bubble-text {
+  margin: 0;
+  font: var(--ved-style-body, 400 13px/1.5 "Roboto", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif);
+  line-height: 20px;
+  letter-spacing: 0;
+  color: var(--ved-text-primary, #18181B);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.user-bubble-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  height: 40px;
+  background-image: linear-gradient(180deg, #EDEFF200 0%, #EDEFF2 100%);
+  pointer-events: none;
+}
+
+.user-bubble-expand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 4px;
+  height: auto;
+  padding-top: 0px;
+  border: none;
+  background: #EDEFF2;
+  border-radius: 0px;
+  cursor: pointer;
+  color: var(--ved-button-ghost-secondary-text, #71717A);
+}
+
+.user-bubble-expand:hover {
+  background: #EDEFF2;
+  color: var(--ved-button-ghost-secondary-hover-text, #52525B);
+}
+
+.user-bubble-expand-text {
+  line-height: 16px;
+  letter-spacing: 0;
+  color: inherit;
+  font-family: "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 11px;
+}
+
+.user-bubble-expand-icon.expanded {
+  transform: rotate(180deg);
 }
 
 .ai-message {
