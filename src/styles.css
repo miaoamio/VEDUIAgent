@@ -492,7 +492,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   border: none;
   border-radius: 0;
   box-sizing: border-box;
-  font: var(--ved-style-body);
+  font: var(--ved-style-body, 400 13px/1.5 "Roboto", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif);
   letter-spacing: 0;
   color: #111827;
   resize: none;
