@@ -8,6 +8,12 @@ import { loadRegistryV2 } from './registry.loader';
 import { ComponentDefinitionV2 } from './registry.v2.types';
 import { ComponentDefinition, ComponentParam } from './types';
 import {
+  FULL_RERENDER_COMPONENT_IDS,
+  GENERIC_EDITABLE_PARAM_KEYS,
+  COMPONENT_EDITABLE_PARAM_KEYS,
+  GENERATION_ONLY_PARAM_KEYS
+} from './editability';
+import {
   ColorControl,
   FieldRow,
   NumberInputControl,
@@ -1254,6 +1260,10 @@ function App() {
     }
     return '请在画布中选择任意一个元素，即可激活精细化调试面板。';
   }, [canvasHint]);
+
+  React.useEffect(() => {
+    parent.postMessage({ pluginMessage: { type: 'ui-ready' } }, '*');
+  }, []);
 
   React.useEffect(() => {
     if (!agentPlan) {
@@ -5222,6 +5232,18 @@ StepD:
                         specsInfo += `Selection Prompt: ${defV2.prompts?.description || defV2.description}\n`;
                         specsInfo += `Usage Prompt: ${defV2.prompts?.usage || def?.agentPrompt || ''}\n`;
                         specsInfo += `Params: ${JSON.stringify(defV2.params, null, 2)}\n`;
+                        if (def) {
+                            const editableParams = Object.keys(def.params || {}).filter((key) =>
+                              isParamEditable(def, key, def.params[key])
+                            );
+                            const autoHiddenParams = Object.keys(def.params || {}).filter((key) =>
+                              !isParamEditable(def, key, def.params[key])
+                            );
+                            specsInfo += `EditableParams: ${JSON.stringify(editableParams)}\n`;
+                            if (autoHiddenParams.length > 0) {
+                              specsInfo += `AutoHiddenParams: ${JSON.stringify(autoHiddenParams)}\n`;
+                            }
+                        }
                         specsInfo += `Slots: ${JSON.stringify(defV2.slots || {}, null, 2)}\n`;
                         specsInfo += `Capabilities: ${JSON.stringify(defV2.capabilities || {}, null, 2)}\n`;
                         specsInfo += `FigmaBinding: ${JSON.stringify(defV2.figmaBinding || {}, null, 2)}\n`;
@@ -5910,14 +5932,17 @@ StepD:
     ...TAG_PARAM_SETS.status
   ]);
 
-  const GENERATION_ONLY_PARAM_KEYS = new Set(['width', 'height', 'cornerRadius', 'headerHeight', 'bodyHeight']);
   const COLUMN_CONTENT_HIDDEN_KEYS = new Set(['rowCount', 'columnWidthMode', 'textAlign', 'textDisplay', 'headerText']);
 
-  const isParamEditable = (key: string, paramDef?: ComponentParam): boolean => {
+  const isParamEditable = (def: ComponentDefinition, key: string, paramDef?: ComponentParam): boolean => {
     if (!paramDef) return false;
     if (paramDef.uiRole === 'generation-only') return false;
     if (GENERATION_ONLY_PARAM_KEYS.has(key)) return false;
-    return true;
+    if (COMPONENT_EDITABLE_PARAM_KEYS[def.id]?.includes(key)) return true;
+    if (FULL_RERENDER_COMPONENT_IDS.has(def.id)) return true;
+    if (def.id === 'table-column' || def.family === 'table-cell') return true;
+    if (GENERIC_EDITABLE_PARAM_KEYS.has(key)) return true;
+    return false;
   };
 
   const shouldDisplayTagParam = (key: string, params: Record<string, any>): boolean => {
@@ -5953,8 +5978,6 @@ StepD:
     rowAction: '行操作',
     hasPagination: '分页器',
     hasFilter: '筛选器',
-    hasActions: '按钮',
-    hasTabs: '页签',
     textAlign: '对齐方式',
     textDisplay: '文本显示',
     columnWidthMode: '列宽',
@@ -6119,7 +6142,7 @@ StepD:
           {(() => {
             const paramKeys = Object.keys(def.params).filter((key) => {
               const paramDef = def.params[key];
-              if (!isParamEditable(key, paramDef)) return false;
+              if (!isParamEditable(def, key, paramDef)) return false;
               if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
               const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
               return shouldDisplayTagParam(key, effectiveParams);
@@ -6213,14 +6236,6 @@ StepD:
               <label>筛选器</label>
               <SwitchControl value={!!params.hasFilter} onChange={(value) => updateParam('hasFilter', value)} />
             </div>
-            <div className="switch-item">
-              <label>按钮</label>
-              <SwitchControl value={!!params.hasActions} onChange={(value) => updateParam('hasActions', value)} />
-            </div>
-            <div className="switch-item">
-              <label>页签</label>
-              <SwitchControl value={!!params.hasTabs} onChange={(value) => updateParam('hasTabs', value)} />
-            </div>
           </div>
       </div>
     );
@@ -6245,7 +6260,7 @@ StepD:
     const contentParamKeys = contentDef
       ? Object.keys(contentDef.params || {}).filter((key) => {
           const paramDef = contentDef.params[key];
-          if (!isParamEditable(key, paramDef)) return false;
+          if (!isParamEditable(contentDef, key, paramDef)) return false;
           if (isColumn && (key === 'headerType' || COLUMN_CONTENT_HIDDEN_KEYS.has(key))) return false;
           if (contentDef.id !== 'tag' && contentDef.id !== 'table-cell-tag') return true;
           const effectiveParams = buildEffectiveParams(contentDef, selectedComponent.params || {});
@@ -6657,6 +6672,7 @@ StepD:
                   <div key={def.id} className="component-card" style={{ marginBottom: '16px' }}>
                     {(() => {
                       const familyDef = def.family ? defsById[def.family] : undefined;
+                      const legacyDef = COMPONENT_REGISTRY[def.id];
                       const inheritedParamKeys = new Set<string>();
                       if (familyDef && familyDef.id !== def.id) {
                         Object.entries(def.params).forEach(([key, paramDef]) => {
@@ -6669,6 +6685,13 @@ StepD:
                       const displayedParamEntries = Object.entries(def.params).filter(([key]) => (
                         showInheritedParams || !inheritedParamKeys.has(key)
                       ));
+                      const editableParamKeys = legacyDef
+                        ? new Set(
+                          Object.keys(legacyDef.params || {}).filter((key) =>
+                            isParamEditable(legacyDef, key, legacyDef.params[key])
+                          )
+                        )
+                        : new Set<string>();
 
                       return (
                         <>
@@ -6710,6 +6733,11 @@ StepD:
                           已隐藏继承自 <code>{familyDef?.id}</code> 的参数：{inheritedParamKeys.size} 项
                         </div>
                       )}
+                      {legacyDef && (
+                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                          属性面板可编辑参数：{editableParamKeys.size} 项
+                        </div>
+                      )}
                       <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
@@ -6717,24 +6745,29 @@ StepD:
                             <th style={{ padding: '4px' }}>类型</th>
                             <th style={{ padding: '4px' }}>默认值</th>
                             <th style={{ padding: '4px' }}>必填</th>
+                            <th style={{ padding: '4px' }}>可编辑</th>
                             <th style={{ padding: '4px' }}>说明</th>
                           </tr>
                         </thead>
                         <tbody>
                           {displayedParamEntries.map(([key, param]) => {
+                            const editable = legacyDef ? editableParamKeys.has(key) : true;
                             return (
                               <tr key={key} style={{ borderBottom: '1px solid #f0f0f0' }}>
                                 <td style={{ padding: '4px' }}>{key}</td>
                                 <td style={{ padding: '4px' }}><code style={{ background: '#eee', padding: '2px 4px', borderRadius: '3px' }}>{param.type}</code></td>
                                 <td style={{ padding: '4px' }}>{String(param.default)}</td>
                                 <td style={{ padding: '4px' }}>{param.required ? 'yes' : 'no'}</td>
+                                <td style={{ padding: '4px', color: editable ? '#1F7A3D' : '#999' }}>
+                                  {editable ? 'yes' : 'no'}
+                                </td>
                                 <td style={{ padding: '4px' }}>{param.description}</td>
                               </tr>
                             );
                           })}
                           {displayedParamEntries.length === 0 && (
                             <tr>
-                              <td colSpan={5} style={{ padding: '8px', color: '#999' }}>
+                              <td colSpan={6} style={{ padding: '8px', color: '#999' }}>
                                 当前组件无差异参数（均继承自 <code>{familyDef?.id || '-'}</code>）。
                               </td>
                             </tr>

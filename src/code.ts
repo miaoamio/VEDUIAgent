@@ -1,5 +1,6 @@
 import { ComponentInstance, ComponentDefinition } from './types';
 import { COMPONENT_REGISTRY, getDefaultParams } from './registry';
+import { FULL_RERENDER_COMPONENT_IDS } from './editability';
 import { applyEnvelopeUnknown } from './engine/applyEnvelope';
 import {
   createFigmaComponentInstance,
@@ -1778,19 +1779,6 @@ let currentTheme: 'light' | 'dark' = 'light'; // Default theme
 let generationLockEnabled = false;
 const generationLockedNodeIds = new Set<string>();
 const LOCKABLE_COMPONENT_IDS = new Set(['page', 'layout', 'card', 'table', 'table-column']);
-const FULL_RERENDER_COMPONENT_IDS = new Set([
-  'form',
-  'figma-component',
-  'button',
-  'input',
-  'select',
-  'filter-group',
-  'checkbox',
-  'checkbox-group',
-  'radio-group',
-  'form-field',
-  'tag'
-]);
 
 function lockGeneratedContainerNode(node: BaseNode, componentId?: string) {
   if (!generationLockEnabled) return;
@@ -3969,6 +3957,9 @@ function inheritFormFieldParams(
             showColon: currentParams.showColon ?? formParams.showColon,
             ...currentParams
         };
+        if (formParams.requiredMark === false) {
+            nextParams.required = false;
+        }
         return { ...instance, params: nextParams };
     }
 
@@ -3994,6 +3985,81 @@ function inheritRowFormFieldParams(
     delete nextParams.align;
     delete nextParams.width;
     return { ...instance, params: nextParams };
+}
+
+const FORM_INHERITED_PARAM_KEYS = [
+    'align',
+    'layout',
+    'labelAlign',
+    'labelWidthPreset',
+    'labelWidth',
+    'controlWidth',
+    'showColon'
+];
+const FORM_FIELD_DEFAULTS: Record<string, any> = {
+    layout: 'horizontal',
+    labelAlign: 'left',
+    labelWidthPreset: 'custom',
+    labelWidth: 96,
+    controlWidth: 240,
+    showColon: false
+};
+
+function patchFormInstanceSnapshot(
+    snapshot: ComponentInstance,
+    prevParams: Record<string, any>,
+    nextParams: Record<string, any>
+): ComponentInstance {
+    const oldColumnSpacing = toPositiveNumber(prevParams.columnSpacing);
+    const newColumnSpacing = toPositiveNumber(nextParams.columnSpacing);
+
+    const shouldInheritValue = (current: unknown, previous: unknown): boolean =>
+        current === undefined || current === previous;
+
+    const patchChild = (child: ComponentInstance): ComponentInstance => {
+        let nextChild = child;
+        if (child.componentId === 'form-row') {
+            const rowParams = { ...(child.params || {}) };
+            const currentSpacing = toPositiveNumber(rowParams.spacing);
+            const inheritedSpacing =
+                currentSpacing === null ||
+                currentSpacing === oldColumnSpacing ||
+                (oldColumnSpacing === null && currentSpacing === 16);
+            if (newColumnSpacing !== null && inheritedSpacing) {
+                rowParams.spacing = newColumnSpacing;
+            }
+            nextChild = { ...child, params: rowParams };
+        }
+
+        if (child.componentId === 'form-field') {
+            const fieldParams = { ...(child.params || {}) };
+            FORM_INHERITED_PARAM_KEYS.forEach((key) => {
+                const inheritsByDefault =
+                    prevParams[key] === undefined &&
+                    FORM_FIELD_DEFAULTS[key] !== undefined &&
+                    fieldParams[key] === FORM_FIELD_DEFAULTS[key];
+                if (shouldInheritValue(fieldParams[key], prevParams[key]) || inheritsByDefault) {
+                    delete fieldParams[key];
+                }
+            });
+            nextChild = { ...child, params: fieldParams };
+        }
+
+        if (Array.isArray(nextChild.children)) {
+            nextChild = { ...nextChild, children: nextChild.children.map(patchChild) };
+        }
+        return nextChild;
+    };
+
+    const next: ComponentInstance = {
+        ...snapshot,
+        componentId: 'form',
+        params: nextParams
+    };
+    if (Array.isArray(snapshot.children)) {
+        next.children = snapshot.children.map(patchChild);
+    }
+    return next;
 }
 
 function mapFormRowAlignment(value: unknown): 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN' {
@@ -5024,6 +5090,77 @@ function readNodeParams(node: BaseNode): Record<string, any> {
   }
 }
 
+const COMPONENT_INSTANCE_KEY = 'component-instance';
+
+function shouldStoreComponentInstance(instance: ComponentInstance): boolean {
+  return FULL_RERENDER_COMPONENT_IDS.has(instance.componentId);
+}
+
+function collectChildComponentNodes(root: SceneNode): SceneNode[] {
+  const results: SceneNode[] = [];
+  const stack: SceneNode[] = [];
+  if ('children' in root) {
+    stack.push(...root.children);
+  }
+  while (stack.length > 0) {
+    const current = stack.shift();
+    if (!current) continue;
+    if ('getPluginData' in current && current.getPluginData('component-id')) {
+      results.push(current);
+      continue;
+    }
+    if ('children' in current) {
+      stack.push(...current.children);
+    }
+  }
+  return results;
+}
+
+function buildComponentInstanceFromNode(node: SceneNode): ComponentInstance | null {
+  if (!('getPluginData' in node)) return null;
+  const componentId = node.getPluginData('component-id');
+  if (!componentId) return null;
+  const params = readNodeParams(node);
+  const instance: ComponentInstance = {
+    id: node.id,
+    componentId,
+    params
+  };
+  const childComponentNodes = collectChildComponentNodes(node);
+  if (childComponentNodes.length > 0) {
+    const children = childComponentNodes
+      .map((child) => buildComponentInstanceFromNode(child))
+      .filter(Boolean) as ComponentInstance[];
+    if (children.length > 0) {
+      instance.children = children;
+    }
+  }
+  return instance;
+}
+
+function readComponentInstanceSnapshot(node: BaseNode): ComponentInstance | null {
+  if (!('getPluginData' in node)) return null;
+  const raw = node.getPluginData(COMPONENT_INSTANCE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!parsed.componentId || !parsed.params) return null;
+    return parsed as ComponentInstance;
+  } catch {
+    return null;
+  }
+}
+
+function writeComponentInstanceSnapshot(node: BaseNode, instance: ComponentInstance) {
+  if (!('setPluginData' in node)) return;
+  try {
+    node.setPluginData(COMPONENT_INSTANCE_KEY, JSON.stringify(instance));
+  } catch (e) {
+    console.warn('Failed to write component instance snapshot', e);
+  }
+}
+
 function writeNodeParams(node: BaseNode, nextParams: Record<string, any>) {
   if (!('setPluginData' in node)) return;
   try {
@@ -5036,6 +5173,36 @@ function writeNodeParams(node: BaseNode, nextParams: Record<string, any>) {
 function mergeNodeParams(node: BaseNode, patch: Record<string, any>) {
   const current = readNodeParams(node);
   writeNodeParams(node, { ...current, ...patch });
+}
+
+function applyNodeSize(node: SceneNode, width: number | null, height: number | null) {
+  const nextWidth = typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : node.width;
+  const nextHeight = typeof height === 'number' && Number.isFinite(height) && height > 0 ? height : node.height;
+  if ('resize' in node && (nextWidth !== node.width || nextHeight !== node.height)) {
+    try {
+      node.resize(nextWidth, nextHeight);
+    } catch {
+      // ignore
+    }
+  }
+
+  if ('layoutMode' in node && node.layoutMode !== 'NONE') {
+    const isHorizontal = node.layoutMode === 'HORIZONTAL';
+    if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+      if (isHorizontal && 'primaryAxisSizingMode' in node) {
+        node.primaryAxisSizingMode = 'FIXED';
+      } else if (!isHorizontal && 'counterAxisSizingMode' in node) {
+        node.counterAxisSizingMode = 'FIXED';
+      }
+    }
+    if (typeof height === 'number' && Number.isFinite(height) && height > 0) {
+      if (!isHorizontal && 'primaryAxisSizingMode' in node) {
+        node.primaryAxisSizingMode = 'FIXED';
+      } else if (isHorizontal && 'counterAxisSizingMode' in node) {
+        node.counterAxisSizingMode = 'FIXED';
+      }
+    }
+  }
 }
 
 function collectTextNodes(root: SceneNode): TextNode[] {
@@ -5477,6 +5644,7 @@ async function renderComponent(
     frame.itemSpacing = Number(params.rowSpacing) > 0 ? Number(params.rowSpacing) : (normalizeFormAlign(params.align) === 'top' ? 24 : 12);
     frame.fills = [];
     frame.clipsContent = false;
+    const columnSpacing = toPositiveNumber(params.columnSpacing);
 
     const width = Number(params.width);
     if (Number.isFinite(width) && width > 0) {
@@ -5494,7 +5662,20 @@ async function renderComponent(
 
     if (instance.children) {
         for (const child of instance.children) {
-            const childNode = await renderComponent(inheritFormFieldParams(params, child), { isRoot: false });
+            const nextChild =
+                child.componentId === 'form-row' && columnSpacing !== null
+                    ? {
+                        ...child,
+                        params: {
+                            ...(child.params || {}),
+                            spacing:
+                                toPositiveNumber((child.params || {}).spacing) === null
+                                    ? columnSpacing
+                                    : (child.params || {}).spacing
+                        }
+                    }
+                    : child;
+            const childNode = await renderComponent(inheritFormFieldParams(params, nextChild), { isRoot: false });
             if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && frame.counterAxisSizingMode === 'FIXED') {
                 childNode.layoutAlign = 'STRETCH';
             }
@@ -6268,6 +6449,9 @@ async function renderComponent(
       // Set characters AFTER setting the font
       textNode.characters = params.text || 'Text';
       if (params.fontSize) textNode.fontSize = params.fontSize;
+      if (params.lineHeight && Number(params.lineHeight) > 0) {
+          textNode.lineHeight = { value: Number(params.lineHeight), unit: 'PIXELS' };
+      }
       
       if (params.color) {
           await applyColorVariable(textNode, "text-custom-key", params.color);
@@ -6830,10 +7014,20 @@ async function renderComponent(
         title.characters = params.title;
         if (!title.fontSize) title.fontSize = 14;
         await applyColorVariable(title, "chart-title", "#000000");
+        try {
+            title.setPluginData('chart-role', 'title');
+        } catch {
+            // ignore
+        }
         frame.appendChild(title);
     }
 
     const chartArea = figma.createFrame();
+    try {
+        chartArea.setPluginData('chart-role', 'area');
+    } catch {
+        // ignore
+    }
     chartArea.layoutMode = 'HORIZONTAL';
     chartArea.primaryAxisAlignItems = 'SPACE_BETWEEN';
     chartArea.counterAxisAlignItems = 'MAX';
@@ -6871,6 +7065,9 @@ async function renderComponent(
   node.setPluginData('is-ai-component', 'true');
   node.setPluginData('component-id', instance.componentId);
   node.setPluginData('params', JSON.stringify(params));
+  if (shouldStoreComponentInstance(instance)) {
+    writeComponentInstanceSnapshot(node, instance);
+  }
 
   return node;
 }
@@ -7236,6 +7433,10 @@ figma.ui.onmessage = async (msg) => {
     }
   }
 
+  if (msg.type === 'ui-ready') {
+    checkSelection();
+  }
+
   if (msg.type === 'inspect-figma-component-props') {
     const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
     const maxCountRaw = Number(payload.maxCount);
@@ -7369,11 +7570,22 @@ figma.ui.onmessage = async (msg) => {
       
       if (componentId) {
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
-          const replacement = await renderComponent({
-            id: `update-${Date.now()}`,
-            componentId,
-            params
-          });
+          const previousParams = readNodeParams(node);
+          let snapshot = readComponentInstanceSnapshot(node);
+          if (!snapshot) {
+            snapshot = buildComponentInstanceFromNode(node);
+            if (snapshot) {
+              writeComponentInstanceSnapshot(node, snapshot);
+            }
+          }
+          const baseInstance: ComponentInstance = snapshot
+            ? { ...snapshot, componentId, params }
+            : { id: `update-${Date.now()}`, componentId, params };
+          const instanceToRender =
+            componentId === 'form' && snapshot
+              ? patchFormInstanceSnapshot(snapshot, previousParams, params)
+              : baseInstance;
+          const replacement = await renderComponent(instanceToRender);
 
           if (replaceSceneNode(node, replacement)) {
             figma.currentPage.selection = [replacement];
@@ -7415,9 +7627,10 @@ figma.ui.onmessage = async (msg) => {
                       : preferredBgKey || 'layout-bg-key';
                 await applyColorVariable(node, fillKey, params.backgroundColor);
              }
-             if (params.width && params.width > 0) {
-                 node.resize(params.width, node.height);
-                 node.primaryAxisSizingMode = 'FIXED';
+             const nextWidth = toPositiveNumber(params.width);
+             const nextHeight = toPositiveNumber(params.height);
+             if (nextWidth !== null || nextHeight !== null) {
+                 applyNodeSize(node, nextWidth, nextHeight);
              }
              if (params.cornerRadius !== undefined) {
                  node.cornerRadius = params.cornerRadius;
@@ -7451,6 +7664,18 @@ figma.ui.onmessage = async (msg) => {
                  }
              }
         }
+
+        if (componentId === 'layout' && node.type === 'FRAME') {
+            const direction = String(params.direction || '').trim().toLowerCase() === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
+            node.layoutMode = direction;
+            if (params.clipsContent !== undefined) {
+                node.clipsContent = Boolean(params.clipsContent);
+            }
+        }
+
+        if (componentId === 'form-row' && node.type === 'FRAME') {
+            node.primaryAxisAlignItems = mapFormRowAlignment(params.align);
+        }
         
         if (node.type === 'TEXT') {
             const typographyKey = findComponentTypographyKey(
@@ -7472,9 +7697,44 @@ figma.ui.onmessage = async (msg) => {
                 node.characters = params.text;
             }
             if (params.fontSize) node.fontSize = params.fontSize;
+            if (params.lineHeight && Number(params.lineHeight) > 0) {
+                node.lineHeight = { value: Number(params.lineHeight), unit: 'PIXELS' };
+            }
             if (params.color) {
                 // node.fills = [{ type: 'SOLID', color: parseColor(params.color) }];
                 await applyColorVariable(node, "text-custom-key", params.color);
+            }
+        }
+
+        if (componentId === 'chart-bar' && node.type === 'FRAME') {
+            const height = toPositiveNumber(params.height);
+            if (height !== null) {
+                applyNodeSize(node, null, height);
+            }
+
+            const titleText = String(params.title || '').trim();
+            let titleNode = node.children.find(
+                (child) => child.type === 'TEXT' && child.getPluginData('chart-role') === 'title'
+            ) as TextNode | undefined;
+            if (!titleNode) {
+                titleNode = node.children.find((child) => child.type === 'TEXT') as TextNode | undefined;
+            }
+
+            if (titleText) {
+                if (!titleNode) {
+                    titleNode = figma.createText();
+                    titleNode.setPluginData('chart-role', 'title');
+                    await applyTextStyleBinding(titleNode, 'chart-title-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
+                    await applyColorVariable(titleNode, "chart-title", "#000000");
+                    node.insertChild(0, titleNode);
+                }
+                await updateTextNodeCharacters(titleNode, titleText);
+            } else if (titleNode) {
+                try {
+                    titleNode.remove();
+                } catch {
+                    // ignore
+                }
             }
         }
 

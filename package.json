@@ -7,6 +7,7 @@
     "build": "npm run build:ui && npm run build:main",
     "build:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
     "build:ui": "vite build",
+    "spec:param:audit": "node scripts/registry-param-audit.mjs",
     "spec:snapshot:apply": "node scripts/apply-component-spec-patch.mjs",
     "spec:snapshot:status": "node scripts/component-snapshot-status.mjs",
     "watch": "concurrently \"npm run watch:main\" \"npm run watch:ui\"",
