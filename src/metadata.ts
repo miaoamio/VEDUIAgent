@@ -41,7 +41,7 @@ export interface MetadataWarning {
   key?: string;
 }
 
-export interface NodeMetadataV1 {
+export interface NodeMetadata {
   nodeId: string;
   componentId: string;
   version: typeof METADATA_VERSION;
@@ -141,7 +141,7 @@ function setPluginDataSafe(node: PluginDataNode, key: string, value: string): Me
   }
 }
 
-function normalizeLegacyMeta(raw: Record<string, string>, fallbackNodeId?: string): NodeMetadataV1 | null {
+function normalizeLegacyMeta(raw: Record<string, string>, fallbackNodeId?: string): NodeMetadata | null {
   const componentId = raw["component-id"];
   if (!componentId) return null;
 
@@ -171,7 +171,7 @@ function readComplexField<T>(
   return safeParseJson<T>(raw, key);
 }
 
-function ensureRequired(meta: Partial<NodeMetadataV1>): MetadataResult<null> {
+function ensureRequired(meta: Partial<NodeMetadata>): MetadataResult<null> {
   if (!meta.nodeId || !meta.componentId) {
     return {
       ok: false,
@@ -193,7 +193,7 @@ function ensureRequired(meta: Partial<NodeMetadataV1>): MetadataResult<null> {
   return { ok: true, data: null };
 }
 
-export function readNodeMeta(node: BaseNode | null): MetadataResult<NodeMetadataV1 | null> {
+export function readNodeMeta(node: BaseNode | null): MetadataResult<NodeMetadata | null> {
   if (!isPluginDataNode(node)) {
     return { ok: true, data: null };
   }
@@ -250,7 +250,7 @@ export function readNodeMeta(node: BaseNode | null): MetadataResult<NodeMetadata
   const bindings = readComplexField<DataBinding[]>(node, META_KEY.bindings);
   if (!bindings.ok) return bindings;
 
-  const meta: NodeMetadataV1 = {
+  const meta: NodeMetadata = {
     nodeId,
     componentId,
     version: METADATA_VERSION,
@@ -267,7 +267,7 @@ export function readNodeMeta(node: BaseNode | null): MetadataResult<NodeMetadata
   return { ok: true, data: meta };
 }
 
-function writeLegacyMirror(node: PluginDataNode, meta: NodeMetadataV1): MetadataResult<null> {
+function writeLegacyMirror(node: PluginDataNode, meta: NodeMetadata): MetadataResult<null> {
   const paramsSerialized = stringifyWithLimit(meta.props ?? {}, "params");
   if (!paramsSerialized.ok) return paramsSerialized;
 
@@ -284,7 +284,7 @@ function writeLegacyMirror(node: PluginDataNode, meta: NodeMetadataV1): Metadata
   return { ok: true, data: null, warnings: paramsSerialized.warnings };
 }
 
-export function writeNodeMeta(node: BaseNode, meta: NodeMetadataV1): MetadataResult<null> {
+export function writeNodeMeta(node: BaseNode, meta: NodeMetadata): MetadataResult<null> {
   if (!isPluginDataNode(node)) {
     return {
       ok: false,
@@ -299,7 +299,7 @@ export function writeNodeMeta(node: BaseNode, meta: NodeMetadataV1): MetadataRes
   if (!requiredCheck.ok) return requiredCheck;
 
   const warnings: MetadataWarning[] = [];
-  const nextMeta: NodeMetadataV1 = {
+  const nextMeta: NodeMetadata = {
     ...meta,
     version: METADATA_VERSION,
     updatedAt: meta.updatedAt ?? new Date().toISOString()
@@ -347,8 +347,8 @@ export function writeNodeMeta(node: BaseNode, meta: NodeMetadataV1): MetadataRes
 
 export function updateNodeMeta(
   node: BaseNode,
-  patch: Partial<NodeMetadataV1>
-): MetadataResult<NodeMetadataV1> {
+  patch: Partial<NodeMetadata>
+): MetadataResult<NodeMetadata> {
   const existing = readNodeMeta(node);
   if (!existing.ok) return existing;
   if (!existing.data) {
@@ -361,7 +361,7 @@ export function updateNodeMeta(
     };
   }
 
-  const merged: NodeMetadataV1 = {
+  const merged: NodeMetadata = {
     ...existing.data,
     ...patch,
     version: METADATA_VERSION,

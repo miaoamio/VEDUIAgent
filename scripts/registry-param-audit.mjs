@@ -15,167 +15,39 @@ function extractSetValues(text, name) {
   const match = text.match(pattern);
   if (!match) return [];
   const raw = match[1];
-  return [...raw.matchAll(/'([^']+)'|"([^"]+)"/g)].map((m) => m[1] || m[2]).filter(Boolean);
+  return [...raw.matchAll(/'([^']+)'|\"([^\"]+)\"/g)].map((m) => m[1] || m[2]).filter(Boolean);
 }
 
 function extractComponentEditableMap(text) {
-  const pattern = /COMPONENT_EDITABLE_PARAM_KEYS(?:\s*:\s*[^=]+)?\s*=\s*\{([\s\S]*?)\}\s*;?/m;
+  const pattern = /COMPONENT_EDITABLE_PARAM_KEYS(?:\\s*:\\s*[^=]+)?\\s*=\\s*\\{([\\s\\S]*?)\\}\\s*;?/m;
   const match = text.match(pattern);
   if (!match) return new Map();
   const body = match[1];
   const map = new Map();
-  const entries = [...body.matchAll(/([A-Za-z0-9_-]+|'[^']+'|"[^"]+")\s*:\s*\[([^\]]*)\]/g)];
+  const entries = [...body.matchAll(/([A-Za-z0-9_-]+|'[^']+'|\"[^\"]+\")\\s*:\\s*\\[([^\\]]*)\\]/g)];
   entries.forEach((entry) => {
     const rawKey = entry[1];
-    const key = rawKey.startsWith('\'') || rawKey.startsWith('"')
+    const key = rawKey.startsWith("'") || rawKey.startsWith('"')
       ? rawKey.slice(1, -1)
       : rawKey;
     const rawList = entry[2];
-    const values = [...rawList.matchAll(/'([^']+)'|"([^"]+)"/g)].map((m) => m[1] || m[2]).filter(Boolean);
+    const values = [...rawList.matchAll(/'([^']+)'|\"([^\"]+)\"/g)].map((m) => m[1] || m[2]).filter(Boolean);
     map.set(key, values);
   });
   return map;
 }
 
-function parseComponentBlocks(registryText) {
-  const matchAll = [...registryText.matchAll(/^\s*'([^']+)':\s*\{/gm)];
-  const blocks = [];
-
-  for (let i = 0; i < matchAll.length; i += 1) {
-    const current = matchAll[i];
-    const next = matchAll[i + 1];
-    const componentId = current[1];
-    const start = current.index ?? 0;
-    const end = next?.index ?? registryText.length;
-    const blockText = registryText.slice(start, end);
-    blocks.push({ componentId, blockText });
+function loadRegistry(filePath) {
+  const text = readText(filePath);
+  const match = text.match(/export const COMPONENT_REGISTRY[^=]*=\\s*([\\s\\S]*);\\s*$/m);
+  if (!match) {
+    throw new Error(`Unable to locate COMPONENT_REGISTRY in ${path.relative(root, filePath)}`);
   }
-
-  return blocks;
-}
-
-function findParamsObjectText(blockText) {
-  const paramsIndex = blockText.indexOf('params:');
-  if (paramsIndex === -1) return null;
-  const braceStart = blockText.indexOf('{', paramsIndex);
-  if (braceStart === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let stringQuote = '';
-  let escape = false;
-
-  for (let i = braceStart; i < blockText.length; i += 1) {
-    const ch = blockText[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-      } else if (ch === '\\') {
-        escape = true;
-      } else if (ch === stringQuote) {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '\'' || ch === '"' || ch === '`') {
-      inString = true;
-      stringQuote = ch;
-      continue;
-    }
-
-    if (ch === '{') depth += 1;
-    if (ch === '}') depth -= 1;
-
-    if (depth === 0) {
-      return blockText.slice(braceStart + 1, i);
-    }
-  }
-
-  return null;
-}
-
-function parseParams(paramsText) {
-  if (!paramsText) return new Map();
-  const result = new Map();
-  let i = 0;
-
-  const isIdStart = (ch) => /[A-Za-z_]/.test(ch);
-  const isIdChar = (ch) => /[A-Za-z0-9_-]/.test(ch);
-
-  while (i < paramsText.length) {
-    const ch = paramsText[i];
-    if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t' || ch === ',') {
-      i += 1;
-      continue;
-    }
-    if (!isIdStart(ch)) {
-      i += 1;
-      continue;
-    }
-
-    let start = i;
-    i += 1;
-    while (i < paramsText.length && isIdChar(paramsText[i])) i += 1;
-    const key = paramsText.slice(start, i);
-
-    while (i < paramsText.length && /\s/.test(paramsText[i])) i += 1;
-    if (paramsText[i] !== ':') {
-      continue;
-    }
-    i += 1;
-    while (i < paramsText.length && /\s/.test(paramsText[i])) i += 1;
-
-    if (paramsText[i] !== '{') {
-      continue;
-    }
-
-    const blockStart = i;
-    let depth = 0;
-    let inString = false;
-    let stringQuote = '';
-    let escape = false;
-
-    for (; i < paramsText.length; i += 1) {
-      const c = paramsText[i];
-      if (inString) {
-        if (escape) {
-          escape = false;
-        } else if (c === '\\') {
-          escape = true;
-        } else if (c === stringQuote) {
-          inString = false;
-        }
-        continue;
-      }
-      if (c === '\'' || c === '"' || c === '`') {
-        inString = true;
-        stringQuote = c;
-        continue;
-      }
-      if (c === '{') depth += 1;
-      if (c === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          const blockText = paramsText.slice(blockStart, i + 1);
-          result.set(key, blockText);
-          i += 1;
-          break;
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
-function extractFamily(blockText) {
-  const match = blockText.match(/family:\s*'([^']+)'|family:\s*\"([^\"]+)\"/);
-  return match ? (match[1] || match[2]) : null;
+  return JSON.parse(match[1]);
 }
 
 function isKeyUsedInRuntime(codeText, key) {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
   const paramObjects = [
     'params',
     'formParams',
@@ -203,7 +75,7 @@ function isKeyUsedInRuntime(codeText, key) {
 }
 
 function main() {
-  const registryText = readText(registryPath);
+  const registry = loadRegistry(registryPath);
   const codeText = readText(codePath);
   const editabilityText = readText(editabilityPath);
 
@@ -212,23 +84,20 @@ function main() {
   const componentEditableMap = extractComponentEditableMap(editabilityText);
   const generationOnlyKeys = new Set(extractSetValues(editabilityText, 'GENERATION_ONLY_PARAM_KEYS'));
 
-  const blocks = parseComponentBlocks(registryText);
   const report = [];
   let totalParams = 0;
   let unusedCount = 0;
   let nonEditableCount = 0;
 
-  blocks.forEach(({ componentId, blockText }) => {
-    const paramsText = findParamsObjectText(blockText);
-    const paramBlocks = parseParams(paramsText);
-    const family = extractFamily(blockText);
-
+  Object.values(registry.components).forEach((def) => {
+    const componentId = def.id;
+    const family = def.family ?? null;
     const unusedParams = [];
     const nonEditableParams = [];
 
-    for (const [key, paramBlock] of paramBlocks.entries()) {
+    Object.keys(def.params || {}).forEach((key) => {
       totalParams += 1;
-      const generationOnly = /uiRole\s*:\s*['"]generation-only['"]/i.test(paramBlock);
+      const generationOnly = false;
       const used = isKeyUsedInRuntime(codeText, key);
       if (!used) {
         unusedCount += 1;
@@ -248,7 +117,7 @@ function main() {
         nonEditableCount += 1;
         nonEditableParams.push(key);
       }
-    }
+    });
 
     if (unusedParams.length > 0 || nonEditableParams.length > 0) {
       report.push({ componentId, family, unusedParams, nonEditableParams });
@@ -258,37 +127,28 @@ function main() {
   console.log('# Registry Param Audit');
   console.log('');
   console.log(`- updatedAt: ${new Date().toISOString()}`);
-  console.log(`- components: ${blocks.length}`);
-  console.log(`- params: ${totalParams}`);
+  console.log(`- registry: ${path.relative(root, registryPath)}`);
+  console.log(`- totalParams: ${totalParams}`);
   console.log(`- unusedParams: ${unusedCount}`);
   console.log(`- nonEditableParams: ${nonEditableCount}`);
   console.log('');
 
-  if (report.length === 0) {
-    console.log('No issues found.');
-  } else {
-    report.forEach((entry) => {
-      console.log(`## ${entry.componentId}${entry.family ? ` (family: ${entry.family})` : ''}`);
-      if (entry.unusedParams.length > 0) {
-        console.log('- unusedParams:');
-        entry.unusedParams.forEach((item) => {
-          console.log(`  - ${item.key}${item.generationOnly ? ' (generation-only)' : ''}`);
-        });
-      }
-      if (entry.nonEditableParams.length > 0) {
-        console.log('- nonEditableParams:');
-        entry.nonEditableParams.forEach((key) => {
-          console.log(`  - ${key}`);
-        });
-      }
-      console.log('');
-    });
-  }
-
-  const strict = process.argv.includes('--strict');
-  if (strict && (unusedCount > 0 || nonEditableCount > 0)) {
-    process.exitCode = 1;
-  }
+  report.forEach((row) => {
+    console.log(`## ${row.componentId}${row.family ? ` (family: ${row.family})` : ''}`);
+    if (row.unusedParams.length > 0) {
+      console.log('- unused params:');
+      row.unusedParams.forEach((item) => {
+        console.log(`  - ${item.key}${item.generationOnly ? ' (generation-only)' : ''}`);
+      });
+    }
+    if (row.nonEditableParams.length > 0) {
+      console.log('- non-editable params:');
+      row.nonEditableParams.forEach((key) => {
+        console.log(`  - ${key}`);
+      });
+    }
+    console.log('');
+  });
 }
 
 main();

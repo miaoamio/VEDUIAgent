@@ -41,8 +41,8 @@
 
 1. Scene 协议类型与校验：
 [src/protocol/scene.ts](/Users/bytedance/Desktop/figmaUIagent/src/protocol/scene.ts)
-2. Registry v2 类型与加载器：
-[src/registry.v2.types.ts](/Users/bytedance/Desktop/figmaUIagent/src/registry.v2.types.ts)
+2. Registry 类型与加载器：
+[src/registry.types.ts](/Users/bytedance/Desktop/figmaUIagent/src/registry.types.ts)
 [src/registry.loader.ts](/Users/bytedance/Desktop/figmaUIagent/src/registry.loader.ts)
 3. Metadata 统一读写（`uia.*` + legacy 兼容）：
 [src/metadata.ts](/Users/bytedance/Desktop/figmaUIagent/src/metadata.ts)

@@ -1,5 +1,5 @@
 import type { AiSceneEnvelope, SceneProtocolError, SceneNode as ProtocolSceneNode } from "../protocol/scene";
-import type { ComponentRegistryV2 } from "../registry.v2.types";
+import type { ComponentRegistry } from "../registry.types";
 
 export type ApplyMode = "strict" | "best_effort";
 
@@ -48,7 +48,7 @@ export interface ParentLink {
 
 export interface ApplyContext {
   mode: ApplyMode;
-  registry: ComponentRegistryV2;
+  registry: ComponentRegistry;
   nodeMap: Map<string, SceneNode>;
   sceneMap: Map<string, ProtocolSceneNode>;
   parentMap: Map<string, ParentLink>;
@@ -66,7 +66,7 @@ export interface ExecuteOperationResult {
 }
 
 export interface ApplyEnvelopeOptions {
-  registry?: ComponentRegistryV2;
+  registry?: ComponentRegistry;
   mode?: ApplyMode;
   cancelToken?: CancelToken;
 }

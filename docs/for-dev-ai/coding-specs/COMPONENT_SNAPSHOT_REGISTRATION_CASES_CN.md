@@ -34,7 +34,6 @@
 | `input` | `lib-data-input-input` | 建议登记为 `yes` | 已在映射表 |
 | `select` | `lib-data-input-select` | 建议登记为 `yes` | 已在映射表 |
 | `card` | `lib-data-display-card` | 建议登记为 `yes` | 已在映射表 |
-| `chart-bar` | 待确认 | 初期可为 `no` | 本地图表示例组件 |
 
 ## 4. 单组件执行模板（复制后替换）
 1. 在 `定向反查` 输入：`<token>`。

@@ -720,7 +720,7 @@
               <option value="date">日期 (MM-DD)</option>
               <option value="year">年份 (YYYY)</option>
               <option value="week">星期 (周一~周日)</option>
-              <option value="version">版本号 (v1.0.x)</option>
+              <option value="version">版本号 (1.0.x)</option>
               <option value="category">类别 (Category)</option>
             </select>
           </div>
@@ -1497,7 +1497,7 @@
           }
       } else if (xAxisType === 'version') {
           for (let i = 0; i < cols; i++) {
-              labels.push(`v1.${i}.0`);
+              labels.push(`1.${i}.0`);
           }
       } else if (xAxisType === 'commit') {
           for (let i = 0; i < cols; i++) {

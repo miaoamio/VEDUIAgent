@@ -9,25 +9,13 @@ function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
-function parseComponentBlocks(registryText) {
-  const matchAll = [...registryText.matchAll(/^\s*'([^']+)':\s*\{/gm)];
-  const blocks = [];
-
-  for (let i = 0; i < matchAll.length; i += 1) {
-    const current = matchAll[i];
-    const next = matchAll[i + 1];
-    const componentId = current[1];
-    const start = current.index ?? 0;
-    const end = next?.index ?? registryText.length;
-    const blockText = registryText.slice(start, end);
-    blocks.push({
-      componentId,
-      hasSnapshot: blockText.includes('figmaPropertySnapshot:'),
-      hasComponentTokenParam: /componentToken:\s*\{/.test(blockText)
-    });
+function loadRegistry(filePath) {
+  const text = readText(filePath);
+  const match = text.match(/export const COMPONENT_REGISTRY[^=]*=\\s*([\\s\\S]*);\\s*$/m);
+  if (!match) {
+    throw new Error(`Unable to locate COMPONENT_REGISTRY in ${path.relative(root, filePath)}`);
   }
-
-  return blocks;
+  return JSON.parse(match[1]);
 }
 
 function parseTokenMap(tokenMapText) {
@@ -50,19 +38,18 @@ function parseTokenMap(tokenMapText) {
 }
 
 function main() {
-  const registryText = readText(registryPath);
+  const registry = loadRegistry(registryPath);
   const tokenMapText = readText(tokenMapPath);
-  const blocks = parseComponentBlocks(registryText);
   const { componentToTokens } = parseTokenMap(tokenMapText);
 
-  const rows = blocks.map((item) => {
-    const mappedTokens = componentToTokens.get(item.componentId) || [];
+  const rows = Object.values(registry.components).map((def) => {
+    const mappedTokens = componentToTokens.get(def.id) || [];
     const tokenLabel = mappedTokens.length > 0 ? mappedTokens.join(', ') : '-';
     return {
-      componentId: item.componentId,
+      componentId: def.id,
       mappedTokens: tokenLabel,
-      hasSnapshot: item.hasSnapshot ? 'yes' : 'no',
-      hasComponentTokenParam: item.hasComponentTokenParam ? 'yes' : 'no'
+      hasSnapshot: def.figmaPropertySnapshot ? 'yes' : 'no',
+      hasComponentTokenParam: Boolean(def.params?.componentToken) ? 'yes' : 'no'
     };
   });
 
@@ -72,6 +59,7 @@ function main() {
   console.log(`# Snapshot Registration Status`);
   console.log('');
   console.log(`- updatedAt: ${new Date().toISOString()}`);
+  console.log(`- registry: ${path.relative(root, registryPath)}`);
   console.log(`- totalComponents: ${total}`);
   console.log(`- withSnapshot: ${withSnapshot}`);
   console.log(`- withoutSnapshot: ${total - withSnapshot}`);

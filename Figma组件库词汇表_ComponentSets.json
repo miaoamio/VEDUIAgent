@@ -1088,5 +1088,45 @@
     "name": "Pagination 分页",
     "key": "0e1ed7b2c19ed13d7889ad0e3373d861a8a34477",
     "description": "分类：导航"
+  },
+  {
+    "name": "Component/PieChart",
+    "key": "ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Toplist 条形图",
+    "key": "6acea515cbcd1ae970ef5627425bd55cbda137ff",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "AreaChart 面积图",
+    "key": "99fdb5caaa7ae3a429f0bb83022f737cd34caa01",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "BarChart 柱状图",
+    "key": "a83efa5b5ba4efbdb96694268b50e43a61bee971",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "折线组合/dataLinesCombo",
+    "key": "fb05d0401cd1498466b2d5ee86d5a7723bc95a39",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Card/PieChart",
+    "key": "a414c3e671b3619d480d4932b83d9969b7ebbe03",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "折线图",
+    "key": "62d6b59603766fdb416ff787eec5d21800264694",
+    "description": "分类：数据展示"
+  },
+  {
+    "name": "Mini_pie_chart",
+    "key": "4813f178fd503bfdad6cef802eb09ca927d4e733",
+    "description": "分类：数据展示"
   }
 ]

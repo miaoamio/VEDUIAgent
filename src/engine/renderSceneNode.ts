@@ -1,5 +1,5 @@
 import type { LayoutSpec, SceneNode as ProtocolSceneNode, StyleSpec } from "../protocol/scene";
-import type { ComponentDefinitionV2 } from "../registry.v2.types";
+import type { ComponentDefinition } from "../registry.types";
 import { createFigmaComponentInstance, parseVariantCriteria } from "../figmaComponent";
 import { createInspectDrivenTagFallbackNode } from "../tag.fallback";
 import { resolveComponentTokenProfile } from "../theme.component-tokens";
@@ -690,7 +690,7 @@ function createFallbackFrameNode(sceneNode: ProtocolSceneNode): FrameNode {
 }
 
 async function createFigmaNode(
-  definition: ComponentDefinitionV2,
+  definition: ComponentDefinition,
   sceneNode: ProtocolSceneNode,
   ctx: ApplyContext
 ): Promise<SceneNode> {

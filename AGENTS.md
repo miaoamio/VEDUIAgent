@@ -12,8 +12,10 @@
 - `docs/for-runtime-ai/AI_RUNTIME_SPEC_CODING_CN.md` 是运行时主规范；如果与其他说明冲突，以它为准。
 - 需要协议/执行细节时，再按需补读：
   - `docs/for-dev-ai/coding-specs/SPEC_RENDER_ENGINE_CN.md`
-  - `docs/for-dev-ai/coding-specs/SPEC_REGISTRY_V2_CN.md`
+  - `docs/for-dev-ai/coding-specs/SPEC_REGISTRY_CN.md`
   - `docs/for-runtime-ai/specs/SPEC_PROTOCOL_SCENE_CN.md`
+- 涉及图表组件登记与变体探测时，补读：
+  - `docs/for-dev-ai/coding-specs/CHART_COMPONENT_REGISTRATION_WORKFLOW_CN.md`
 
 ## High-Fidelity Rebuild
 - 用户要求"复刻设计系统组件"时，默认按高保真复刻处理，不优先自绘。

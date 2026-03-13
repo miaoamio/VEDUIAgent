@@ -283,8 +283,8 @@ interface SceneProtocolError {
           "children": [
             {
               "nodeId": "chart_1",
-              "componentId": "chart-bar",
-              "props": { "title": "近7天趋势", "height": 220 }
+              "componentId": "figma-component",
+              "props": { "componentToken": "lib-data-display-toplist", "fallbackName": "近7天趋势", "height": 220 }
             }
           ]
         }

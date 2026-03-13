@@ -1,10 +1,10 @@
 import { parseAiSceneEnvelope, type AiSceneEnvelope } from './protocol/scene';
-import { validateRegistryV2 } from './registry.loader';
+import { validateRegistry } from './registry.loader';
 import {
-  REGISTRY_V2_VERSION,
-  type ComponentDefinitionV2,
-  type ComponentRegistryV2
-} from './registry.v2.types';
+  REGISTRY_VERSION,
+  type ComponentDefinition,
+  type ComponentRegistry
+} from './registry.types';
 
 export interface AiSpecTestCase {
   name: string;
@@ -14,8 +14,8 @@ export interface AiSpecTestCase {
 }
 
 export interface AiComponentSpecPackage {
-  registryVersion: typeof REGISTRY_V2_VERSION;
-  component: ComponentDefinitionV2;
+  registryVersion: typeof REGISTRY_VERSION;
+  component: ComponentDefinition;
   tests?: AiSpecTestCase[];
   meta?: {
     author?: string;
@@ -41,16 +41,16 @@ export interface AiSpecIssue {
 export interface AiSpecValidationResult {
   ok: boolean;
   issues: AiSpecIssue[];
-  registry?: ComponentRegistryV2;
+  registry?: ComponentRegistry;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-export function buildRegistryFromSpecPackage(pkg: AiComponentSpecPackage): ComponentRegistryV2 {
+export function buildRegistryFromSpecPackage(pkg: AiComponentSpecPackage): ComponentRegistry {
   return {
-    version: REGISTRY_V2_VERSION,
+    version: REGISTRY_VERSION,
     components: {
       [pkg.component.id]: pkg.component
     },
@@ -73,10 +73,10 @@ function validatePackageShape(pkg: unknown): AiSpecIssue[] {
     return issues;
   }
 
-  if (pkg.registryVersion !== REGISTRY_V2_VERSION) {
+  if (pkg.registryVersion !== REGISTRY_VERSION) {
     issues.push({
       code: 'SPEC_INVALID_VERSION',
-      message: `registryVersion must be '${REGISTRY_V2_VERSION}'`,
+      message: `registryVersion must be '${REGISTRY_VERSION}'`,
       path: 'registryVersion'
     });
   }
@@ -108,7 +108,7 @@ export function validateAiComponentSpecPackage(pkg: unknown): AiSpecValidationRe
 
   const typed = pkg as AiComponentSpecPackage;
   const registry = buildRegistryFromSpecPackage(typed);
-  const registryIssues = validateRegistryV2(registry);
+  const registryIssues = validateRegistry(registry);
   registryIssues.forEach((issue) => {
     issues.push({
       code: 'SPEC_REGISTRY_INVALID',
@@ -173,7 +173,7 @@ export function validateAiComponentSpecPackage(pkg: unknown): AiSpecValidationRe
   };
 }
 
-export function generateSmokeTestsForComponent(component: ComponentDefinitionV2): AiSpecTestCase[] {
+export function generateSmokeTestsForComponent(component: ComponentDefinition): AiSpecTestCase[] {
   const defaultProps: Record<string, unknown> = {};
   Object.entries(component.params).forEach(([key, value]) => {
     defaultProps[key] = value.default;

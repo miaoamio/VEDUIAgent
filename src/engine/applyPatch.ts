@@ -1,8 +1,8 @@
 import { buildSelectionContext, readNodeMeta } from "../metadata";
-import type { NodeMetadataV1 } from "../metadata";
+import type { NodeMetadata } from "../metadata";
 import type { AiSceneEnvelope, SceneNode as ProtocolSceneNode } from "../protocol/scene";
 import { validateSceneEnvelope } from "../protocol/scene";
-import { loadRegistryV2, validateRegistryV2 } from "../registry.loader";
+import { loadRegistry, validateRegistry } from "../registry.loader";
 import { syncSubtreeMetadata } from "./metadataSync";
 import { executeOperation } from "./operationExecutor";
 import { EngineTransaction } from "./transaction";
@@ -23,7 +23,7 @@ function isParentContainer(node: BaseNode | null): node is ParentContainer {
 function createContext(options: ApplyPatchOptions = {}): ApplyContext {
   return {
     mode: options.mode ?? "strict",
-    registry: loadRegistryV2(options.registry),
+    registry: loadRegistry(options.registry),
     nodeMap: new Map(),
     sceneMap: new Map(),
     parentMap: new Map(),
@@ -75,7 +75,7 @@ function findNodeBySceneId(sceneNodeId: string): SceneNode | null {
   return null;
 }
 
-function toSceneSnapshot(meta: NodeMetadataV1): ProtocolSceneNode {
+function toSceneSnapshot(meta: NodeMetadata): ProtocolSceneNode {
   return {
     nodeId: meta.nodeId,
     componentId: meta.componentId,
@@ -161,7 +161,7 @@ export async function applyPatch(
     };
   }
 
-  const registryIssues = validateRegistryV2(ctx.registry);
+  const registryIssues = validateRegistry(ctx.registry);
   if (registryIssues.length > 0) {
     return {
       ok: false,

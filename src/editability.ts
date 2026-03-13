@@ -37,8 +37,7 @@ export const GENERIC_EDITABLE_PARAM_KEYS = new Set([
 
 export const COMPONENT_EDITABLE_PARAM_KEYS: Record<string, string[]> = {
   layout: ['direction', 'clipsContent'],
-  'form-row': ['align'],
-  'chart-bar': ['title']
+  'form-row': ['align']
 };
 
 export const GENERATION_ONLY_PARAM_KEYS = new Set([

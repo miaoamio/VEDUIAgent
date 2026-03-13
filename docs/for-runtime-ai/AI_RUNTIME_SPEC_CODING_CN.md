@@ -92,7 +92,7 @@
   "payload": { "tokens": ["library.navigation.header"], "maxCount": 1 }
 }
 ```
-6. 开发维护要求：将探测结果同步到组件 spec 文档的 `figmaPropertySnapshot`（见 `SPEC_REGISTRY_V2_CN.md`），用于后续沟通与防回归。
+6. 开发维护要求：将探测结果同步到组件 spec 文档的 `figmaPropertySnapshot`（见 `SPEC_REGISTRY_CN.md`），用于后续沟通与防回归。
 
 ## 7.1 高保真复刻规则（必须遵守）
 1. 目标是“复刻设计系统组件”时，优先复用原件，不优先自绘。
@@ -164,4 +164,4 @@
 2. 场景协议详规：
 [SPEC_PROTOCOL_SCENE_CN.md](specs/SPEC_PROTOCOL_SCENE_CN.md)
 3. Registry 详规：
-[SPEC_REGISTRY_V2_CN.md](../../for-dev-ai/coding-specs/SPEC_REGISTRY_V2_CN.md)
+[SPEC_REGISTRY_CN.md](../../for-dev-ai/coding-specs/SPEC_REGISTRY_CN.md)

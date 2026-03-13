@@ -14,8 +14,8 @@ export interface SemanticLibraryComponentTokenProfile {
 
 // Generated from Figma组件库词汇表_ComponentSets.json
 // Rules: remove internal/_components/panel/slot entries; keep main components for agent usage.
-// GeneratedAt: 2026-03-04T08:00:26.020Z
-// Count: 92
+// GeneratedAt: 2026-03-13T13:34:52.000Z
+// Count: 100
 export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryComponentTokenProfile> = {
   'lib-layout-divider': {
     token: 'lib-layout-divider',
@@ -633,6 +633,70 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '数据展示',
     aliases: ['figma-set:Tree']
   },
+  'lib-data-display-component-piechart': {
+    token: 'lib-data-display-component-piechart',
+    componentKey: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'Component/PieChart',
+    category: '数据展示',
+    aliases: ['figma-set:Component/PieChart']
+  },
+  'lib-data-display-toplist': {
+    token: 'lib-data-display-toplist',
+    componentKey: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'Toplist 条形图',
+    category: '数据展示',
+    aliases: ['figma-set:Toplist 条形图']
+  },
+  'lib-data-display-areachart': {
+    token: 'lib-data-display-areachart',
+    componentKey: '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'AreaChart 面积图',
+    category: '数据展示',
+    aliases: ['figma-set:AreaChart 面积图']
+  },
+  'lib-data-display-barchart': {
+    token: 'lib-data-display-barchart',
+    componentKey: 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'BarChart 柱状图',
+    category: '数据展示',
+    aliases: ['figma-set:BarChart 柱状图']
+  },
+  'lib-data-display-datalinescombo': {
+    token: 'lib-data-display-datalinescombo',
+    componentKey: 'fb05d0401cd1498466b2d5ee86d5a7723bc95a39',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: '折线组合/dataLinesCombo',
+    category: '数据展示',
+    aliases: ['figma-set:折线组合/dataLinesCombo']
+  },
+  'lib-data-display-card-piechart': {
+    token: 'lib-data-display-card-piechart',
+    componentKey: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'Card/PieChart',
+    category: '数据展示',
+    aliases: ['figma-set:Card/PieChart']
+  },
+  'lib-data-display-linechart': {
+    token: 'lib-data-display-linechart',
+    componentKey: '62d6b59603766fdb416ff787eec5d21800264694',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: '折线图',
+    category: '数据展示',
+    aliases: ['figma-set:折线图']
+  },
+  'lib-data-display-mini-piechart': {
+    token: 'lib-data-display-mini-piechart',
+    componentKey: '4813f178fd503bfdad6cef802eb09ca927d4e733',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'Mini_pie_chart',
+    category: '数据展示',
+    aliases: ['figma-set:Mini_pie_chart']
+  },
   'lib-misc-ai-button-group': {
     token: 'lib-misc-ai-button-group',
     componentKey: '60bb4b331507842afcde2d03a1a298e37b7ea5ae',
@@ -833,6 +897,26 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.data-display.timeline': { token: 'library.data-display.timeline', baseToken: 'lib-data-display-timeline' },
   'library.data-display.tooltip': { token: 'library.data-display.tooltip', baseToken: 'lib-data-display-tooltip' },
   'library.data-display.tree': { token: 'library.data-display.tree', baseToken: 'lib-data-display-tree' },
+  'library.data-display.component-piechart': {
+    token: 'library.data-display.component-piechart',
+    baseToken: 'lib-data-display-component-piechart'
+  },
+  'library.data-display.toplist': { token: 'library.data-display.toplist', baseToken: 'lib-data-display-toplist' },
+  'library.data-display.areachart': { token: 'library.data-display.areachart', baseToken: 'lib-data-display-areachart' },
+  'library.data-display.barchart': { token: 'library.data-display.barchart', baseToken: 'lib-data-display-barchart' },
+  'library.data-display.datalinescombo': {
+    token: 'library.data-display.datalinescombo',
+    baseToken: 'lib-data-display-datalinescombo'
+  },
+  'library.data-display.card-piechart': {
+    token: 'library.data-display.card-piechart',
+    baseToken: 'lib-data-display-card-piechart'
+  },
+  'library.data-display.linechart': { token: 'library.data-display.linechart', baseToken: 'lib-data-display-linechart' },
+  'library.data-display.mini-piechart': {
+    token: 'library.data-display.mini-piechart',
+    baseToken: 'lib-data-display-mini-piechart'
+  },
   'library.misc.ai-button-group': { token: 'library.misc.ai-button-group', baseToken: 'lib-misc-ai-button-group' },
   'library.misc.ai-floating-menu': { token: 'library.misc.ai-floating-menu', baseToken: 'lib-misc-ai-floating-menu' },
   'library.misc.risk-level-tag': { token: 'library.misc.risk-level-tag', baseToken: 'lib-misc-risk-level-tag' },
@@ -849,4 +933,3 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.ai.ai-shortcut-key': { token: 'library.ai.ai-shortcut-key', baseToken: 'lib-ai-ai-shortcut-key' },
   'library.ai.ai-textarea': { token: 'library.ai.ai-textarea', baseToken: 'lib-ai-ai-textarea' },
 };
-

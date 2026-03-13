@@ -79,19 +79,6 @@ function parseArgs(argv) {
   };
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function quoteString(value) {
-  return `'${String(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
-    .replace(/\t/g, '\\t')}'`;
-}
-
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return undefined;
   const result = value
@@ -225,200 +212,19 @@ function normalizePatchPayload(rawPayload) {
   };
 }
 
-function findMatchingBrace(text, openBraceIndex) {
-  let depth = 0;
-  let quote = null;
-  let inLineComment = false;
-  let inBlockComment = false;
-  let escaping = false;
-
-  for (let index = openBraceIndex; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-
-    if (inLineComment) {
-      if (char === '\n') inLineComment = false;
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (char === '*' && next === '/') {
-        inBlockComment = false;
-        index += 1;
-      }
-      continue;
-    }
-
-    if (quote) {
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-      if (char === '\\') {
-        escaping = true;
-        continue;
-      }
-      if (char === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (char === '/' && next === '/') {
-      inLineComment = true;
-      index += 1;
-      continue;
-    }
-
-    if (char === '/' && next === '*') {
-      inBlockComment = true;
-      index += 1;
-      continue;
-    }
-
-    if (char === "'" || char === '"' || char === '`') {
-      quote = char;
-      continue;
-    }
-
-    if (char === '{') {
-      depth += 1;
-      continue;
-    }
-
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-      continue;
-    }
-  }
-
-  fail(`Could not find matching brace for index ${openBraceIndex}`);
-}
-
-function findLineStart(text, index) {
-  const lineBreakIndex = text.lastIndexOf('\n', index);
-  return lineBreakIndex === -1 ? 0 : lineBreakIndex + 1;
-}
-
-function renderOptionsArray(values) {
-  return `[${values.map((value) => quoteString(value)).join(', ')}]`;
-}
-
-function renderSnapshot(snapshot) {
-  const lines = [];
-  lines.push('    figmaPropertySnapshot: {');
-  if (snapshot.token) {
-    lines.push(`      token: ${quoteString(snapshot.token)},`);
-  }
-  lines.push(`      componentKey: ${quoteString(snapshot.componentKey)},`);
-  lines.push(`      inspectedAt: ${quoteString(snapshot.inspectedAt)},`);
-  lines.push(`      source: ${quoteString(snapshot.source)},`);
-  if (snapshot.properties.length === 0) {
-    lines.push('      properties: []');
-  } else {
-    lines.push('      properties: [');
-    snapshot.properties.forEach((property, index) => {
-      lines.push('        {');
-      lines.push(`          propertyName: ${quoteString(property.propertyName)},`);
-      if (property.displayName) {
-        lines.push(`          displayName: ${quoteString(property.displayName)},`);
-      }
-      lines.push(`          type: ${quoteString(property.type)},`);
-      if (property.defaultValue !== undefined) {
-        lines.push(
-          `          defaultValue: ${typeof property.defaultValue === 'boolean' ? String(property.defaultValue) : quoteString(property.defaultValue)},`
-        );
-      }
-      if (property.options && property.options.length > 0) {
-        lines.push(`          options: ${renderOptionsArray(property.options)}`);
-      } else {
-        const lastIndex = lines.length - 1;
-        lines[lastIndex] = lines[lastIndex].replace(/,$/, '');
-      }
-      lines.push(index === snapshot.properties.length - 1 ? '        }' : '        },');
-    });
-    lines.push('      ]');
-  }
-  lines.push('    },');
-  return lines.join('\n');
-}
-
-function findComponentBlock(text, componentId, registryPath) {
-  const pattern = new RegExp(`^  '${escapeRegExp(componentId)}':\\s*\\{`, 'm');
-  const match = pattern.exec(text);
+function loadRegistry(filePath) {
+  const text = fs.readFileSync(filePath, 'utf8');
+  const match = text.match(/export const COMPONENT_REGISTRY[^=]*=\\s*([\\s\\S]*);\\s*$/m);
   if (!match) {
-    fail(`Component '${componentId}' was not found in ${path.relative(root, registryPath)}`);
+    fail(`Unable to locate COMPONENT_REGISTRY in ${path.relative(root, filePath)}`);
   }
-
-  const propertyStart = match.index;
-  const openBraceIndex = propertyStart + match[0].lastIndexOf('{');
-  const closeBraceIndex = findMatchingBrace(text, openBraceIndex);
-  const blockText = text.slice(propertyStart, closeBraceIndex + 1);
-
-  return {
-    propertyStart,
-    openBraceIndex,
-    closeBraceIndex,
-    blockText
-  };
+  return JSON.parse(match[1]);
 }
 
-function findSnapshotRange(text, componentBlock) {
-  const snapshotMatch = /^\s{4}figmaPropertySnapshot:\s*\{/m.exec(componentBlock.blockText);
-  if (!snapshotMatch) return null;
-
-  const propertyStart = componentBlock.propertyStart + snapshotMatch.index;
-  const openBraceIndex = propertyStart + snapshotMatch[0].lastIndexOf('{');
-  const closeBraceIndex = findMatchingBrace(text, openBraceIndex);
-  const lineStart = findLineStart(text, propertyStart);
-
-  let end = closeBraceIndex + 1;
-  if (text[end] === ',') end += 1;
-  if (text[end] === '\r' && text[end + 1] === '\n') {
-    end += 2;
-  } else if (text[end] === '\n') {
-    end += 1;
-  }
-
-  return {
-    start: lineStart,
-    end
-  };
-}
-
-function findInsertionIndex(componentBlock) {
-  const anchors = ['allowedChildren', 'variableBindings', 'typographyBindings', 'params'];
-  for (const anchor of anchors) {
-    const match = new RegExp(`^\\s{4}${anchor}:`, 'm').exec(componentBlock.blockText);
-    if (match) {
-      return componentBlock.propertyStart + match.index;
-    }
-  }
-  return null;
-}
-
-function upsertSnapshot(registryText, componentId, snapshot, registryPath) {
-  const componentBlock = findComponentBlock(registryText, componentId, registryPath);
-  const renderedSnapshot = `${renderSnapshot(snapshot)}\n`;
-  const existingSnapshotRange = findSnapshotRange(registryText, componentBlock);
-
-  if (existingSnapshotRange) {
-    return (
-      registryText.slice(0, existingSnapshotRange.start) +
-      renderedSnapshot +
-      registryText.slice(existingSnapshotRange.end)
-    );
-  }
-
-  const insertAt = findInsertionIndex(componentBlock);
-  if (insertAt === null) {
-    fail(`Could not determine where to insert figmaPropertySnapshot for component '${componentId}'`);
-  }
-
-  return registryText.slice(0, insertAt) + renderedSnapshot + registryText.slice(insertAt);
+function writeRegistry(filePath, registry) {
+  const header = 'import type { ComponentRegistry } from \"./registry.types\";\\n\\n';
+  const body = `export const COMPONENT_REGISTRY: ComponentRegistry = ${JSON.stringify(registry, null, 2)};\\n`;
+  fs.writeFileSync(filePath, header + body, 'utf8');
 }
 
 async function main() {
@@ -427,7 +233,7 @@ async function main() {
     ? await readStdin()
     : fs.readFileSync(inputPath, 'utf8');
 
-  const jsonText = rawInput.replace(/^\uFEFF/, '').trim();
+  const jsonText = rawInput.replace(/^\\uFEFF/, '').trim();
   if (!jsonText) {
     fail('Spec Patch JSON input is empty');
   }
@@ -440,19 +246,20 @@ async function main() {
   }
 
   const payload = normalizePatchPayload(parsed);
-  const registryText = fs.readFileSync(registryPath, 'utf8');
+  const registry = loadRegistry(registryPath);
 
-  let nextRegistryText = registryText;
   const appliedComponentIds = [];
 
   payload.snapshotsByComponent.forEach((snapshot, componentId) => {
-    nextRegistryText = upsertSnapshot(nextRegistryText, componentId, snapshot, registryPath);
+    const def = registry.components?.[componentId];
+    if (!def) {
+      fail(`Component '${componentId}' was not found in ${path.relative(root, registryPath)}`);
+    }
+    def.figmaPropertySnapshot = snapshot;
     appliedComponentIds.push(componentId);
   });
 
-  if (nextRegistryText !== registryText) {
-    fs.writeFileSync(registryPath, nextRegistryText, 'utf8');
-  }
+  writeRegistry(registryPath, registry);
 
   console.log('# Spec Patch Apply Result');
   console.log('');
@@ -460,7 +267,7 @@ async function main() {
   if (payload.source) console.log(`- source: ${payload.source}`);
   console.log(`- registry: ${path.relative(root, registryPath)}`);
   console.log(`- applied: ${appliedComponentIds.length}`);
-  console.log(`- changed: ${nextRegistryText === registryText ? 'no' : 'yes'}`);
+  console.log(`- changed: yes`);
   console.log(`- skippedWithoutComponentId: ${payload.skipped.length}`);
   console.log(`- components: ${appliedComponentIds.join(', ')}`);
 

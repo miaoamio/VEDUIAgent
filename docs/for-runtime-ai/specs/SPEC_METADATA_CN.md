@@ -31,7 +31,7 @@
 ## 3. 字段定义
 
 ```ts
-interface NodeMetadataV1 {
+interface NodeMetadata {
   nodeId: string;                          // 对应 SceneNode.nodeId
   componentId: string;                     // 对应组件定义 id
   version: "1.0";                          // metadata 协议版本
@@ -125,10 +125,10 @@ type MetadataErrorCode =
 ## 10. API 建议
 
 ```ts
-function writeNodeMeta(figmaNodeId: string, meta: NodeMetadataV1): void;
-function readNodeMeta(figmaNodeId: string): NodeMetadataV1 | null;
-function updateNodeMeta(figmaNodeId: string, patch: Partial<NodeMetadataV1>): void;
-function normalizeLegacyMeta(raw: Record<string, string>): NodeMetadataV1 | null;
+function writeNodeMeta(figmaNodeId: string, meta: NodeMetadata): void;
+function readNodeMeta(figmaNodeId: string): NodeMetadata | null;
+function updateNodeMeta(figmaNodeId: string, patch: Partial<NodeMetadata>): void;
+function normalizeLegacyMeta(raw: Record<string, string>): NodeMetadata | null;
 function buildSelectionContext(figmaNodeId: string): SelectionContext | null;
 ```
 

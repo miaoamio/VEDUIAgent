@@ -22,10 +22,11 @@
 |------|------|
 | [项目架构总览](../for-humans/overview/IMPLEMENTATION_SUMMARY_CN.md) | 整体架构与运行机制概览 |
 | [Spec Coding 全文指南](coding-specs/SPEC_CODING_GUIDE_CN.md) | 代码规范、实现约定 |
-| [注册表规范 v2](coding-specs/SPEC_REGISTRY_V2_CN.md) | 组件 Registry 数据结构和扩展方式 |
+| [注册表规范](coding-specs/SPEC_REGISTRY_CN.md) | 组件 Registry 数据结构和扩展方式 |
 | [渲染引擎规范](coding-specs/SPEC_RENDER_ENGINE_CN.md) | Figma 节点渲染、patch 执行器细节 |
 | [组件快照登记流程](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_WORKFLOW_CN.md) | 如何批量维护组件属性快照（含 npm 命令） |
 | [组件快照登记用例](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_CASES_CN.md) | 逐组件的登记测试用例 |
+| [图表组件登记流程](coding-specs/CHART_COMPONENT_REGISTRATION_WORKFLOW_CN.md) | 图表类组件登记与运行时使用规范 |
 | [测试策略规范](coding-specs/SPEC_TEST_STRATEGY_CN.md) | 单元/集成/回归测试分层策略 |
 | [测试用例清单](coding-specs/intermediate/TEST_CASE.md) | 手工测试用例（中间文档） |
 

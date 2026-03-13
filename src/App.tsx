@@ -4,9 +4,8 @@ import XLSX_BUNDLE_SOURCE from 'xlsx/dist/xlsx.full.min.js?raw';
 import AI_CHART_UI_HTML from './ai-chart-ui.html?raw';
 import ECHARTS_BUNDLE_SOURCE from 'echarts/dist/echarts.min.js?raw';
 import { COMPONENT_REGISTRY } from './registry';
-import { loadRegistryV2 } from './registry.loader';
-import { ComponentDefinitionV2 } from './registry.v2.types';
-import { ComponentDefinition, ComponentParam } from './types';
+import { loadRegistry } from './registry.loader';
+import { ComponentDefinition, ParamDefinition } from './registry.types';
 import {
   FULL_RERENDER_COMPONENT_IDS,
   GENERIC_EDITABLE_PARAM_KEYS,
@@ -27,6 +26,19 @@ import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-
 import { BASE_TYPOGRAPHY_TOKEN_PACK, SEMANTIC_TYPOGRAPHY_TOKEN_PACK } from './theme.typography-tokens';
 import { BASE_COMPONENT_TOKEN_PACK, SEMANTIC_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
 import { SPEC_COMPONENT_TOKEN_MAP } from './spec.component-token-map';
+import { parseVariantCriteria } from './figmaComponent';
+
+const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
+const isEnabledComponent = (def: ComponentDefinition) => (
+  def.id === 'figma-component' || !def.figmaPropertySnapshot
+);
+const BASE_COMPONENT_KEY_TO_NAME = Object.values(BASE_COMPONENT_TOKEN_PACK).reduce((acc, item) => {
+  const key = typeof item?.componentKey === 'string' ? item.componentKey.trim() : '';
+  if (key) {
+    acc[key] = String(item?.displayName || key);
+  }
+  return acc;
+}, {} as Record<string, string>);
 
 type PlanTaskStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked';
 
@@ -58,6 +70,8 @@ const MAX_TABLE_PREVIEW_CHARS = 200;
 const MAX_TABLE_CONTEXT_ROWS = 10;
 const MAX_ATTACHMENT_IMAGES_PER_TURN = 4;
 const STREAM_TABLE_PREFIX = '@@table_stream';
+const TABLE_SPEC_IDS = ['table', 'table-column', 'table-header-cell', 'table-cell'];
+const TABLE_PROMPT_REGEX = /(表格|table)/i;
 
 type XlsxWorkbook = {
   SheetNames: string[];
@@ -795,17 +809,18 @@ function buildUserSummary(
   const lines: string[] = [];
   const trimmedInput = String(input || '').trim();
   lines.push(`需求文本长度：${trimmedInput.length}`);
-  lines.push(`表格附件：${tables.length} 个`);
-
-  tables.forEach((table, index) => {
-    lines.push(`表格 ${index + 1}：${table.name}`);
-    if (table.parseError) {
-      lines.push(`表格解析失败：${table.parseError}`);
-    } else {
-      lines.push('表格解析成功：');
-      table.previewLines.forEach((line) => lines.push(line));
-    }
-  });
+  if (tables.length > 0) {
+    lines.push(`表格附件：${tables.length} 个`);
+    tables.forEach((table, index) => {
+      lines.push(`表格 ${index + 1}：${table.name}`);
+      if (table.parseError) {
+        lines.push(`表格解析失败：${table.parseError}`);
+      } else {
+        lines.push('表格解析成功：');
+        table.previewLines.forEach((line) => lines.push(line));
+      }
+    });
+  }
 
   lines.push(`图片附件：${images.length} 个`);
   if (images.length > 0) {
@@ -1180,6 +1195,7 @@ function App() {
   const llmAbortRef = React.useRef<AbortController | null>(null);
   const stopRequestedRef = React.useRef(false);
   const thinkingStartedAtRef = React.useRef<number | null>(null);
+  const readSpecsCacheRef = React.useRef<Set<string>>(new Set());
   const [thinkingActive, setThinkingActive] = React.useState(false);
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
   const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(false);
@@ -1206,6 +1222,8 @@ function App() {
   const [componentInspectionSummary, setComponentInspectionSummary] = React.useState<string | null>(null);
   const [componentInspectTokenInput, setComponentInspectTokenInput] = React.useState('lib-data-input-form');
   const [componentInspectJson, setComponentInspectJson] = React.useState('');
+  const [figmaComponentPropsCache, setFigmaComponentPropsCache] = React.useState<Record<string, any>>({});
+  const figmaComponentPropsLoadingRef = React.useRef<Set<string>>(new Set());
   const userSummary = buildUserSummary(userInput, uploadedImages, uploadedTables);
   const canSend = Boolean(userInput.trim() || uploadedImages.length > 0 || uploadedTables.length > 0);
 
@@ -1223,6 +1241,7 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
+        setActiveTab('selection');
         if (data.componentId) {
           setSelectedComponent(data);
           setSelectionAnalysis(null);
@@ -1230,23 +1249,87 @@ function App() {
           setSelectionAnalysis(data.analysis);
           setSelectedComponent(null);
         }
+        setChartOverlayOpen(Boolean(data?.componentId && data.componentId.startsWith('chart')));
       }
 
       if (type === 'selection-multi-update') {
         setSelectionCount(data?.count ?? 0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
+        setActiveTab('selection');
         setSelectedComponent(null);
         setSelectionAnalysis(null);
+        setChartOverlayOpen(false);
       }
       
       if (type === 'selection-cleared') {
         setSelectionCount(0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
+        setActiveTab('chat');
         setSelectedComponent(null);
         setSelectionAnalysis(null);
+        setChartOverlayOpen(false);
       }
     };
   }, [activeTab]);
+
+  const resolveFigmaComponentPropsCacheKey = (token: string, componentKey: string) => {
+    const normalizedToken = String(token || '').trim();
+    const normalizedKey = String(componentKey || '').trim();
+    if (normalizedToken) return `token:${normalizedToken}`;
+    if (normalizedKey) return `key:${normalizedKey}`;
+    return '';
+  };
+
+  const requestFigmaComponentProps = async (
+    token: string,
+    componentKey: string,
+    cacheKey: string,
+    force = false
+  ) => {
+    if (!cacheKey) return;
+    if (!force && figmaComponentPropsCache[cacheKey]) return;
+    if (figmaComponentPropsLoadingRef.current.has(cacheKey)) return;
+    figmaComponentPropsLoadingRef.current.add(cacheKey);
+    try {
+      const payload = token
+        ? { tokens: [token], maxCount: 1 }
+        : { keys: [componentKey], maxCount: 1 };
+      const result = await inspectFigmaComponentProps(payload);
+      const item = Array.isArray(result?.results) ? result.results[0] : null;
+      const fallback = {
+        status: 'error',
+        token,
+        componentKey,
+        error: 'no results'
+      };
+      setFigmaComponentPropsCache((prev) => ({
+        ...prev,
+        [cacheKey]: item || fallback
+      }));
+    } catch (error) {
+      setFigmaComponentPropsCache((prev) => ({
+        ...prev,
+        [cacheKey]: {
+          status: 'error',
+          token,
+          componentKey,
+          error: String(error)
+        }
+      }));
+    } finally {
+      figmaComponentPropsLoadingRef.current.delete(cacheKey);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!selectedComponent || selectedComponent.componentId !== 'figma-component') return;
+    const token = String(selectedComponent.params?.componentToken || '').trim();
+    const componentKey = String(selectedComponent.params?.componentKey || '').trim();
+    const cacheKey = resolveFigmaComponentPropsCacheKey(token, componentKey);
+    if (!cacheKey) return;
+    if (figmaComponentPropsCache[cacheKey]) return;
+    requestFigmaComponentProps(token, componentKey, cacheKey);
+  }, [selectedComponent, figmaComponentPropsCache]);
 
   const manualTooltipText = React.useMemo(() => {
     if (canvasHint === 'table') {
@@ -1536,7 +1619,7 @@ function App() {
     streamTableQueueRef.current = streamTableQueueRef.current.then(task).catch(() => undefined);
   }, []);
 
-  const isSameParamDefinition = React.useCallback((a: ComponentDefinitionV2['params'][string], b: ComponentDefinitionV2['params'][string]) => {
+  const isSameParamDefinition = React.useCallback((a: ComponentDefinition['params'][string], b: ComponentDefinition['params'][string]) => {
     if (!a || !b) return false;
     const uiA = a.ui || {};
     const uiB = b.ui || {};
@@ -1560,27 +1643,38 @@ function App() {
   }, []);
 
   const generateMasterPrompt = () => {
+    const enabledDefs = Object.values(COMPONENT_DEFS || {}).filter(isEnabledComponent);
+    const enabledIds = enabledDefs.map((def) => def.id);
+    const noCustomComponents =
+      enabledIds.length === 0 || (enabledIds.length === 1 && enabledIds[0] === 'figma-component');
     let prompt = `你是一个高级 Figma 助手 (Agent)。你的任务是根据用户需求，逐步构建 Figma 组件树。
     
 由于组件库很大，你不能一次性获取所有组件的详细文档。你需要通过“工具调用”的方式来获取所需组件的详细信息，然后逐步创建组件。
 
 可用组件列表 (Component Index):
 `;
-    for (const key in COMPONENT_REGISTRY) {
-      const def = COMPONENT_REGISTRY[key];
+    for (const def of enabledDefs) {
       prompt += `- ${def.id}: ${def.description}\n`;
+    }
+
+    if (noCustomComponents) {
+      prompt += `\n当前没有可用的自定义组件注册表（仅 figma-component）。你只能使用 figma-component 构建界面；当需要设置 variantCriteria 或了解可选属性时，必须先 discover_component_props 实时探测，再根据返回结果设置参数。不要输出 width/height，除非用户明确要求尺寸。\n`;
     }
 
     prompt += `
 工作流 (Workflow):
-1. 分析用户需求，决定需要使用哪些组件。
-2. **必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
+1. 若用户输入包含“表格 / 表单 / 筛选 / 图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息，不需要先分析。
+2. 其他情况先分析用户需求，**必须**从 Component Index 里选择可用组件，再决定需要使用哪些组件。
+3. 当存在自定义组件注册表时，**必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
    - 禁止在未读取 spec 的情况下直接猜测组件参数。
    - read_specs 会返回组件的 params 定义和使用示例。
+   - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
    - 当要复用 Figma 设计系统组件时，先 read_specs([\"figma-component\"]) 获取 ComponentTokenCatalog，再使用 params.componentToken 调用。
    - 若需要给 figma-component 传 variantCriteria，先调用 discover_component_props 探测目标 token 的真实可设置属性。
-   - 如果未探测到属性，先只摆放组件本体（componentToken + 可选宽高），不要猜测属性名。
+   - 如果未探测到属性，先只摆放组件本体（componentToken），不要猜测属性名。
    - 禁止臆造 componentKey；只有 token 不可用时再回退 componentKey。
+   - 对于 boolean 参数，不要显式输出默认值；仅当用户强行指定时才写入 true/false，未指定则使用默认值。
+   - 对于 figma-component，不要输出 width/height，除非用户明确要求尺寸。
 3. **表格创建优先走 draw_table(payload)**（不要输出冗长 table 子树）。
    - 当目标是创建新表格时，读取 table 系列 spec 后，直接调用 draw_table。
    - 如果是“新建表格”，禁止输出 apply_scene(table-root)。
@@ -1719,6 +1813,149 @@ StepD:
 - 示例文字中的时间格式统一为 2019-10-12 00:00:00。
 `;
     return prompt;
+  };
+
+  const buildSpecsInfo = (ids: string[], cache?: Set<string>, forceRead = false) => {
+    const uniqueIds = Array.from(new Set(ids.map((id) => String(id)).filter((id) => id.trim())));
+    const idsToLoad = forceRead || !cache ? uniqueIds : uniqueIds.filter((id) => !cache.has(id));
+    let specsInfo = '';
+    const registry = loadRegistry();
+    idsToLoad.forEach((id: string) => {
+      const def = registry.components[id];
+
+      if (def && !isEnabledComponent(def)) {
+        specsInfo += `[Component: ${id}] DISABLED. Use figma-component with dynamic properties.\n`;
+      } else if (def) {
+        specsInfo += `[Component: ${def.id}]\n`;
+        specsInfo += `Description: ${def.description}\n`;
+        specsInfo += `SchemaVersion: ${def.schemaVersion}\n`;
+        specsInfo += `Selection Prompt: ${def.prompts?.description || def.description}\n`;
+        specsInfo += `Usage Prompt: ${def.prompts?.usage || ''}\n`;
+        specsInfo += `Params: ${JSON.stringify(def.params, null, 2)}\n`;
+        const editableParams = Object.keys(def.params || {}).filter((key) =>
+          isParamEditable(def, key, def.params[key])
+        );
+        const autoHiddenParams = Object.keys(def.params || {}).filter((key) =>
+          !isParamEditable(def, key, def.params[key])
+        );
+        specsInfo += `EditableParams: ${JSON.stringify(editableParams)}\n`;
+        if (autoHiddenParams.length > 0) {
+          specsInfo += `AutoHiddenParams: ${JSON.stringify(autoHiddenParams)}\n`;
+        }
+        specsInfo += `Slots: ${JSON.stringify(def.slots || {}, null, 2)}\n`;
+        specsInfo += `Capabilities: ${JSON.stringify(def.capabilities || {}, null, 2)}\n`;
+        specsInfo += `FigmaBinding: ${JSON.stringify(def.figmaBinding || {}, null, 2)}\n`;
+        if (def.figmaPropertySnapshot) {
+          const snapshot = def.figmaPropertySnapshot;
+          specsInfo += `FigmaPropertySnapshotMeta: ${JSON.stringify({
+            token: snapshot.token,
+            componentKey: snapshot.componentKey,
+            inspectedAt: snapshot.inspectedAt,
+            source: snapshot.source,
+            propertyCount: Array.isArray(snapshot.properties) ? snapshot.properties.length : 0
+          }, null, 2)}\n`;
+          specsInfo += `FigmaPropertySnapshotProperties: ${JSON.stringify(snapshot.properties, null, 2)}\n`;
+        }
+        const examples = def.prompts?.examples || [];
+        if (examples.length > 0) {
+          specsInfo += `Examples:\n${examples.map(ex => `- ${ex}`).join('\n')}\n`;
+        }
+        if (id === 'figma-component') {
+          const tokenRows = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([token, semantic]) => {
+              const base = BASE_COMPONENT_TOKEN_PACK[semantic.baseToken];
+              return {
+                token,
+                baseToken: semantic.baseToken,
+                componentKey: base?.componentKey || '',
+                displayName: base?.displayName || semantic.baseToken,
+                category: base?.category || '-'
+              };
+            });
+          specsInfo += `ComponentTokenCatalog(count=${tokenRows.length}):\n`;
+          specsInfo += tokenRows
+            .map((row) => `- ${row.token} | name: ${row.displayName} | category: ${row.category} | componentKey: ${row.componentKey}`)
+            .join('\n');
+          specsInfo += `\nTokenHint: For figma-component, prefer params.componentToken (componentKey is fallback).\n`;
+          specsInfo += `ActionHint: Before setting variantCriteria, call discover_component_props with payload { tokens: ["library.xxx.yyy"] } to get real properties.\n`;
+          specsInfo += `FallbackRule: If property discovery fails, create figma-component with componentToken only, do not guess property names.\n`;
+          specsInfo += `ActionHint: Do not output width/height for figma-component unless user explicitly requests size.\n`;
+        }
+        if (id === 'table' || id.startsWith('table-')) {
+          specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
+        }
+        if (id === 'form' || id.startsWith('form-')) {
+          specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
+        }
+        if (id === 'filter-group') {
+          specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
+          specsInfo += `ParamHint: itemsText 格式为 逗号/换行分隔的 label:type；type 支持 select/input/search（search 会将下拉 icon 替换为 search icon）。\n`;
+        }
+        if (id === 'checkbox' || id === 'checkbox-group' || id === 'radio-group') {
+          specsInfo += `ActionHint: Checkbox/radio visuals are sensitive. Prefer real Figma components; do not draw checkmarks or circles with vector/svg/path/text when checkbox/checkbox-group/radio-group or figma-component tokens are available.\n`;
+          specsInfo += `ActionHint: For multi-select option rows, prefer checkbox-group or compose multiple checkbox components instead of custom icon + text.\n`;
+        }
+        specsInfo += `\n----------------\n`;
+      } else {
+        specsInfo += `[Component: ${id}] NOT FOUND.\n`;
+      }
+      if (cache) {
+        cache.add(id);
+      }
+    });
+
+    if (!specsInfo.trim()) {
+      specsInfo =
+        uniqueIds.length > 0
+          ? `System: Specs already loaded for ${uniqueIds.join(', ')}.`
+          : "System: No valid component IDs provided for read_specs. Please check COMPONENT_DEFS index.";
+    }
+
+    return { specsInfo, uniqueIds, idsToLoad };
+  };
+
+  const buildSpecsSystemMessage = (promptHintText: string, ids: string[], isCachedRead: boolean) => {
+    const promptKinds = new Set<string>();
+    if (/(表格|table)/i.test(promptHintText)) promptKinds.add('表格');
+    if (/(表单|form)/i.test(promptHintText)) promptKinds.add('表单');
+    if (/(图表|chart)/i.test(promptHintText)) promptKinds.add('图表');
+    const inferredFromPrompt = promptKinds.size === 1 ? Array.from(promptKinds)[0] : null;
+    const inferredFromIds = ids.some((id) => id === 'table' || id.startsWith('table-'))
+      ? '表格'
+      : ids.some((id) => id === 'form' || id.startsWith('form-'))
+        ? '表单'
+        : ids.some((id) => id === 'chart' || id.startsWith('chart-'))
+          ? '图表'
+          : null;
+    const inferredKind = inferredFromPrompt || inferredFromIds;
+    if (inferredKind) {
+      return isCachedRead
+        ? `[AI]: 已加载 ${inferredKind} 系列组件规格说明，跳过重复读取`
+        : `[AI]: 读取 ${inferredKind} 系列组件的规格说明`;
+    }
+    if (ids.length === 0) {
+      return `[System]: read_specs received empty ids.`;
+    }
+    return isCachedRead
+      ? `[System]: Specs already loaded for ${ids.join(', ')}`
+      : `[System]: Loaded specs for ${ids.join(', ')}`;
+  };
+
+  const normalizeSpecIdsFromPayload = (payload: any) => {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+    if (payload && Array.isArray(payload.ids)) {
+      return payload.ids;
+    }
+    if (payload && Array.isArray(payload.componentIds)) {
+      return payload.componentIds;
+    }
+    if (typeof payload === 'string') {
+      return [payload];
+    }
+    return [];
   };
 
   const isObject = (value: unknown): value is Record<string, any> =>
@@ -3320,9 +3557,10 @@ StepD:
       const props = isObject(chartObj.props) ? chartObj.props : {};
       const heightRaw = Number(props.height ?? chartObj.height);
       chartNodes.push({
-        componentId: 'chart-bar',
+        componentId: 'figma-component',
         params: {
-          title: String(props.title || chartObj.title || `图表 ${index + 1}`),
+          componentToken: 'lib-data-display-toplist',
+          fallbackName: `图表 ${index + 1}`,
           height: Number.isFinite(heightRaw) && heightRaw > 0 ? heightRaw : 220
         }
       });
@@ -3330,9 +3568,10 @@ StepD:
 
     if (chartNodes.length === 0) {
       chartNodes.push({
-        componentId: 'chart-bar',
+        componentId: 'figma-component',
         params: {
-          title: String(source.chartTitle || '趋势'),
+          componentToken: 'lib-data-display-toplist',
+          fallbackName: String(source.chartTitle || '趋势'),
           height: Number(source.height) > 0 ? Number(source.height) : 220
         }
       });
@@ -3999,7 +4238,7 @@ StepD:
           candidate.type === 'expand_table_block'
             ? ['table', 'table-column', 'table-header-cell', 'table-cell']
               : candidate.type === 'expand_chart_block'
-                ? ['chart-bar', 'card', 'layout']
+                ? ['figma-component', 'card', 'layout']
               : candidate.type === 'expand_form_block'
                 ? ['form', 'form-row', 'form-field', 'input', 'select', 'checkbox', 'checkbox-group', 'radio-group', 'button', 'figma-component']
                 : ['button', 'card', 'layout'],
@@ -4286,7 +4525,7 @@ StepD:
   };
 
   const buildTokenToComponentIds = (): Record<string, string[]> => {
-    const registryV2 = loadRegistryV2();
+    const registry = loadRegistry();
     const tokenToComponentIds: Record<string, string[]> = {};
     const addTokenMapping = (token: string, componentId: string) => {
       const normalizedToken = String(token || '').trim();
@@ -4302,7 +4541,7 @@ StepD:
       componentIds.forEach((componentId) => addTokenMapping(token, componentId));
     });
 
-    Object.values(registryV2.components).forEach((def) => {
+    Object.values(registry.components).forEach((def) => {
       const param = (def.params || ({} as any)).componentToken as any;
       const token = typeof param?.default === 'string' ? param.default.trim() : '';
       if (token) {
@@ -4876,6 +5115,28 @@ StepD:
         const executePlannedTask = async (task: PlanTask, payload: any) =>
           executeTaskByType(task, payload, runtimePlan);
 
+        const trimmedTurnInput = String(turnInput || '').trim();
+        const hasTablePrompt = TABLE_PROMPT_REGEX.test(trimmedTurnInput);
+        const hasChartPrompt = /(图表|chart)/i.test(trimmedTurnInput);
+        const hasTableAttachment = turnTables.some((table) => !table.parseError && table.headers.length > 0);
+        const shouldPrefetchTableSpecs =
+          (hasTablePrompt || hasTableAttachment) && !(hasChartPrompt && !hasTablePrompt);
+        if (shouldPrefetchTableSpecs) {
+            const { specsInfo, uniqueIds, idsToLoad } = buildSpecsInfo(
+              TABLE_SPEC_IDS,
+              readSpecsCacheRef.current,
+              true
+            );
+            const sysMsg = buildSpecsSystemMessage(
+              currentTurnText,
+              uniqueIds,
+              idsToLoad.length === 0 && uniqueIds.length > 0
+            );
+            accumulatedLog += (accumulatedLog ? '\n\n' : '') + sysMsg;
+            setResponse(accumulatedLog);
+            messages.push({ role: "user", content: `Here are the specs you requested:\n\n${specsInfo}` });
+        }
+
         while (loopCount < MAX_LOOPS) {
             if (stopRequestedRef.current || abortController.signal.aborted) break;
             loopCount++;
@@ -5202,128 +5463,18 @@ StepD:
 
             if (action.type === 'read_specs') {
                 const payload = action.payload;
-                // Support array, object with ids/componentIds property
-                let ids: string[] = [];
-                
-                if (Array.isArray(payload)) {
-                    ids = payload;
-                } else if (payload && Array.isArray(payload.ids)) {
-                    ids = payload.ids;
-                } else if (payload && Array.isArray(payload.componentIds)) {
-                    ids = payload.componentIds;
-                } else if (typeof payload === 'string') {
-                    ids = [payload];
-                } else {
-                    // Fallback or error logging
+                const ids = normalizeSpecIdsFromPayload(payload);
+                if (ids.length === 0) {
                     console.warn("Invalid payload for read_specs", payload);
-                    ids = []; 
-                }
-                
-                let specsInfo = "";
-                const registryV2 = loadRegistryV2();
-                ids.forEach((id: string) => {
-                    const defV2 = registryV2.components[id];
-                    const def = COMPONENT_REGISTRY[id];
-
-                    if (defV2) {
-                        specsInfo += `[Component: ${defV2.id}]\n`;
-                        specsInfo += `Description: ${defV2.description}\n`;
-                        specsInfo += `SchemaVersion: ${defV2.schemaVersion}\n`;
-                        specsInfo += `Selection Prompt: ${defV2.prompts?.description || defV2.description}\n`;
-                        specsInfo += `Usage Prompt: ${defV2.prompts?.usage || def?.agentPrompt || ''}\n`;
-                        specsInfo += `Params: ${JSON.stringify(defV2.params, null, 2)}\n`;
-                        if (def) {
-                            const editableParams = Object.keys(def.params || {}).filter((key) =>
-                              isParamEditable(def, key, def.params[key])
-                            );
-                            const autoHiddenParams = Object.keys(def.params || {}).filter((key) =>
-                              !isParamEditable(def, key, def.params[key])
-                            );
-                            specsInfo += `EditableParams: ${JSON.stringify(editableParams)}\n`;
-                            if (autoHiddenParams.length > 0) {
-                              specsInfo += `AutoHiddenParams: ${JSON.stringify(autoHiddenParams)}\n`;
-                            }
-                        }
-                        specsInfo += `Slots: ${JSON.stringify(defV2.slots || {}, null, 2)}\n`;
-                        specsInfo += `Capabilities: ${JSON.stringify(defV2.capabilities || {}, null, 2)}\n`;
-                        specsInfo += `FigmaBinding: ${JSON.stringify(defV2.figmaBinding || {}, null, 2)}\n`;
-                        if (defV2.figmaPropertySnapshot) {
-                            const snapshot = defV2.figmaPropertySnapshot;
-                            specsInfo += `FigmaPropertySnapshotMeta: ${JSON.stringify({
-                              token: snapshot.token,
-                              componentKey: snapshot.componentKey,
-                              inspectedAt: snapshot.inspectedAt,
-                              source: snapshot.source,
-                              propertyCount: Array.isArray(snapshot.properties) ? snapshot.properties.length : 0
-                            }, null, 2)}\n`;
-                            specsInfo += `FigmaPropertySnapshotProperties: ${JSON.stringify(snapshot.properties, null, 2)}\n`;
-                        }
-                        const examples = defV2.prompts?.examples || def?.examples || [];
-                        if (examples.length > 0) {
-                            specsInfo += `Examples:\n${examples.map(ex => `- ${ex}`).join('\n')}\n`;
-                        }
-                        if (id === 'figma-component') {
-                            const tokenRows = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK)
-                              .sort(([a], [b]) => a.localeCompare(b))
-                              .map(([token, semantic]) => {
-                                const base = BASE_COMPONENT_TOKEN_PACK[semantic.baseToken];
-                                return {
-                                  token,
-                                  baseToken: semantic.baseToken,
-                                  componentKey: base?.componentKey || '',
-                                  displayName: base?.displayName || semantic.baseToken,
-                                  category: base?.category || '-'
-                                };
-                              });
-                            specsInfo += `ComponentTokenCatalog(count=${tokenRows.length}):\n`;
-                            specsInfo += tokenRows
-                              .map((row) => `- ${row.token} | name: ${row.displayName} | category: ${row.category} | componentKey: ${row.componentKey}`)
-                              .join('\n');
-                            specsInfo += `\nTokenHint: For figma-component, prefer params.componentToken (componentKey is fallback).\n`;
-                            specsInfo += `ActionHint: Before setting variantCriteria, call discover_component_props with payload { tokens: ["library.xxx.yyy"] } to get real properties.\n`;
-                            specsInfo += `FallbackRule: If property discovery fails, create figma-component with componentToken only (plus width/height if needed), do not guess property names.\n`;
-                        }
-                        if (id === 'table' || id.startsWith('table-')) {
-                            specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
-                        }
-                        if (id === 'form' || id.startsWith('form-')) {
-                            specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
-                        }
-                        if (id === 'filter-group') {
-                            specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
-                            specsInfo += `ParamHint: itemsText 格式为 逗号/换行分隔的 label:type；type 支持 select/input/search（search 会将下拉 icon 替换为 search icon）。\n`;
-                        }
-                        if (id === 'checkbox' || id === 'checkbox-group' || id === 'radio-group') {
-                            specsInfo += `ActionHint: Checkbox/radio visuals are sensitive. Prefer real Figma components; do not draw checkmarks or circles with vector/svg/path/text when checkbox/checkbox-group/radio-group or figma-component tokens are available.\n`;
-                            specsInfo += `ActionHint: For multi-select option rows, prefer checkbox-group or compose multiple checkbox components instead of custom icon + text.\n`;
-                        }
-                        specsInfo += `\n----------------\n`;
-                    } else {
-                        specsInfo += `[Component: ${id}] NOT FOUND.\n`;
-                    }
-                });
-                
-                // If specsInfo is empty (no valid IDs found or empty list), provide a hint
-                if (!specsInfo.trim()) {
-                    specsInfo = "System: No valid component IDs provided for read_specs. Please check COMPONENT_REGISTRY index.";
                 }
 
-                // Feedback to UI
+                const { specsInfo, uniqueIds, idsToLoad } = buildSpecsInfo(ids, readSpecsCacheRef.current, true);
                 const promptHintText = String(currentTurnText || '');
-                const promptKinds = new Set<string>();
-                if (/(表格|table)/i.test(promptHintText)) promptKinds.add('表格');
-                if (/(表单|form)/i.test(promptHintText)) promptKinds.add('表单');
-                if (/(图表|chart)/i.test(promptHintText)) promptKinds.add('图表');
-                const inferredFromPrompt = promptKinds.size === 1 ? Array.from(promptKinds)[0] : null;
-                const inferredFromIds = ids.some((id) => id === 'table' || id.startsWith('table-'))
-                  ? '表格'
-                  : ids.some((id) => id === 'form' || id.startsWith('form-'))
-                    ? '表单'
-                    : ids.some((id) => id === 'chart' || id.startsWith('chart-'))
-                      ? '图表'
-                      : null;
-                const inferredKind = inferredFromPrompt || inferredFromIds;
-                const sysMsg = inferredKind ? `[AI]: 读取 ${inferredKind} 系列组件的规格说明` : `[System]: Loaded specs for ${ids.join(', ')}`;
+                const sysMsg = buildSpecsSystemMessage(
+                  promptHintText,
+                  uniqueIds,
+                  idsToLoad.length === 0 && uniqueIds.length > 0
+                );
                 accumulatedLog += '\n\n' + sysMsg;
                 setResponse(accumulatedLog);
                 
@@ -5335,8 +5486,8 @@ StepD:
                     runtimePlan = updateTaskStatus(
                       runtimePlan,
                       actionTaskId,
-                      ids.length > 0 ? 'done' : 'failed',
-                      ids.length > 0 ? undefined : 'read_specs returned empty ids'
+                      uniqueIds.length > 0 ? 'done' : 'failed',
+                      uniqueIds.length > 0 ? undefined : 'read_specs returned empty ids'
                     );
                 }
             }
@@ -5805,7 +5956,7 @@ StepD:
   const isChartSelection = (() => {
     if (!selectedComponent) return false;
     if (selectedComponent.componentId.startsWith('chart-')) return true;
-    const def = COMPONENT_REGISTRY[selectedComponent.componentId];
+    const def = COMPONENT_DEFS[selectedComponent.componentId];
     return def?.category === 'Data' && selectedComponent.componentId.includes('chart');
   })();
   const chartTypeShortcuts = [
@@ -5822,20 +5973,20 @@ StepD:
   const getFormSelectOptionLabel = (key: string, option: string) => {
     const normalized = normalizeFormOption(option);
     if (key === 'controlType') {
-      if (normalized.includes('select') || normalized.includes('选择')) return '选择框';
-      if (normalized.includes('checkbox') || normalized.includes('多选')) return '多选';
-      if (normalized.includes('radio') || normalized.includes('单选')) return '单选';
-      if (normalized.includes('datepicker') || normalized.includes('日期')) return '日期选择';
-      if (normalized.includes('inputnumber') || normalized.includes('数字')) return '数字输入';
-      if (normalized.includes('slider') || normalized.includes('滑动')) return '滑动';
-      if (normalized.includes('switch') || normalized.includes('开关')) return '开关';
-      if (normalized.includes('textarea') || normalized.includes('多行')) return '多行文本';
-      if (normalized.includes('timepicker') || normalized.includes('时间')) return '时间选择';
-      if (normalized.includes('upload') || normalized.includes('上传')) return '上传';
-      if (normalized.includes('button') || normalized.includes('按钮')) return '按钮';
-      if (normalized.includes('figma')) return '组件';
-      if (normalized.includes('text') || normalized.includes('文本')) return '文本';
-      return '输入框';
+      if (normalized.includes('select') || normalized.includes('选择')) return 'Select 选择框';
+      if (normalized.includes('checkbox') || normalized.includes('多选')) return 'Checkbox 多选';
+      if (normalized.includes('radio') || normalized.includes('单选')) return 'Radio 单选';
+      if (normalized.includes('datepicker') || normalized.includes('日期')) return 'DatePicker 日期选择';
+      if (normalized.includes('inputnumber') || normalized.includes('数字')) return 'Inputnumber 数字输入';
+      if (normalized.includes('slider') || normalized.includes('滑动')) return 'Slider 滑动';
+      if (normalized.includes('switch') || normalized.includes('开关')) return 'Switch 开关';
+      if (normalized.includes('textarea') || normalized.includes('多行')) return 'Textarea 多行文本';
+      if (normalized.includes('timepicker') || normalized.includes('时间')) return 'TimePicker 时间选择';
+      if (normalized.includes('upload') || normalized.includes('上传')) return 'Upload 上传';
+      if (normalized.includes('button') || normalized.includes('按钮')) return 'Button 按钮';
+      if (normalized.includes('figma')) return 'Figma 组件';
+      if (normalized.includes('text') || normalized.includes('文本')) return 'Text 文本';
+      return 'Input 输入框';
     }
     if (key === 'layout') {
       if (normalized.includes('vertical') || normalized.includes('纵向')) return '纵向';
@@ -5934,9 +6085,8 @@ StepD:
 
   const COLUMN_CONTENT_HIDDEN_KEYS = new Set(['rowCount', 'columnWidthMode', 'textAlign', 'textDisplay', 'headerText']);
 
-  const isParamEditable = (def: ComponentDefinition, key: string, paramDef?: ComponentParam): boolean => {
+  const isParamEditable = (def: ComponentDefinition, key: string, paramDef?: ParamDefinition): boolean => {
     if (!paramDef) return false;
-    if (paramDef.uiRole === 'generation-only') return false;
     if (GENERATION_ONLY_PARAM_KEYS.has(key)) return false;
     if (COMPONENT_EDITABLE_PARAM_KEYS[def.id]?.includes(key)) return true;
     if (FULL_RERENDER_COMPONENT_IDS.has(def.id)) return true;
@@ -5975,6 +6125,7 @@ StepD:
     width: '宽度',
     height: '高度',
     size: '尺寸',
+    controlType: '字段类型',
     rowAction: '行操作',
     hasPagination: '分页器',
     hasFilter: '筛选器',
@@ -6040,15 +6191,36 @@ StepD:
     switch: '开关'
   };
 
-  const resolveParamLabel = (def: ComponentDefinition, key: string, paramDef: ComponentParam): string => {
-    if (PARAM_LABEL_MAP[key]) return PARAM_LABEL_MAP[key];
-    if (paramDef.description) return paramDef.description;
-    return key;
+  const normalizeLabelText = (value: string) => String(value || '').replace(/\s+/g, ' ').trim();
+
+  const resolveParamLabel = (def: ComponentDefinition, key: string, paramDef: ParamDefinition): string => {
+    if (PARAM_LABEL_MAP[key]) return normalizeLabelText(PARAM_LABEL_MAP[key]);
+    if (paramDef.description) return normalizeLabelText(paramDef.description);
+    return normalizeLabelText(key);
   };
 
   const resolveOptionLabel = (def: ComponentDefinition, key: string, value: string): string => {
     if (OPTION_LABEL_MAP[value]) return OPTION_LABEL_MAP[value];
     if (isFormComponent(def.id)) return getFormSelectOptionLabel(key, value);
+    return value;
+  };
+
+  const resolveVariantOptionValue = (value: unknown, options?: string[]) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'boolean') {
+      if (options?.includes('True')) return value ? 'True' : 'False';
+      return value ? 'true' : 'false';
+    }
+    return String(value);
+  };
+
+  const normalizeVariantCriteriaValue = (propType: string, value: string) => {
+    if (!value) return null;
+    if (propType === 'BOOLEAN') {
+      if (value.toLowerCase() === 'true') return true;
+      if (value.toLowerCase() === 'false') return false;
+      return value === 'True';
+    }
     return value;
   };
 
@@ -6064,12 +6236,32 @@ StepD:
       const paramDef = def.params[key];
       const value = params[key] ?? paramDef.default;
       const label = resolveParamLabel(def, key, paramDef);
+      const enumValues = paramDef.enumValues || [];
+      let resolvedValue = value;
+      if (
+        (paramDef.type === 'select' || paramDef.type === 'enum') &&
+        enumValues.length > 0 &&
+        !enumValues.includes(value)
+      ) {
+        const normalizedValue = normalizeFormOption(value);
+        const normalizedValueAlt = normalizedValue.replace('-group', '');
+        const matched = enumValues.find((opt) => {
+          const normalizedOption = normalizeFormOption(opt);
+          return (
+            normalizedOption === normalizedValue ||
+            normalizedOption.includes(normalizedValue) ||
+            normalizedOption.includes(normalizedValueAlt) ||
+            normalizedValue.includes(normalizedOption)
+          );
+        });
+        if (matched) resolvedValue = matched;
+      }
 
       if (paramDef.type === 'boolean') {
         switchRows.push(
           <div className="switch-item" key={key}>
             <label>{label}</label>
-            <SwitchControl value={!!value} onChange={(next) => updateParam(key, next)} />
+            <SwitchControl value={!!resolvedValue} onChange={(next) => updateParam(key, next)} />
           </div>
         );
         return;
@@ -6078,14 +6270,14 @@ StepD:
       mainRows.push(
         <FieldRow key={key} label={label}>
           {paramDef.type === 'number' && (
-            <NumberInputControl value={value} onChange={(next) => updateParam(key, next)} />
+            <NumberInputControl value={resolvedValue} onChange={(next) => updateParam(key, next)} />
           )}
           {paramDef.type === 'string' && (
-            <TextInputControl value={value} onChange={(next) => updateParam(key, next)} />
+            <TextInputControl value={resolvedValue} onChange={(next) => updateParam(key, next)} />
           )}
-          {paramDef.type === 'select' && (
-            <SelectControl value={value} onChange={(next) => updateParam(key, next)}>
-              {paramDef.options?.map((opt) => (
+          {(paramDef.type === 'select' || paramDef.type === 'enum') && (
+            <SelectControl value={resolvedValue} onChange={(next) => updateParam(key, next)}>
+              {enumValues.map((opt) => (
                 <option key={opt} value={opt}>
                   {resolveOptionLabel(def, key, opt)}
                 </option>
@@ -6093,7 +6285,7 @@ StepD:
             </SelectControl>
           )}
           {paramDef.type === 'color' && (
-            <ColorControl value={value} onChange={(next) => updateParam(key, next)} />
+            <ColorControl value={resolvedValue} onChange={(next) => updateParam(key, next)} />
           )}
         </FieldRow>
       );
@@ -6106,7 +6298,7 @@ StepD:
     // Also render analysis if available
     const editor = (() => {
       if (!selectedComponent) return null;
-      const def = COMPONENT_REGISTRY[selectedComponent.componentId];
+      const def = COMPONENT_DEFS[selectedComponent.componentId];
       if (!def) return null;
 
       // Find variants
@@ -6114,17 +6306,32 @@ StepD:
       let currentVariantId = selectedComponent.componentId;
 
       if (def.family) {
-          familyVariants = Object.values(COMPONENT_REGISTRY).filter(c => c.family === def.family);
+          familyVariants = Object.values(COMPONENT_DEFS).filter(c => c.family === def.family);
       } else if (def.id === 'table-column') {
           // Special case for table column: show variants for cells
-          familyVariants = Object.values(COMPONENT_REGISTRY).filter(c => c.family === 'table-cell');
+          familyVariants = Object.values(COMPONENT_DEFS).filter(c => c.family === 'table-cell');
           // Use the childComponentId if available, or default to table-cell
           currentVariantId = selectedComponent.childComponentId || 'table-cell';
       }
 
+      const figmaToken = def.id === 'figma-component'
+        ? String(selectedComponent.params?.componentToken || '').trim()
+        : '';
+      const figmaKey = def.id === 'figma-component'
+        ? String(selectedComponent.params?.componentKey || '').trim()
+        : '';
+      const figmaPropsCacheKey = def.id === 'figma-component'
+        ? resolveFigmaComponentPropsCacheKey(figmaToken, figmaKey)
+        : '';
+      const figmaPropsResult = figmaPropsCacheKey ? figmaComponentPropsCache[figmaPropsCacheKey] : null;
+      const figmaVariantProperties = Array.isArray(figmaPropsResult?.properties)
+        ? figmaPropsResult.properties.filter((prop: any) => prop.type === 'VARIANT' || prop.type === 'BOOLEAN')
+        : [];
+      const variantCriteriaMap = parseVariantCriteria(selectedComponent.params?.variantCriteria) || {};
+      const showFigmaVariantProperties = def.id === 'figma-component' && figmaVariantProperties.length > 0;
+
       return (
         <div className="property-editor">
-          <h3>编辑 {def.name}</h3>
 
           {familyVariants.length > 0 && (
             <div className="control-row" style={{ marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
@@ -6139,15 +6346,103 @@ StepD:
             </div>
           )}
 
+          {showFigmaVariantProperties && (
+            <div className="control-row" style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {figmaVariantProperties.map((prop: any) => {
+                  const propName = normalizeLabelText(prop.displayName || prop.propertyName || '');
+                  if (!propName) return null;
+                  const options = Array.isArray(prop.variantOptions) ? prop.variantOptions : [];
+                  const fallbackValue = variantCriteriaMap[propName] ?? prop.defaultValue ?? options[0];
+                  const currentValue = resolveVariantOptionValue(fallbackValue, options);
+                  const isBooleanVariant = String(prop.type || '').toUpperCase() === 'BOOLEAN';
+                  const currentBooleanValue = normalizeVariantCriteriaValue('BOOLEAN', String(currentValue)) === true;
+                  return (
+                    <FieldRow key={propName} label={propName}>
+                      {isBooleanVariant ? (
+                        <SwitchControl
+                          value={currentBooleanValue}
+                          onChange={(next) => {
+                            const nextCriteria = { ...variantCriteriaMap };
+                            nextCriteria[propName] = next;
+                            const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
+                            updateParam('variantCriteria', nextValue);
+                          }}
+                        />
+                      ) : options.length > 0 ? (
+                        <SelectControl
+                          value={currentValue}
+                          onChange={(next) => {
+                            const normalized = normalizeVariantCriteriaValue(prop.type, String(next));
+                            const nextCriteria = { ...variantCriteriaMap };
+                            if (normalized === null || normalized === undefined || normalized === '') {
+                              delete nextCriteria[propName];
+                            } else {
+                              nextCriteria[propName] = normalized;
+                            }
+                            const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
+                            updateParam('variantCriteria', nextValue);
+                          }}
+                        >
+                          {options.map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </SelectControl>
+                      ) : (
+                        <TextInputControl
+                          value={currentValue}
+                          onChange={(next) => {
+                            const nextCriteria = { ...variantCriteriaMap };
+                            if (!next) {
+                              delete nextCriteria[propName];
+                            } else {
+                              nextCriteria[propName] = next;
+                            }
+                            const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
+                            updateParam('variantCriteria', nextValue);
+                          }}
+                        />
+                      )}
+                    </FieldRow>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {(() => {
+            const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
+            const isFormField = def.id === 'form-field';
+            const formFieldHiddenKeys = new Set([
+              'label',
+              'helpText',
+              'descriptionText',
+              'errorText',
+              'layout',
+              'componentKey',
+              'variantCriteria',
+              'text',
+              'checkedValues',
+              'language'
+            ]);
             const paramKeys = Object.keys(def.params).filter((key) => {
               const paramDef = def.params[key];
               if (!isParamEditable(def, key, paramDef)) return false;
+              if (isFormField && formFieldHiddenKeys.has(key)) return false;
+              if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
+              if (def.id === 'figma-component' && ['componentToken', 'componentKey', 'fallbackName', 'width', 'height'].includes(key)) {
+                return false;
+              }
               if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
-              const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
               return shouldDisplayTagParam(key, effectiveParams);
             });
-            const { mainRows, switchRows } = buildParamControlRows(def, paramKeys, selectedComponent.params || {});
+            const orderedParamKeys = isFormField
+              ? [
+                  ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
+                  ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
+                ]
+              : paramKeys;
+            const { mainRows, switchRows } = buildParamControlRows(def, orderedParamKeys, selectedComponent.params || {});
             return (
               <>
                 {mainRows}
@@ -6246,7 +6541,7 @@ StepD:
     const params = selectedComponent.params || {};
     const isColumn = selectedComponent.componentId === 'table-column';
     const isCell = isTableCellComponent(selectedComponent.componentId);
-    const cellVariants = Object.values(COMPONENT_REGISTRY).filter((def) => def.family === 'table-cell');
+    const cellVariants = Object.values(COMPONENT_DEFS).filter((def) => def.family === 'table-cell');
     const currentCellType = isColumn
       ? (selectedComponent.childComponentId || 'table-cell')
       : selectedComponent.componentId;
@@ -6254,7 +6549,7 @@ StepD:
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
     const widthModeValue = (params.columnWidthMode || 'FILL').toUpperCase();
-    const contentDef = COMPONENT_REGISTRY[selectedComponent.componentId];
+    const contentDef = COMPONENT_DEFS[selectedComponent.componentId];
     const headerTextValue =
       (params.headerText ?? contentDef?.params?.headerText?.default ?? '') as string;
     const contentParamKeys = contentDef
@@ -6410,26 +6705,27 @@ StepD:
   };
 
   const renderDocs = () => {
-    const registryV2 = loadRegistryV2();
-    const allDefs = Object.values(registryV2.components);
-    const defsById = registryV2.components;
-    const baseColorTokenEntries = Object.entries(BASE_COLOR_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
-    const semanticColorTokenEntries = Object.entries(SEMANTIC_COLOR_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
-    const baseTypographyTokenEntries = Object.entries(BASE_TYPOGRAPHY_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
-    const semanticTypographyTokenEntries = Object.entries(SEMANTIC_TYPOGRAPHY_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
-    const baseComponentTokenEntries = Object.entries(BASE_COMPONENT_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
-    const semanticComponentTokenEntries = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK).sort(([a], [b]) => a.localeCompare(b));
+    try {
+      const registry = loadRegistry() ?? { version: 'unknown', components: {} as Record<string, ComponentDefinition> };
+      const components = registry.components ?? {};
+      const allDefs = Object.values(components).filter(isEnabledComponent);
+      const defsById = components;
+      const baseColorTokenEntries = Object.entries(BASE_COLOR_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const semanticColorTokenEntries = Object.entries(SEMANTIC_COLOR_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const baseTypographyTokenEntries = Object.entries(BASE_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const semanticTypographyTokenEntries = Object.entries(SEMANTIC_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const baseComponentTokenEntries = Object.entries(BASE_COMPONENT_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const semanticComponentTokenEntries = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
-    // Group by category
-    const grouped: {[key: string]: ComponentDefinitionV2[]} = {};
-    allDefs.forEach(def => {
-        const cat = def.category || 'Other';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(def);
-    });
+      const grouped: {[key: string]: ComponentDefinition[]} = {};
+      allDefs.forEach(def => {
+          const cat = def.category || 'Other';
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(def);
+      });
 
-    return (
-      <div className="docs-container">
+      return (
+        <div className="docs-container">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           <h3 style={{ margin: 0 }}>组件库</h3>
           <label style={{ fontSize: '12px', color: '#666', display: 'inline-flex', alignItems: 'center', gap: '6px', userSelect: 'none' }}>
@@ -6518,6 +6814,11 @@ StepD:
                   </tr>
                 );
               })}
+              {semanticColorTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义颜色 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -6544,6 +6845,11 @@ StepD:
                   </tr>
                 );
               })}
+              {baseColorTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={3} style={{ padding: '8px', color: '#999' }}>暂无基础颜色 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -6574,6 +6880,11 @@ StepD:
                   <td style={{ padding: '4px' }}><code>{profile.baseToken}</code></td>
                 </tr>
               ))}
+              {semanticTypographyTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义排版 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -6600,6 +6911,11 @@ StepD:
                   </tr>
                 );
               })}
+              {baseTypographyTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={3} style={{ padding: '8px', color: '#999' }}>暂无基础排版 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -6630,6 +6946,11 @@ StepD:
                   <td style={{ padding: '4px' }}><code>{profile.baseToken}</code></td>
                 </tr>
               ))}
+              {semanticComponentTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义组件 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -6656,9 +6977,25 @@ StepD:
                   <td style={{ padding: '4px' }}>{profile.aliases?.join(', ') || '-'}</td>
                 </tr>
               ))}
+              {baseComponentTokenEntries.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ padding: '8px', color: '#999' }}>暂无基础组件 token</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {Object.keys(grouped).length === 0 && (
+          <div className="component-card" style={{ marginTop: '12px' }}>
+            <div className="component-header">
+              <span className="component-name">组件定义</span>
+            </div>
+            <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
+              registry.components 为空，暂无组件定义可展示。
+            </p>
+          </div>
+        )}
 
         {Object.keys(grouped).sort().map(category => (
             <div key={category} className="category-section">
@@ -6668,35 +7005,49 @@ StepD:
                     marginTop: '24px',
                     color: '#666'
                 }}>{category}</h4>
-                {grouped[category].map((def: ComponentDefinitionV2) => (
+                {grouped[category].map((def: ComponentDefinition) => (
                   <div key={def.id} className="component-card" style={{ marginBottom: '16px' }}>
                     {(() => {
+                      const legacyDef = COMPONENT_DEFS[def.id];
                       const familyDef = def.family ? defsById[def.family] : undefined;
-                      const legacyDef = COMPONENT_REGISTRY[def.id];
                       const inheritedParamKeys = new Set<string>();
+                      const defParams = def.params || {};
+                      const familyParams = familyDef?.params || {};
                       if (familyDef && familyDef.id !== def.id) {
-                        Object.entries(def.params).forEach(([key, paramDef]) => {
-                          const familyParamDef = familyDef.params[key];
+                        Object.entries(defParams).forEach(([key, paramDef]) => {
+                          const familyParamDef = familyParams[key];
                           if (familyParamDef && isSameParamDefinition(paramDef, familyParamDef)) {
                             inheritedParamKeys.add(key);
                           }
                         });
                       }
-                      const displayedParamEntries = Object.entries(def.params).filter(([key]) => (
+                      const displayedParamEntries = Object.entries(defParams).filter(([key]) => (
                         showInheritedParams || !inheritedParamKeys.has(key)
                       ));
-                      const editableParamKeys = legacyDef
-                        ? new Set(
-                          Object.keys(legacyDef.params || {}).filter((key) =>
-                            isParamEditable(legacyDef, key, legacyDef.params[key])
-                          )
+                      const editableParamKeys = new Set(
+                        Object.keys(defParams).filter((key) =>
+                          isParamEditable(def, key, defParams[key])
                         )
-                        : new Set<string>();
+                      );
 
+                      const isRebuilt = def.isRebuilt ?? Boolean(def.figmaPropertySnapshot || def.figmaBinding?.nodeType === 'INSTANCE');
                       return (
                         <>
                     <div className="component-header">
                       <span className="component-name">{def.name}</span>
+                      {isRebuilt && (
+                        <span style={{
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          background: '#FFF4E5',
+                          color: '#B65D00',
+                          border: '1px solid #FFD8A8',
+                          marginLeft: '8px'
+                        }}>
+                          复刻
+                        </span>
+                      )}
                       <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>ID: {def.id}</span>
                     </div>
                     <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>{def.description}</p>
@@ -6881,7 +7232,7 @@ StepD:
                     })()}
 
                     {(() => {
-                      const themeBindings = (def as ComponentDefinitionV2 & {
+                      const themeBindings = (def as ComponentDefinition & {
                         themeBindings?: Array<{ propKey: string; tokenRef: string }>
                       }).themeBindings;
                       if (!themeBindings || themeBindings.length === 0) return null;
@@ -6915,7 +7266,27 @@ StepD:
             </div>
         ))}
       </div>
-    );
+      );
+    } catch (error) {
+      return (
+        <div className="docs-container">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <h3 style={{ margin: 0 }}>组件库</h3>
+          </div>
+          <div className="component-card" style={{ marginTop: '12px' }}>
+            <div className="component-header">
+              <span className="component-name">加载失败</span>
+            </div>
+            <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
+              组件库渲染出现异常，请检查 registry 或 token 数据。
+            </p>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#999' }}>
+              {String(error)}
+            </pre>
+          </div>
+        </div>
+      );
+    }
   };
 
   const handleClearPlan = () => {
@@ -7080,12 +7451,23 @@ StepD:
 
   const getSelectionTitle = () => {
     if (!selectedComponent) return '';
-    const def = COMPONENT_REGISTRY[selectedComponent.componentId];
-    const base = def?.name || selectedComponent.componentId;
-    if (selectedComponent.nodeName && selectedComponent.nodeName !== base) {
-      return `${base} - ${selectedComponent.nodeName}`;
+    const def = COMPONENT_DEFS[selectedComponent.componentId];
+    if (def?.id === 'figma-component') {
+      const token = String(selectedComponent.params?.componentToken || '').trim();
+      const componentKey = String(selectedComponent.params?.componentKey || '').trim();
+      if (token) {
+        const semanticProfile = SEMANTIC_COMPONENT_TOKEN_PACK[token];
+        const baseToken = semanticProfile?.baseToken || token;
+        const baseProfile = BASE_COMPONENT_TOKEN_PACK[baseToken];
+        const tokenName = baseProfile?.displayName || baseToken;
+        if (tokenName) return tokenName;
+      }
+      if (componentKey && BASE_COMPONENT_KEY_TO_NAME[componentKey]) {
+        return BASE_COMPONENT_KEY_TO_NAME[componentKey];
+      }
     }
-    return base;
+    if (def?.name) return def.name;
+    return selectedComponent.nodeName || selectedComponent.componentId;
   };
 
   const renderSelectionPage = () => {

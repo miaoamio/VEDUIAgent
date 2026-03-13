@@ -97,7 +97,7 @@ AI 产出必须是一个 `AiComponentSpecPackage` JSON 对象：
 你是组件规范生成器。请只输出一个 JSON 对象，结构必须是 AiComponentSpecPackage。
 硬性要求：
 1) registryVersion 固定为 "2.0"
-2) component 必须符合 ComponentDefinitionV2
+2) component 必须符合 ComponentDefinition
 3) tests 至少 3 条：smoke_create(success), smoke_edit(success), negative_case(fail)
 4) 不允许输出解释文字、markdown、注释
 ```

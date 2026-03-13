@@ -826,6 +826,7 @@ button:disabled {
   flex-direction: column;
   gap: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  width: 100%;
 }
 
 .property-editor h3 {
@@ -862,6 +863,37 @@ button:disabled {
 .field-row label {
   color: #6b7280;
   font-size: 12px;
+}
+
+.field-row input[type="number"],
+.field-row input[type="text"],
+.field-row select {
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  font-family: var(--ved-font-family);
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  appearance: none;
+  background-color: #ffffff;
+}
+
+.field-row select {
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px;
+}
+
+.field-row select:focus,
+.field-row input[type="number"]:focus,
+.field-row input[type="text"]:focus {
+  border-color: #1664ff;
+  box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
 }
 
 .selection-panel {
@@ -907,6 +939,8 @@ button:disabled {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   font-size: 14px;
+  line-height: 20px;
+  font-family: var(--ved-font-family);
   width: 100%;
   box-sizing: border-box;
   outline: none;
@@ -915,6 +949,7 @@ button:disabled {
 }
 
 .selection-panel select {
+  padding-right: 32px;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right 12px center;

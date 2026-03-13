@@ -1,8 +1,6 @@
-import type { ComponentDefinition } from "./types";
+export const REGISTRY_VERSION = "2.0" as const;
 
-export const REGISTRY_V2_VERSION = "2.0" as const;
-
-export type RegistryVersion = typeof REGISTRY_V2_VERSION;
+export type RegistryVersion = typeof REGISTRY_VERSION;
 
 export type ComponentCategory = "Layout" | "Basic" | "Form" | "Table" | "Data" | "Other";
 
@@ -16,7 +14,7 @@ export type ParamType =
   | "object"
   | "array";
 
-export interface ParamDefinitionV2 {
+export interface ParamDefinition {
   type: ParamType;
   default: unknown;
   description: string;
@@ -33,7 +31,7 @@ export interface ParamDefinitionV2 {
   };
 }
 
-export interface SlotDefinitionV2 {
+export interface SlotDefinition {
   displayName?: string;
   allowedComponents: string[];
   required?: boolean;
@@ -42,7 +40,7 @@ export interface SlotDefinitionV2 {
   ordered?: boolean;
 }
 
-export type ConstraintDefinitionV2 =
+export type ConstraintDefinition =
   | { type: "forbid_children"; components: string[] }
   | { type: "require_slot"; slot: string }
   | { type: "mutually_exclusive_params"; params: string[] }
@@ -55,7 +53,7 @@ export type ConstraintDefinitionV2 =
   | { type: "max_depth"; value: number }
   | { type: "custom"; key: string; payload?: Record<string, unknown> };
 
-export interface CapabilityDefinitionV2 {
+export interface CapabilityDefinition {
   allowChildren?: boolean;
   allowSwapVariant?: boolean;
   allowSetProps?: boolean;
@@ -65,7 +63,7 @@ export interface CapabilityDefinitionV2 {
   allowRemove?: boolean;
 }
 
-export interface FigmaBindingV2 {
+export interface FigmaBinding {
   nodeType?: "FRAME" | "TEXT" | "INSTANCE" | "GROUP";
   renderKey?: string;
   preferredLayoutMode?: "HORIZONTAL" | "VERTICAL" | "NONE";
@@ -73,7 +71,7 @@ export interface FigmaBindingV2 {
   propMapper?: string;
 }
 
-export interface FigmaPropertyDefinitionV2 {
+export interface FigmaPropertyDefinition {
   propertyName: string;
   displayName?: string;
   type: string;
@@ -81,15 +79,15 @@ export interface FigmaPropertyDefinitionV2 {
   options?: string[];
 }
 
-export interface FigmaPropertySnapshotV2 {
+export interface FigmaPropertySnapshot {
   token?: string;
   componentKey: string;
   inspectedAt: string;
   source: "discover_component_props";
-  properties: FigmaPropertyDefinitionV2[];
+  properties: FigmaPropertyDefinition[];
 }
 
-export interface ColorVariableBindingV2 {
+export interface ColorVariableBinding {
   enabled: boolean;
   token?: string;
   variableRef?: string;
@@ -98,7 +96,7 @@ export interface ColorVariableBindingV2 {
   nameCandidates?: string[];
 }
 
-export interface TypographyBindingV2 {
+export interface TypographyBinding {
   enabled: boolean;
   token?: string;
   textStyleRef?: string;
@@ -107,7 +105,7 @@ export interface TypographyBindingV2 {
   nameCandidates?: string[];
 }
 
-export interface MigrationRuleV2 {
+export interface MigrationRule {
   fromVersion: string;
   toVersion: string;
   description?: string;
@@ -116,11 +114,12 @@ export interface MigrationRuleV2 {
   defaults?: Record<string, unknown>;
 }
 
-export interface ComponentDefinitionV2 {
+export interface ComponentDefinition {
   id: string;
   name: string;
   category: ComponentCategory;
   description: string;
+  isRebuilt?: boolean;
   schemaVersion: string;
   family?: string;
   tags?: string[];
@@ -129,20 +128,20 @@ export interface ComponentDefinitionV2 {
     usage?: string;
     examples?: string[];
   };
-  params: Record<string, ParamDefinitionV2>;
-  slots?: Record<string, SlotDefinitionV2>;
-  constraints?: ConstraintDefinitionV2[];
-  capabilities?: CapabilityDefinitionV2;
-  figmaBinding?: FigmaBindingV2;
-  figmaPropertySnapshot?: FigmaPropertySnapshotV2;
-  colorVariableBindings?: Record<string, ColorVariableBindingV2>;
-  typographyBindings?: Record<string, TypographyBindingV2>;
-  migrations?: MigrationRuleV2[];
+  params: Record<string, ParamDefinition>;
+  slots?: Record<string, SlotDefinition>;
+  constraints?: ConstraintDefinition[];
+  capabilities?: CapabilityDefinition;
+  figmaBinding?: FigmaBinding;
+  figmaPropertySnapshot?: FigmaPropertySnapshot;
+  colorVariableBindings?: Record<string, ColorVariableBinding>;
+  typographyBindings?: Record<string, TypographyBinding>;
+  migrations?: MigrationRule[];
 }
 
-export interface ComponentRegistryV2 {
+export interface ComponentRegistry {
   version: RegistryVersion;
-  components: Record<string, ComponentDefinitionV2>;
+  components: Record<string, ComponentDefinition>;
   meta?: {
     updatedAt?: string;
     owner?: string;
@@ -150,9 +149,7 @@ export interface ComponentRegistryV2 {
   };
 }
 
-export type LegacyRegistryV1 = Record<string, ComponentDefinition>;
-
-export const DEFAULT_CAPABILITIES_V2: Required<CapabilityDefinitionV2> = {
+export const DEFAULT_CAPABILITIES: Required<CapabilityDefinition> = {
   allowChildren: true,
   allowSwapVariant: false,
   allowSetProps: true,

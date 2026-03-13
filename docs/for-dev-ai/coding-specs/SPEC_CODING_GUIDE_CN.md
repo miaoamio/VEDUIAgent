@@ -47,7 +47,7 @@
 3. Scene 协议真源：
 [SPEC_PROTOCOL_SCENE_CN.md](../../for-runtime-ai/specs/SPEC_PROTOCOL_SCENE_CN.md)
 4. Registry 真源：
-[SPEC_REGISTRY_V2_CN.md](SPEC_REGISTRY_V2_CN.md)
+[SPEC_REGISTRY_CN.md](SPEC_REGISTRY_CN.md)
 5. Render Engine 真源：
 [SPEC_RENDER_ENGINE_CN.md](SPEC_RENDER_ENGINE_CN.md)
 6. Metadata 真源：

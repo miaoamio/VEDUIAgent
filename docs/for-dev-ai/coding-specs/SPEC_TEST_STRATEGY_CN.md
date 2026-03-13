@@ -53,7 +53,7 @@
 2. `params.default` 类型不匹配
 3. `slot.allowedComponents` 包含未知组件
 4. `minItems > maxItems`
-5. v1 -> v2 normalize 语义一致
+5. 旧格式 -> 当前格式映射语义一致
 
 ## 6. Render Engine 层测试用例（最小集）
 

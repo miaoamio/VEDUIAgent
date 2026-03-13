@@ -12,7 +12,7 @@
 
 ## 3. 读者路径
 1. AI 运行时：
-`docs/ai/AI_RUNTIME_SPEC_CODING_CN.md` -> 按需查 `SPEC_AGENT_PLANNER/SPEC_PROTOCOL_SCENE/SPEC_REGISTRY_V2`
+`docs/ai/AI_RUNTIME_SPEC_CODING_CN.md` -> 按需查 `SPEC_AGENT_PLANNER/SPEC_PROTOCOL_SCENE/SPEC_REGISTRY`
 2. 设计师（借助 AI 写 spec）：
 `docs/designer/DESIGNER_SPEC_WORKFLOW_CN.md` -> `docs/designer/SPEC_AUTHORING_AI_CN.md`
 3. 工程实现：
@@ -28,7 +28,7 @@
 3. 协议真源：
 [SPEC_PROTOCOL_SCENE_CN.md](../../for-runtime-ai/specs/SPEC_PROTOCOL_SCENE_CN.md)
 4. 注册表真源：
-[SPEC_REGISTRY_V2_CN.md](../../for-dev-ai/coding-specs/SPEC_REGISTRY_V2_CN.md)
+[SPEC_REGISTRY_CN.md](../../for-dev-ai/coding-specs/SPEC_REGISTRY_CN.md)
 5. 渲染执行真源：
 [SPEC_RENDER_ENGINE_CN.md](/Users/bytedance/Desktop/figmaUIagent/docs/ai/SPEC_RENDER_ENGINE_CN.md)
 6. 元数据真源：

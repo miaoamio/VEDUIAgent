@@ -1,14 +1,9 @@
 import type { SceneOperation } from "../protocol/scene";
-import { DEFAULT_CAPABILITIES_V2 } from "../registry.v2.types";
-import type {
-  CapabilityDefinitionV2,
-  ComponentDefinitionV2,
-  ComponentRegistryV2,
-  SlotDefinitionV2
-} from "../registry.v2.types";
+import { DEFAULT_CAPABILITIES } from "../registry.types";
+import type { CapabilityDefinition, ComponentDefinition, ComponentRegistry, SlotDefinition } from "../registry.types";
 import type { ApplyError } from "./types";
 
-function capabilityForOperation(operation: SceneOperation): keyof Required<CapabilityDefinitionV2> {
+function capabilityForOperation(operation: SceneOperation): keyof Required<CapabilityDefinition> {
   switch (operation.op) {
     case "set_props":
       return "allowSetProps";
@@ -30,16 +25,16 @@ function capabilityForOperation(operation: SceneOperation): keyof Required<Capab
 }
 
 export function resolveComponentDefinition(
-  registry: ComponentRegistryV2,
+  registry: ComponentRegistry,
   componentId: string
-): ComponentDefinitionV2 | null {
+): ComponentDefinition | null {
   return registry.components[componentId] ?? null;
 }
 
 export function resolveSlotDefinition(
-  componentDef: ComponentDefinitionV2,
+  componentDef: ComponentDefinition,
   slot?: string
-): SlotDefinitionV2 | null {
+): SlotDefinition | null {
   if (!slot) {
     return componentDef.slots?.default ?? null;
   }
@@ -47,7 +42,7 @@ export function resolveSlotDefinition(
 }
 
 export function isComponentAllowedInSlot(
-  parentDef: ComponentDefinitionV2,
+  parentDef: ComponentDefinition,
   childComponentId: string,
   slot?: string
 ): boolean {
@@ -62,9 +57,9 @@ export function isComponentAllowedInSlot(
   return slotDef.allowedComponents.includes(childComponentId);
 }
 
-export function isOperationAllowed(componentDef: ComponentDefinitionV2, operation: SceneOperation): boolean {
-  const capabilities: Required<CapabilityDefinitionV2> = {
-    ...DEFAULT_CAPABILITIES_V2,
+export function isOperationAllowed(componentDef: ComponentDefinition, operation: SceneOperation): boolean {
+  const capabilities: Required<CapabilityDefinition> = {
+    ...DEFAULT_CAPABILITIES,
     ...(componentDef.capabilities ?? {})
   };
   const key = capabilityForOperation(operation);

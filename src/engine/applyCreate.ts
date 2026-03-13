@@ -1,5 +1,5 @@
 import { validateSceneEnvelope } from "../protocol/scene";
-import { loadRegistryV2, validateRegistryV2 } from "../registry.loader";
+import { loadRegistry, validateRegistry } from "../registry.loader";
 import { syncSubtreeMetadata } from "./metadataSync";
 import { renderSceneSubtree } from "./renderSceneNode";
 import { EngineTransaction } from "./transaction";
@@ -14,7 +14,7 @@ import {
 function createContext(options: ApplyCreateOptions = {}): ApplyContext {
   return {
     mode: options.mode ?? "strict",
-    registry: loadRegistryV2(options.registry),
+    registry: loadRegistry(options.registry),
     nodeMap: new Map(),
     sceneMap: new Map(),
     parentMap: new Map(),
@@ -42,7 +42,7 @@ export async function applyCreate(
     };
   }
 
-  const registryIssues = validateRegistryV2(ctx.registry);
+  const registryIssues = validateRegistry(ctx.registry);
   if (registryIssues.length > 0) {
     return {
       ok: false,

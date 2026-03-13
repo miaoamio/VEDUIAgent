@@ -1,5 +1,7 @@
-import { ComponentInstance, ComponentDefinition } from './types';
-import { COMPONENT_REGISTRY, getDefaultParams } from './registry';
+import { ComponentInstance } from './types';
+import { COMPONENT_REGISTRY } from './registry';
+import { getDefaultParams } from './registry.helpers';
+import type { ComponentDefinition } from './registry.types';
 import { FULL_RERENDER_COMPONENT_IDS } from './editability';
 import { applyEnvelopeUnknown } from './engine/applyEnvelope';
 import {
@@ -18,8 +20,128 @@ import {
 } from './theme.component-tokens';
 import { createInspectDrivenTagFallbackNode } from './tag.fallback';
 
+const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
+
 // This shows the HTML page in "ui.html".
 figma.showUI(__html__, { width: 398, height: 680 });
+
+const FONT_LOAD_CACHE = new Map<string, Promise<void>>();
+const FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE = new Map<string, InstanceNode>();
+const TAG_TEMPLATE_CACHE = new Map<string, SceneNode>();
+const TABLE_CELL_PREWARM_STATE = {
+  scheduled: false,
+  inFlight: false,
+  warmedFonts: false,
+  warmedTokens: new Set<string>(),
+  warmedDefaultTag: false
+};
+
+const TABLE_CELL_PREWARM_TOKENS = [
+  'table.cell.icon.edit',
+  'table.cell.icon.delete',
+  'table.cell.icon.actionMore',
+  'lib-data-display-avataricon',
+  'table.header.icon'
+];
+
+function loadFontCached(font: FontName): Promise<void> {
+  const key = `${font.family}:${font.style}`;
+  const cached = FONT_LOAD_CACHE.get(key);
+  if (cached) return cached;
+  const pending = figma.loadFontAsync(font).catch((e) => {
+    console.warn('[Font] failed to load', font, e);
+  });
+  FONT_LOAD_CACHE.set(key, pending);
+  return pending;
+}
+
+async function ensureInterFontsLoaded(): Promise<void> {
+  await Promise.all([
+    loadFontCached({ family: 'Inter', style: 'Regular' }),
+    loadFontCached({ family: 'Inter', style: 'Bold' }),
+    loadFontCached({ family: 'Inter', style: 'Medium' })
+  ]);
+}
+
+function serializeVariantCriteria(
+  criteria?: VariantCriteria | Record<string, string> | ((variant: ComponentNode) => boolean)
+): string | null {
+  if (!criteria) return '';
+  if (typeof criteria === 'function') return null;
+  const keys = Object.keys(criteria).sort();
+  if (keys.length === 0) return '';
+  try {
+    return JSON.stringify(criteria, keys);
+  } catch {
+    return null;
+  }
+}
+
+function buildTokenCacheKey(
+  token: string,
+  criteria?: VariantCriteria | ((variant: ComponentNode) => boolean)
+): string | null {
+  const serialized = serializeVariantCriteria(criteria);
+  if (serialized === null) return null;
+  return serialized ? `${token}::${serialized}` : token;
+}
+
+function buildTagTemplateCacheKey(componentKey: string, criteria?: Record<string, string>): string {
+  const serialized = serializeVariantCriteria(criteria);
+  if (!serialized) return `${componentKey}::default`;
+  return `${componentKey}::${serialized}`;
+}
+
+async function prewarmTableCellAssets(): Promise<void> {
+  if (TABLE_CELL_PREWARM_STATE.inFlight) return;
+  TABLE_CELL_PREWARM_STATE.inFlight = true;
+  try {
+    if (!TABLE_CELL_PREWARM_STATE.warmedFonts) {
+      await ensureInterFontsLoaded();
+      TABLE_CELL_PREWARM_STATE.warmedFonts = true;
+    }
+
+    for (const token of TABLE_CELL_PREWARM_TOKENS) {
+      if (TABLE_CELL_PREWARM_STATE.warmedTokens.has(token)) continue;
+      const instance = await createFigmaComponentInstanceByToken(token);
+      if (instance) {
+        try {
+          instance.remove();
+        } catch {
+          // ignore cleanup failure
+        }
+      }
+      TABLE_CELL_PREWARM_STATE.warmedTokens.add(token);
+    }
+
+    if (!TABLE_CELL_PREWARM_STATE.warmedDefaultTag) {
+      const tagDefaults = getDefaultParams('table-cell-tag');
+      if (tagDefaults && COMPONENT_DEFS['tag']) {
+        const normalizedTagParams = buildTableCellTagParams(tagDefaults);
+        const templateNode = await createTagFromFigmaTemplate(COMPONENT_DEFS['tag'], normalizedTagParams);
+        if (templateNode) {
+          try {
+            templateNode.remove();
+          } catch {
+            // ignore cleanup failure
+          }
+        }
+      }
+      TABLE_CELL_PREWARM_STATE.warmedDefaultTag = true;
+    }
+  } finally {
+    TABLE_CELL_PREWARM_STATE.inFlight = false;
+  }
+}
+
+function scheduleTableCellPrewarm(): void {
+  if (TABLE_CELL_PREWARM_STATE.scheduled || TABLE_CELL_PREWARM_STATE.inFlight) return;
+  TABLE_CELL_PREWARM_STATE.scheduled = true;
+  setTimeout(() => {
+    TABLE_CELL_PREWARM_STATE.scheduled = false;
+    void prewarmTableCellAssets();
+  }, 0);
+}
 
 function findAiComponentNode(node: SceneNode | null): SceneNode | null {
   let current: BaseNode | null = node;
@@ -113,6 +235,10 @@ function checkSelection() {
             normalizedParams.textAlign = merged.textAlign ?? normalizedParams.textAlign;
             normalizedParams.textDisplay = merged.textDisplay ?? normalizedParams.textDisplay;
           }
+        }
+
+        if (componentId.startsWith('table')) {
+          scheduleTableCellPrewarm();
         }
 
         figma.ui.postMessage({ 
@@ -2108,6 +2234,65 @@ function normalizeUnifiedTagParams(params: Record<string, any>): Record<string, 
     return next;
 }
 
+function buildTableCellTagParams(params: Record<string, any>): Record<string, any> {
+    const label = String(params.tagText || params.text || 'Tag');
+    const kind = String(params.tagKind ?? params.kind ?? '').trim().toLowerCase();
+    const isTypeTag = kind.includes('type');
+
+    const explicitToken =
+        typeof params.componentToken === 'string' && String(params.componentToken).trim().length > 0;
+    const requestedToken = explicitToken
+        ? String(params.componentToken).trim()
+        : isTypeTag
+            ? TAG_COMPONENT_TOKEN
+            : STATUS_TAG_COMPONENT_TOKEN;
+
+    const legacyTagColor = String(params.tagColor ?? '').trim().toLowerCase();
+    const legacyStatusTheme =
+        legacyTagColor === 'green'
+            ? 'Success 成功'
+            : legacyTagColor === 'orange' || legacyTagColor === 'yellow'
+                ? 'Warning 告警'
+                : legacyTagColor === 'red'
+                    ? 'Error 错误'
+                    : legacyTagColor === 'gray' || legacyTagColor === 'grey'
+                        ? 'Stop 停止'
+                        : legacyTagColor === 'blue'
+                            ? 'Processing 等待中'
+                            : undefined;
+
+    const tagParams: Record<string, any> = {
+        text: label,
+        componentToken: requestedToken,
+        tagType: params.tagType,
+        size: params.size,
+        state: params.state,
+        disabled: params.disabled,
+        showIcon: params.showIcon,
+        showDot: params.showDot,
+        showDropdown: params.showDropdown,
+        closable: params.closable,
+        statusTheme: params.statusTheme ?? params.theme ?? legacyStatusTheme,
+        statusType: params.statusType ?? params.statusLevel ?? params.level,
+        statusState: params.statusState
+    };
+
+    if (isTypeTag && !tagParams.tagType) {
+        tagParams.tagType = 'Outline 线型标签';
+    }
+
+    const normalizedTagParams = normalizeUnifiedTagParams(tagParams);
+    const family = resolveTagComponentFamily(normalizedTagParams.componentToken);
+    if (family === 'status' && !normalizedTagParams.statusType) {
+        normalizedTagParams.statusType = 'L2 二级标签';
+    }
+    if (family === 'status' && !normalizedTagParams.statusTheme) {
+        normalizedTagParams.statusTheme = 'Success 成功';
+    }
+
+    return normalizedTagParams;
+}
+
 function normalizeOtherTagType(value: unknown): OtherTagType {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized.includes('taggroup') || normalized.includes('标签组') || normalized.includes('group')) {
@@ -2527,6 +2712,18 @@ async function createTagFromFigmaTemplate(
 
     for (let index = 0; index < criteriaCandidates.length; index += 1) {
         const criteria = criteriaCandidates[index];
+        const cacheKey = buildTagTemplateCacheKey(componentKey, criteria);
+        const cachedTemplate = TAG_TEMPLATE_CACHE.get(cacheKey);
+        if (cachedTemplate) {
+            try {
+                const cloned = cachedTemplate.clone();
+                await applyTagTemplateContent(cloned, params, family);
+                cloned.name = def.name;
+                return cloned;
+            } catch (e) {
+                console.warn('[TagTemplate] failed to clone cached template', e);
+            }
+        }
         let importedInstance: InstanceNode | null = null;
 
         try {
@@ -2542,6 +2739,11 @@ async function createTagFromFigmaTemplate(
             }
 
             const detached = importedInstance.detachInstance();
+            try {
+                TAG_TEMPLATE_CACHE.set(cacheKey, detached.clone());
+            } catch (e) {
+                console.warn('[TagTemplate] failed to cache template', e);
+            }
             await applyTagTemplateContent(detached, params, family);
             detached.name = def.name;
             return detached;
@@ -2558,11 +2760,24 @@ async function createTagFromFigmaTemplate(
     }
 
     try {
+        const fallbackKey = buildTagTemplateCacheKey(componentKey);
+        const cachedFallback = TAG_TEMPLATE_CACHE.get(fallbackKey);
+        if (cachedFallback) {
+            const cloned = cachedFallback.clone();
+            await applyTagTemplateContent(cloned, params, family);
+            cloned.name = def.name;
+            return cloned;
+        }
         const fallbackInstance = await createFigmaComponentInstance({
             componentKey,
             fallbackName: def.name
         });
         const detached = fallbackInstance.detachInstance();
+        try {
+            TAG_TEMPLATE_CACHE.set(fallbackKey, detached.clone());
+        } catch (e) {
+            console.warn('[TagTemplate] failed to cache fallback template', e);
+        }
         await applyTagTemplateContent(detached, params, family);
         detached.name = def.name;
         return detached;
@@ -3799,7 +4014,7 @@ async function createFormFieldFromFigmaTemplate(
     let templateInstance: InstanceNode | null = null;
     try {
         if (layout === 'vertical') {
-            const fieldDef = COMPONENT_REGISTRY['form-field'];
+            const fieldDef = COMPONENT_DEFS['form-field'];
             const componentKey = String(fieldDef?.figmaPropertySnapshot?.componentKey || '').trim();
             if (!componentKey) return null;
             templateInstance = await createFigmaComponentInstance({
@@ -3824,7 +4039,7 @@ async function createFormFieldFromFigmaTemplate(
             : false;
         await updateFormFieldMessageTemplate(templateInstance, params);
         if (updatedInPlace) {
-            templateInstance.name = COMPONENT_REGISTRY['form-field']?.name || '表单字段';
+            templateInstance.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
             return templateInstance;
         }
 
@@ -3833,7 +4048,7 @@ async function createFormFieldFromFigmaTemplate(
         await updateFormFieldLabelTemplate(detached, params);
         await replaceFormFieldControlTemplate(detached, instance, params);
         await updateFormFieldMessageTemplate(detached, params);
-        detached.name = COMPONENT_REGISTRY['form-field']?.name || '表单字段';
+        detached.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
         return detached;
     } catch (e) {
         console.warn('[FormFieldTemplate] failed to create form field from original Figma template', e);
@@ -4195,7 +4410,8 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
             parent.type !== 'FRAME' &&
             parent.type !== 'GROUP' &&
             parent.type !== 'COMPONENT' &&
-            parent.type !== 'INSTANCE'
+            parent.type !== 'INSTANCE' &&
+            parent.type !== 'SECTION'
         )
     ) {
         return false;
@@ -4226,6 +4442,7 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
         newNode.constraints = oldNode.constraints;
     }
 
+    newNode.visible = false;
     parent.insertChild(index, newNode);
 
     if (preserveAbsolutePosition) {
@@ -4235,9 +4452,9 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
     if ('rotation' in newNode) {
         newNode.rotation = oldRotation;
     }
-    newNode.visible = oldVisible;
     newNode.name = oldName;
     newNode.locked = oldLocked;
+    newNode.visible = oldVisible;
 
     oldNode.remove();
     return true;
@@ -4250,8 +4467,8 @@ function getColorVariableBindingIndex(): Record<string, ColorVariableBindingInde
 
     const index: Record<string, ColorVariableBindingIndexEntry> = {};
 
-    Object.values(COMPONENT_REGISTRY).forEach((def) => {
-        const bindings = def.variableBindings || {};
+    Object.values(COMPONENT_DEFS).forEach((def) => {
+        const bindings = def.colorVariableBindings || {};
         Object.entries(bindings).forEach(([semanticKey, binding]) => {
             const key = String(semanticKey || '').trim();
             if (!key) return;
@@ -4297,7 +4514,7 @@ function getTypographyBindingIndex(): Record<string, TypographyBindingIndexEntry
 
     const index: Record<string, TypographyBindingIndexEntry> = {};
 
-    Object.values(COMPONENT_REGISTRY).forEach((def) => {
+    Object.values(COMPONENT_DEFS).forEach((def) => {
         const bindings = def.typographyBindings || {};
         Object.entries(bindings).forEach(([semanticKey, binding]) => {
             const key = String(semanticKey || '').trim();
@@ -4342,8 +4559,8 @@ function findComponentVariableKey(
     preferred: string[],
     fuzzyIncludes: string[]
 ): string | null {
-    const def = COMPONENT_REGISTRY[componentId];
-    const bindings = def?.variableBindings;
+    const def = COMPONENT_DEFS[componentId];
+    const bindings = def?.colorVariableBindings;
     if (!bindings) return null;
 
     for (const key of preferred) {
@@ -4366,7 +4583,7 @@ function findComponentTypographyKey(
     preferred: string[],
     fuzzyIncludes: string[]
 ): string | null {
-    const def = COMPONENT_REGISTRY[componentId];
+    const def = COMPONENT_DEFS[componentId];
     const bindings = def?.typographyBindings;
     if (!bindings) return null;
 
@@ -4872,12 +5089,32 @@ async function createFigmaComponentInstanceByToken(
     const resolved = resolveComponentTokenProfile(normalized);
     if (!resolved?.profile?.componentKey) return null;
 
+    const cacheKey = buildTokenCacheKey(normalized, options?.variantCriteria);
+    if (cacheKey) {
+        const cached = FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.get(cacheKey);
+        if (cached) {
+            try {
+                return cached.clone();
+            } catch (e) {
+                console.warn('[FigmaComponent] failed to clone cached instance', e);
+            }
+        }
+    }
+
     try {
-        return await createFigmaComponentInstance({
+        const instance = await createFigmaComponentInstance({
             componentKey: resolved.profile.componentKey,
             fallbackName: resolved.profile.displayName,
             variantCriteria: options?.variantCriteria
         });
+        if (cacheKey && instance) {
+            try {
+                FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.set(cacheKey, instance.clone());
+            } catch (e) {
+                console.warn('[FigmaComponent] failed to cache instance', e);
+            }
+        }
+        return instance;
     } catch (e) {
         console.warn(`[FigmaComponent] failed to create instance for token="${normalized}"`, e);
         return null;
@@ -5390,7 +5627,7 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
     const newParams: any = { ...defaultParams };
     
     // Check what keys are valid for the new component
-    const newDef = COMPONENT_REGISTRY[newComponentId];
+    const newDef = COMPONENT_DEFS[newComponentId];
     if (!newDef) return null;
     
     for (const key in currentParams) {
@@ -5441,7 +5678,7 @@ async function renderComponent(
   options: { isRoot?: boolean } = {}
 ): Promise<SceneNode> {
   const isRoot = options.isRoot ?? true;
-  const def = COMPONENT_REGISTRY[instance.componentId];
+  const def = COMPONENT_DEFS[instance.componentId];
   if (!def) throw new Error(`Unknown component type: ${instance.componentId}`);
 
   let node: SceneNode;
@@ -5662,20 +5899,26 @@ async function renderComponent(
 
     if (instance.children) {
         for (const child of instance.children) {
-            const nextChild =
-                child.componentId === 'form-row' && columnSpacing !== null
-                    ? {
-                        ...child,
-                        params: {
-                            ...(child.params || {}),
-                            spacing:
-                                toPositiveNumber((child.params || {}).spacing) === null
-                                    ? columnSpacing
-                                    : (child.params || {}).spacing
-                        }
+            let processedChild = child;
+            if (child.componentId === 'form-row' && Array.isArray(child.children) && child.children.length === 1 && child.children[0].componentId === 'form-field') {
+                processedChild = child.children[0];
+                processedChild.params = {
+                    ...child.params,
+                    ...processedChild.params
+                };
+            } else if (child.componentId === 'form-row' && columnSpacing !== null) {
+                processedChild = {
+                    ...child,
+                    params: {
+                        ...(child.params || {}),
+                        spacing:
+                            toPositiveNumber((child.params || {}).spacing) === null
+                                ? columnSpacing
+                                : (child.params || {}).spacing
                     }
-                    : child;
-            const childNode = await renderComponent(inheritFormFieldParams(params, nextChild), { isRoot: false });
+                };
+            }
+            const childNode = await renderComponent(inheritFormFieldParams(params, processedChild), { isRoot: false });
             if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && frame.counterAxisSizingMode === 'FIXED') {
                 childNode.layoutAlign = 'STRETCH';
             }
@@ -6164,73 +6407,15 @@ async function renderComponent(
         frame.strokeWeight = 0;
     }
 
-    // Load fonts - This was the issue. We need to load fonts before creating text nodes.
-    // Ensure all possible fonts are loaded
-    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-    await figma.loadFontAsync({ family: "Inter", style: "Bold" });
-    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+    // Load fonts before creating text nodes (memoized).
+    await ensureInterFontsLoaded();
 
     // --- Content based on type ---
 
     // 1. Tag Cell
     if (instance.componentId === 'table-cell-tag') {
-        const label = String(params.tagText || params.text || 'Tag');
-        const kind = String(params.tagKind ?? params.kind ?? '').trim().toLowerCase();
-        const isTypeTag = kind.includes('type');
-
-        const explicitToken =
-          typeof (instance.params as any)?.componentToken === 'string' &&
-          String((instance.params as any).componentToken).trim().length > 0;
-        const requestedToken = explicitToken
-          ? String((instance.params as any).componentToken).trim()
-          : isTypeTag
-            ? 'lib-data-display-tag'
-            : 'lib-data-display-status-tag';
-
-        const legacyTagColor = String(params.tagColor ?? '').trim().toLowerCase();
-        const legacyStatusTheme =
-          legacyTagColor === 'green'
-            ? 'Success 成功'
-            : legacyTagColor === 'orange' || legacyTagColor === 'yellow'
-              ? 'Warning 告警'
-              : legacyTagColor === 'red'
-                ? 'Error 错误'
-                : legacyTagColor === 'gray' || legacyTagColor === 'grey'
-                  ? 'Stop 停止'
-                  : legacyTagColor === 'blue'
-                    ? 'Processing 等待中'
-                    : undefined;
-
-        const tagParams: Record<string, any> = {
-            text: label,
-            componentToken: requestedToken,
-            tagType: params.tagType,
-            size: params.size,
-            state: params.state,
-            disabled: params.disabled,
-            showIcon: params.showIcon,
-            showDot: params.showDot,
-            showDropdown: params.showDropdown,
-            closable: params.closable,
-            statusTheme: params.statusTheme ?? params.theme ?? legacyStatusTheme,
-            statusType: params.statusType ?? params.statusLevel ?? params.level,
-            statusState: params.statusState
-        };
-
-        if (isTypeTag && !tagParams.tagType) {
-            tagParams.tagType = 'Outline 线型标签';
-        }
-
-        const normalizedTagParams = normalizeUnifiedTagParams(tagParams);
-        const family = resolveTagComponentFamily(normalizedTagParams.componentToken);
-        if (family === 'status' && !normalizedTagParams.statusType) {
-            normalizedTagParams.statusType = 'L2 二级标签';
-        }
-        if (family === 'status' && !normalizedTagParams.statusTheme) {
-            normalizedTagParams.statusTheme = 'Success 成功';
-        }
-
-        const tagDef = COMPONENT_REGISTRY['tag'];
+        const normalizedTagParams = buildTableCellTagParams(params);
+        const tagDef = COMPONENT_DEFS['tag'];
         const templateNode = await createTagFromFigmaTemplate(tagDef, normalizedTagParams);
         frame.appendChild(templateNode ? templateNode : await createTagFallbackNode(normalizedTagParams));
     }
@@ -6573,22 +6758,8 @@ async function renderComponent(
         wrapper.resize(width, metrics.height);
         wrapper.cornerRadius = metrics.cornerRadius;
         wrapper.strokes = [];
-        wrapper.strokeWeight = 0;
-        // Figma only renders spread shadow on frames with visible fills and clipsContent enabled.
-        wrapper.clipsContent = true;
-        const useDefaultEffectStyle = state === 'default' && !error;
-        let appliedEffectStyle = false;
-        if (useDefaultEffectStyle) {
-            appliedEffectStyle = await applyEffectStyleRef(
-                wrapper,
-                'input-default-effect-style',
-                [INPUT_DEFAULT_EFFECT_STYLE_REF],
-                INPUT_DEFAULT_EFFECT_STYLE_NAMES
-            );
-        }
-        if (!appliedEffectStyle) {
-            wrapper.effects = buildInputOutlineEffects(outlineSpec.fallbackHex);
-        }
+        wrapper.strokeWeight = 1;
+        wrapper.clipsContent = false;
 
         if (disabled) {
             await applyColorVariable(wrapper, 'input-disabled-bg-key', '#F2F3F5');
@@ -6597,8 +6768,10 @@ async function renderComponent(
         } else {
             await applyColorVariable(wrapper, 'input-bg', '#FFFFFF');
         }
-        if (!appliedEffectStyle) {
-            await applyEffectColorVariable(wrapper, 0, outlineSpec.variableKey, outlineSpec.fallbackHex);
+        if (!error && state === 'default') {
+            await applyStrokeColorVariable(wrapper, 'select-border-key', '#EAEDF1');
+        } else {
+            await applyStrokeColorVariable(wrapper, outlineSpec.variableKey, outlineSpec.fallbackHex);
         }
 
         if (showPrefix) {
@@ -6643,39 +6816,51 @@ async function renderComponent(
         const hasValue = currentValue.length > 0;
         const disabled = Boolean(params.disabled);
 
+        const metrics = resolveInputMetrics(params.size);
+
         const frame = figma.createFrame();
         frame.layoutMode = 'HORIZONTAL';
         frame.primaryAxisSizingMode = 'FIXED';
         frame.counterAxisSizingMode = 'AUTO';
-        frame.resize(width, 32);
-        frame.paddingTop = 5;
-        frame.paddingBottom = 5;
-        frame.paddingLeft = 12;
-        frame.paddingRight = 12;
-        frame.cornerRadius = 4;
-        frame.itemSpacing = 4;
-        frame.counterAxisAlignItems = 'CENTER';
-        frame.primaryAxisAlignItems = 'SPACE_BETWEEN';
+        frame.resize(width, metrics.height);
+        frame.fills = [];
+        frame.clipsContent = false;
+
+        const wrapper = figma.createFrame();
+        wrapper.name = 'wrapper';
+        wrapper.layoutMode = 'HORIZONTAL';
+        wrapper.primaryAxisSizingMode = 'FIXED';
+        wrapper.counterAxisSizingMode = 'AUTO';
+        wrapper.counterAxisAlignItems = 'CENTER';
+        wrapper.itemSpacing = 10;
+        wrapper.paddingTop = metrics.paddingY;
+        wrapper.paddingRight = metrics.paddingX + 8;
+        wrapper.paddingBottom = metrics.paddingY;
+        wrapper.paddingLeft = metrics.paddingX;
+        wrapper.resize(width, metrics.height);
+        wrapper.cornerRadius = metrics.cornerRadius;
+        wrapper.strokes = [];
+        wrapper.strokeWeight = 1;
+        wrapper.clipsContent = false;
 
         if (disabled) {
-            await applyColorVariable(frame, 'input-disabled-bg-key', '#F2F3F5');
+            await applyColorVariable(wrapper, 'input-disabled-bg-key', '#F2F3F5');
         } else {
-            await applyColorVariable(frame, "select-bg", "#FFFFFF");
+            await applyColorVariable(wrapper, 'input-bg', '#FFFFFF');
         }
-        await applyStrokeColorVariable(frame, 'select-border-key', '#EAEDF1');
-        frame.strokeWeight = 1;
+        await applyStrokeColorVariable(wrapper, 'select-border-key', '#EAEDF1');
 
         const text = figma.createText();
-        await applyTextStyleBinding(text, 'select-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
+        await applyTextStyleBinding(text, 'select-text-style-key', { family: 'Inter', style: 'Regular', size: metrics.fontSize });
         text.characters = hasValue ? currentValue : placeholder;
-        if (!text.fontSize) text.fontSize = 13;
+        if (!text.fontSize) text.fontSize = metrics.fontSize;
         if (disabled) {
-            await applyColorVariable(text, 'input-disabled-text-key', '#C7CCD6');
+            await applyColorVariable(text, 'input-disabled-text-key', '#C9CDD4');
         } else {
-            await applyColorVariable(text, hasValue ? 'select-text' : 'select-placeholder', hasValue ? '#0C0D0E' : '#737A87');
+            await applyColorVariable(text, hasValue ? 'input-text' : 'input-placeholder', hasValue ? '#0C0D0E' : '#737A87');
         }
         text.layoutGrow = 1;
-        frame.appendChild(text);
+        wrapper.appendChild(text);
 
         const icon = figma.createVector();
         icon.vectorPaths = [{
@@ -6686,11 +6871,12 @@ async function renderComponent(
         icon.strokeCap = "ROUND";
         icon.strokeJoin = "ROUND";
         if (disabled) {
-            await applyStrokeColorVariable(icon, 'input-disabled-text-key', '#C7CCD6');
+            await applyStrokeColorVariable(icon, 'input-disabled-text-key', '#C9CDD4');
         } else {
             await applyStrokeColorVariable(icon, 'select-icon', '#737A87');
         }
-        frame.appendChild(icon);
+        wrapper.appendChild(icon);
+        frame.appendChild(wrapper);
         node = frame;
     }
   }
@@ -6998,57 +7184,6 @@ async function renderComponent(
         frame.appendChild(childNode);
       }
     }
-    node = frame;
-  }
-  // --- CHART BAR ---
-  else if (instance.componentId === 'chart-bar') {
-    const frame = figma.createFrame();
-    frame.layoutMode = 'VERTICAL';
-    frame.resize(300, params.height || 200);
-    // frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-    await applyColorVariable(frame, "chart-bg", "#FFFFFF");
-    
-    if (params.title) {
-        const title = figma.createText();
-        await applyTextStyleBinding(title, 'chart-title-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
-        title.characters = params.title;
-        if (!title.fontSize) title.fontSize = 14;
-        await applyColorVariable(title, "chart-title", "#000000");
-        try {
-            title.setPluginData('chart-role', 'title');
-        } catch {
-            // ignore
-        }
-        frame.appendChild(title);
-    }
-
-    const chartArea = figma.createFrame();
-    try {
-        chartArea.setPluginData('chart-role', 'area');
-    } catch {
-        // ignore
-    }
-    chartArea.layoutMode = 'HORIZONTAL';
-    chartArea.primaryAxisAlignItems = 'SPACE_BETWEEN';
-    chartArea.counterAxisAlignItems = 'MAX';
-	    chartArea.layoutGrow = 1;
-	    chartArea.resize(280, 150);
-	    chartArea.paddingTop = 20;
-	    chartArea.fills = [];
-	    chartArea.clipsContent = false;
-    
-    // Mock bars
-    for (let i = 0; i < 5; i++) {
-        const bar = figma.createRectangle();
-        const height = Math.random() * 100 + 20;
-        bar.resize(30, height);
-        // bar.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.6, b: 1 } }];
-        await applyColorVariable(bar, "chart-bar-color", "#3399FF");
-        bar.cornerRadius = 4;
-        chartArea.appendChild(bar);
-    }
-    
-    frame.appendChild(chartArea);
     node = frame;
   }
   else {
@@ -7362,7 +7497,8 @@ function appendToResolvedParent(node: SceneNode, parentId?: string): boolean {
   if (
     appendParent.type !== 'GROUP' &&
     appendParent.layoutMode === 'VERTICAL' &&
-    (node.type === 'FRAME' || node.type === 'INSTANCE')
+    (node.type === 'FRAME' || node.type === 'INSTANCE') &&
+    node.getPluginData('component-id') !== 'figma-component'
   ) {
     node.layoutAlign = 'STRETCH';
   }
@@ -7706,38 +7842,6 @@ figma.ui.onmessage = async (msg) => {
             }
         }
 
-        if (componentId === 'chart-bar' && node.type === 'FRAME') {
-            const height = toPositiveNumber(params.height);
-            if (height !== null) {
-                applyNodeSize(node, null, height);
-            }
-
-            const titleText = String(params.title || '').trim();
-            let titleNode = node.children.find(
-                (child) => child.type === 'TEXT' && child.getPluginData('chart-role') === 'title'
-            ) as TextNode | undefined;
-            if (!titleNode) {
-                titleNode = node.children.find((child) => child.type === 'TEXT') as TextNode | undefined;
-            }
-
-            if (titleText) {
-                if (!titleNode) {
-                    titleNode = figma.createText();
-                    titleNode.setPluginData('chart-role', 'title');
-                    await applyTextStyleBinding(titleNode, 'chart-title-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
-                    await applyColorVariable(titleNode, "chart-title", "#000000");
-                    node.insertChild(0, titleNode);
-                }
-                await updateTextNodeCharacters(titleNode, titleText);
-            } else if (titleNode) {
-                try {
-                    titleNode.remove();
-                } catch {
-                    // ignore
-                }
-            }
-        }
-
 	        if (componentId === 'table' && node.type === 'FRAME') {
 	            let tableRoot = node;
 	            let tableContent = resolveTableContentFrame(tableRoot);
@@ -8031,7 +8135,7 @@ figma.ui.onmessage = async (msg) => {
               let swappedCount = 0;
               for (const child of children) {
                   const childId = child.getPluginData('component-id');
-                  const childDef = COMPONENT_REGISTRY[childId];
+                  const childDef = COMPONENT_DEFS[childId];
                   // Only swap if it's a data cell (part of table-cell family but not header)
                   if (childDef && childDef.family === 'table-cell' && childId !== 'table-header-cell') {
                       const newNode = await swapComponent(child, componentId);
@@ -8050,7 +8154,6 @@ figma.ui.onmessage = async (msg) => {
                   applyColumnWidthMode(node, 'HUG');
                   mergeNodeParams(node, { width: undefined });
               }
-              checkSelection();
               figma.ui.postMessage({ type: 'action-done', message: `Updated ${swappedCount} cells in column` });
           } 
           // Single component swap
@@ -8058,7 +8161,6 @@ figma.ui.onmessage = async (msg) => {
               const newNode = await swapComponent(node, componentId);
               if (newNode) {
                   figma.currentPage.selection = [newNode];
-                  checkSelection(); // Update UI
                   figma.ui.postMessage({ type: 'action-done', message: 'Swapped component type' });
               }
           }

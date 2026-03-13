@@ -19,9 +19,45 @@ export const TextInputControl = ({
 }: {
   value: string;
   onChange: (value: string) => void;
-}) => (
-  <input type="text" value={value} onChange={(e) => onChange(e.target.value)} />
-);
+}) => {
+  const [innerValue, setInnerValue] = React.useState(value);
+  const composingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!composingRef.current) {
+      setInnerValue(value);
+    }
+  }, [value]);
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value;
+    setInnerValue(nextValue);
+    if (!composingRef.current) {
+      onChange(nextValue);
+    }
+  };
+
+  const handleCompositionStart = () => {
+    composingRef.current = true;
+  };
+
+  const handleCompositionEnd = (event: React.CompositionEvent<HTMLInputElement>) => {
+    composingRef.current = false;
+    const nextValue = event.currentTarget.value;
+    setInnerValue(nextValue);
+    onChange(nextValue);
+  };
+
+  return (
+    <input
+      type="text"
+      value={innerValue}
+      onChange={handleChange}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+    />
+  );
+};
 
 export const NumberInputControl = ({
   value,
@@ -75,7 +111,6 @@ export const SelectControl = ({
   <select
     value={value}
     onChange={(e) => onChange(e.target.value)}
-    style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #E6E6E6' }}
   >
     {children}
   </select>

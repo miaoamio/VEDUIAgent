@@ -4,8 +4,8 @@
 把 Figma `discover_component_props` 结果稳定回填到组件 spec 的 `figmaPropertySnapshot`，并让后续生成阶段可通过 `read_specs` 直接读取。
 
 ## 2. 当前已补齐能力
-1. spec 字段已支持：`figmaPropertySnapshot`（`src/types.ts` + `src/registry.v2.types.ts`）。
-2. v1 -> v2 归一化已支持：`figmaPropertySnapshot` 会被带入 `loadRegistryV2()`。
+1. spec 字段已支持：`figmaPropertySnapshot`（`src/registry.types.ts`）。
+2. Registry 已统一：`figmaPropertySnapshot` 直接写入 `src/registry.ts`。
 3. `read_specs` 已输出快照信息：`FigmaPropertySnapshotMeta/Properties`。
 4. Patch 映射补齐：`src/spec.component-token-map.ts` 可配置 `token -> componentId[]`。
 5. 回填脚本：`npm run spec:snapshot:apply -- <Spec Patch JSON 路径>`。

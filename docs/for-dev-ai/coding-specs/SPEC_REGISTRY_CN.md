@@ -1,7 +1,7 @@
-# Registry v2 规范（Spec Coding）
+# Registry 规范（Spec Coding）
 
 ## 1. 文档目标
-定义组件注册表的 v2 结构，使 Registry 成为以下能力的统一事实来源：
+定义组件注册表的统一结构，使 Registry 成为以下能力的统一事实来源：
 
 1. Agent 组件选择与参数生成。
 2. Renderer 渲染映射与节点执行。
@@ -15,15 +15,15 @@
 2. 槽位（slot）与结构约束表达。
 3. 能力声明（capabilities）与执行支持矩阵。
 4. Registry 校验规则与错误码。
-5. 与 v1 的映射与迁移策略。
+5. 与旧格式的映射与迁移策略。
 
 ### 2.2 Out of Scope
 1. LLM Prompt 具体文案。
 2. Figma API 具体渲染代码实现细节。
 3. 业务数据源接入实现。
 
-## 3. v1 现状与问题
-当前 v1（`src/types.ts` + `src/registry.ts`）主要字段有：
+## 3. 旧格式现状与问题
+历史格式（已移除；原在 `src/types.ts` + `src/registry.ts`）主要字段有：
 
 1. `params`
 2. `allowedChildren`
@@ -38,14 +38,14 @@
 4. 缺少组件定义版本，无法做平滑迁移。
 5. `params.default` 为 `any`，缺少可验证约束。
 
-## 4. Registry v2 顶层结构
+## 4. Registry 顶层结构
 
 ```ts
 type RegistryVersion = "2.0";
 
-interface ComponentRegistryV2 {
+interface ComponentRegistry {
   version: RegistryVersion;
-  components: Record<string, ComponentDefinitionV2>;
+  components: Record<string, ComponentDefinition>;
   meta?: {
     updatedAt?: string;         // ISO8601
     owner?: string;
@@ -54,10 +54,10 @@ interface ComponentRegistryV2 {
 }
 ```
 
-## 5. ComponentDefinition v2
+## 5. ComponentDefinition
 
 ```ts
-interface ComponentDefinitionV2 {
+interface ComponentDefinition {
   id: string;                              // 必填，全局唯一
   name: string;                            // 必填
   category: "Layout" | "Basic" | "Form" | "Table" | "Data" | "Other";
@@ -73,18 +73,18 @@ interface ComponentDefinitionV2 {
     examples?: string[];                   // JSON 片段示例
   };
 
-  params: Record<string, ParamDefinitionV2>;
-  slots?: Record<string, SlotDefinitionV2>;
-  constraints?: ConstraintDefinitionV2[];
-  capabilities?: CapabilityDefinitionV2;
-  figmaBinding?: FigmaBindingV2;
-  figmaPropertySnapshot?: FigmaPropertySnapshotV2; // 开发文档上下文字段（非运行时必需）
-  colorVariableBindings?: Record<string, ColorVariableBindingV2>;
-  migrations?: MigrationRuleV2[];
+  params: Record<string, ParamDefinition>;
+  slots?: Record<string, SlotDefinition>;
+  constraints?: ConstraintDefinition[];
+  capabilities?: CapabilityDefinition;
+  figmaBinding?: FigmaBinding;
+  figmaPropertySnapshot?: FigmaPropertySnapshot; // 开发文档上下文字段（非运行时必需）
+  colorVariableBindings?: Record<string, ColorVariableBinding>;
+  migrations?: MigrationRule[];
 }
 ```
 
-## 6. 参数定义（ParamDefinition v2）
+## 6. 参数定义（ParamDefinition）
 
 ```ts
 type ParamType =
@@ -97,7 +97,7 @@ type ParamType =
   | "object"
   | "array";
 
-interface ParamDefinitionV2 {
+interface ParamDefinition {
   type: ParamType;
   default: unknown;
   description: string;
@@ -123,10 +123,10 @@ interface ParamDefinitionV2 {
 2. `required=true` 时，`default` 仍建议存在（用于回填）。
 3. `type=select/enum` 时，`enumValues` 必须非空，且 `default` 必须在列表中。
 
-## 7. 槽位定义（SlotDefinition v2）
+## 7. 槽位定义（SlotDefinition）
 
 ```ts
-interface SlotDefinitionV2 {
+interface SlotDefinition {
   displayName?: string;                    // 如 Header / Body / Footer
   allowedComponents: string[];             // 允许的 componentId
   required?: boolean;                      // 默认 false
@@ -142,10 +142,10 @@ interface SlotDefinitionV2 {
 2. 若组件声明了 `slots`，建议优先通过 `slots` 建树，而不是 `children`。
 3. `children` 仍可用于无语义容器，但不能突破 `constraints`。
 
-## 8. 约束定义（ConstraintDefinition v2）
+## 8. 约束定义（ConstraintDefinition）
 
 ```ts
-type ConstraintDefinitionV2 =
+type ConstraintDefinition =
   | { type: "forbid_children"; components: string[] }
   | { type: "require_slot"; slot: string }
   | { type: "mutually_exclusive_params"; params: string[] }
@@ -154,10 +154,10 @@ type ConstraintDefinitionV2 =
   | { type: "custom"; key: string; payload?: Record<string, unknown> };
 ```
 
-## 9. 能力定义（CapabilityDefinition v2）
+## 9. 能力定义（CapabilityDefinition）
 
 ```ts
-interface CapabilityDefinitionV2 {
+interface CapabilityDefinition {
   allowChildren?: boolean;                 // 默认 true
   allowSwapVariant?: boolean;              // 默认 false
   allowSetProps?: boolean;                 // 默认 true
@@ -173,10 +173,10 @@ interface CapabilityDefinitionV2 {
 1. Agent 可根据 capabilities 决定可用 patch 动作。
 2. 执行器在 apply patch 时做前置校验，提前拒绝非法操作。
 
-## 10. Figma 映射定义（FigmaBinding v2）
+## 10. Figma 映射定义（FigmaBinding）
 
 ```ts
-interface FigmaBindingV2 {
+interface FigmaBinding {
   nodeType?: "FRAME" | "TEXT" | "INSTANCE" | "GROUP";
   renderKey?: string;                      // 对应 renderer key
   preferredLayoutMode?: "HORIZONTAL" | "VERTICAL" | "NONE";
@@ -193,7 +193,7 @@ interface FigmaBindingV2 {
 ### 10.1 Figma 属性快照（开发上下文）
 
 ```ts
-interface FigmaPropertySnapshotV2 {
+interface FigmaPropertySnapshot {
   token?: string;                          // 例如 lib-data-display-status-tag
   componentKey: string;
   inspectedAt: string;                     // ISO8601
@@ -219,10 +219,10 @@ interface FigmaPropertySnapshotV2 {
 3. 将输出摘要写入对应组件 spec 的 `figmaPropertySnapshot`。
 4. 再编写/更新 `agentPrompt`、`examples`、`variantCriteria` 使用说明。
 
-## 11. 颜色变量绑定定义（ColorVariableBinding v2）
+## 11. 颜色变量绑定定义（ColorVariableBinding ）
 
 ```ts
-interface ColorVariableBindingV2 {
+interface ColorVariableBinding {
   enabled: boolean;                       // false = 不尝试变量绑定
   token?: string;                         // 逻辑 token 名（推荐）
   variableRef?: string;                   // 首选 variable key/id
@@ -240,10 +240,10 @@ interface ColorVariableBindingV2 {
 4. 推荐在 spec 中只写 `token`，VariableID/Key 统一维护在主题 token 包：`src/theme.color-tokens.ts`。
 5. Figma 实例组件同理，建议在 `figma-component` 参数使用 `componentToken`，由 `src/theme.component-tokens.ts` 统一映射到 `componentKey`（主组件库来源：`src/theme.component-library-tokens.ts`）。
 
-## 12. 迁移规则（MigrationRule v2）
+## 12. 迁移规则（MigrationRule）
 
 ```ts
-interface MigrationRuleV2 {
+interface MigrationRule {
   fromVersion: string;
   toVersion: string;
   description?: string;
@@ -253,22 +253,7 @@ interface MigrationRuleV2 {
 }
 ```
 
-## 13. v1 到 v2 映射策略
-
-1. `agentPrompt` -> `prompts.usage`
-2. `description` -> `description` + `prompts.description`（按需复制）
-3. `examples` -> `prompts.examples`
-4. `allowedChildren` -> 若无命名槽位，映射到隐式槽位 `default`
-5. `family` -> `family`（保持不变）
-6. `params` -> `params`（补齐类型约束）
-
-兼容期策略：
-
-1. 优先读取 v2。
-2. 若发现 v1，先走 `normalizeRegistryV1ToV2` 再进入主流程。
-3. 禁止业务代码同时直接消费 v1 和 v2 两套字段。
-
-## 14. 示例（Page + Table + Form）
+## 13. 示例（Page + Table + Form）
 
 ```json
 {
@@ -297,7 +282,7 @@ interface MigrationRuleV2 {
     },
     "content": {
       "displayName": "Content",
-      "allowedComponents": ["layout", "card", "table", "chart-bar", "input", "select"],
+      "allowedComponents": ["layout", "card", "table", "figma-component", "input", "select"],
       "required": true,
       "minItems": 1
     }
@@ -345,14 +330,14 @@ type RegistryErrorCode =
 
 ## 15. 实施建议（代码层）
 
-1. 新增 `src/registry.v2.types.ts`：只放类型。
-2. 新增 `src/registry.v2.ts`：只放数据定义。
-3. 新增 `src/registry.loader.ts`：负责 v1/v2 归一化与校验。
-4. `App.tsx` 与 `code.ts` 不直接依赖裸 registry，统一走 loader 输出。
+1. 新增 `src/registry.types.ts`：只放类型。
+2. 新增 `src/registry.ts`：只放数据定义。
+3. 新增 `src/registry.loader.ts`：负责加载与校验。
+4. `App.tsx` 与 `code.ts` 不直接依赖 registry 数据，统一走 loader 输出。
 
 ## 16. 验收标准（Registry DoD）
 
 1. 新增组件时仅改 registry 数据，不改 Agent 主循环。
 2. slot 违规输入能在执行前被拒绝并定位到字段路径。
 3. 至少有 15 条 registry 校验单测，覆盖成功与失败路径。
-4. v1 registry 可无损归一化到 v2（字段语义一致）。
+4. 历史格式可无损映射到当前格式（字段语义一致）。
