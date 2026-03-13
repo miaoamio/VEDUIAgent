@@ -133,6 +133,20 @@ function normalizeDisplayText(value: string): string {
   return String(value || '').replace(/\\n/g, '\n');
 }
 
+function toSeriesSpecText(raw: string): string {
+  const rawKind = String(raw || '').trim();
+  const lowered = rawKind.toLowerCase();
+  const kind =
+    lowered === 'table'
+      ? '表格'
+      : lowered === 'form'
+        ? '表单'
+        : lowered === 'chart'
+          ? '图表'
+          : rawKind;
+  return `读取 ${kind} 系列组件的规格说明`;
+}
+
 function formatAiDisplayText(value: string): string {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -148,19 +162,6 @@ function formatAiDisplayText(value: string): string {
       if (trimmedStart.startsWith('[AI]:')) displayLine = trimmedStart.replace('[AI]:', '').trimStart();
       if (trimmedStart.startsWith('[System]:')) displayLine = trimmedStart.replace('[System]:', '系统：').trimStart();
       const normalized = displayLine.trim();
-      const toSeriesSpecText = (raw: string) => {
-        const rawKind = String(raw || '').trim();
-        const lowered = rawKind.toLowerCase();
-        const kind =
-          lowered === 'table'
-            ? '表格'
-            : lowered === 'form'
-              ? '表单'
-              : lowered === 'chart'
-                ? '图表'
-                : rawKind;
-        return `读取 ${kind} 系列组件的规格说明`;
-      };
       const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
       if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
       const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
