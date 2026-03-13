@@ -341,7 +341,7 @@ h2 {
   right: 0;
   bottom: 24px;
   height: 40px;
-  background-image: linear-gradient(180deg, #EDEFF200 0%, #EDEFF2 100%);
+  background-image: linear-gradient(180deg, #EDEFF200 0%, #EDEFF280 61.54%, #EDEFF2 97%);
   pointer-events: none;
 }
 
