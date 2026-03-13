@@ -193,6 +193,65 @@ function normalizeComponentSpecLine(text: string): string {
   return text;
 }
 
+function ChevronUpIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.5 5.75L7 9.25L10.5 5.75"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UserMessageBubble({ content }: { content: string }) {
+  const textRef = React.useRef<HTMLParagraphElement | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [hasOverflow, setHasOverflow] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    const maxHeight = 200;
+    setHasOverflow(el.scrollHeight > maxHeight + 1);
+  }, [content]);
+
+  return (
+    <div
+      className={`user-bubble ${hasOverflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'}`}
+    >
+      <div className="user-bubble-content">
+        <p ref={textRef} className="user-bubble-text">
+          {normalizeDisplayText(content)}
+        </p>
+        {hasOverflow && !expanded && <div className="user-bubble-fade" />}
+      </div>
+      {hasOverflow && (
+        <button
+          type="button"
+          className="user-bubble-expand"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <ChevronUpIcon className={`user-bubble-expand-icon ${expanded ? 'expanded' : ''}`} />
+          <span className="user-bubble-expand-text">{expanded ? '收起' : '展开'}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function buildAiDisplayItems(value: string): AiDisplayItem[] {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -7449,6 +7508,35 @@ StepD:
     );
   };
 
+  const getSelectionTypeAndName = () => {
+    if (!selectedComponent) return { type: '', name: '' };
+    const def = COMPONENT_DEFS[selectedComponent.componentId];
+    const base = def?.name || selectedComponent.componentId;
+    const params = selectedComponent.params || {};
+    let type = base;
+    if (selectedComponent.componentId === 'table-column') {
+      type = '列';
+    } else if (selectedComponent.componentId === 'table-header-cell') {
+      type = '表头';
+    } else if (def?.family === 'table-cell' || selectedComponent.componentId.startsWith('table-cell')) {
+      type = '单元格';
+    } else if (base.includes(' ')) {
+      type = base.split(' ').slice(-1)[0] || base;
+    }
+    let paramName = '';
+    if (selectedComponent.componentId === 'table-column') {
+      paramName = String(params.headerText || '').trim();
+    } else if (selectedComponent.componentId === 'table-header-cell') {
+      paramName = String(params.text || '').trim();
+    } else if (selectedComponent.componentId === 'form-field') {
+      paramName = String(params.label || '').trim();
+    }
+    const rawName = String(selectedComponent.nodeName || '').trim();
+    const resolvedName = paramName || rawName;
+    const name = resolvedName && resolvedName !== base ? resolvedName : '';
+    return { type, name };
+  };
+
   const getSelectionTitle = () => {
     if (!selectedComponent) return '';
     const def = COMPONENT_DEFS[selectedComponent.componentId];
@@ -7466,8 +7554,9 @@ StepD:
         return BASE_COMPONENT_KEY_TO_NAME[componentKey];
       }
     }
-    if (def?.name) return def.name;
-    return selectedComponent.nodeName || selectedComponent.componentId;
+    const { type, name } = getSelectionTypeAndName();
+    if (!type) return '';
+    return name ? `${type}：${name}` : type;
   };
 
   const renderSelectionPage = () => {
@@ -7654,7 +7743,7 @@ StepD:
                         })()}
                       </div>
                     ) : (
-                      normalizeDisplayText(msg.content)
+                      <UserMessageBubble content={msg.content} />
                     )}
                   </div>
                 </div>
@@ -7706,11 +7795,11 @@ StepD:
                 <span className="chat-selection-label">未选中画布内任何元素</span>
               ) : selectionCount > 1 ? (
                 <span className="chat-selection-label">已选中 {selectionCount} 个元素</span>
-              ) : selectedComponent?.componentId === 'table-column' && getSelectionTitle() ? (
+              ) : getSelectionTitle() ? (
                 <span className="chat-selection-group">
                   <span className="chat-selection-label">已选中</span>
                   <span className="chat-selection-tag">
-                    <span className="chat-selection-tag-text">列：{getSelectionTitle()}</span>
+                    <span className="chat-selection-tag-text">{getSelectionTitle()}</span>
                   </span>
                 </span>
               ) : (
