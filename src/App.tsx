@@ -7471,11 +7471,18 @@ StepD:
                   ref={composerTextareaRef}
                 />
                 <div className="composer-footer">
-                  <div className="composer-attach" ref={composerAttachRef}>
+                  <div
+                    className="composer-attach"
+                    ref={composerAttachRef}
+                    onMouseEnter={() => {
+                      if (!loading) setAttachmentMenuOpen(true);
+                    }}
+                    onMouseLeave={() => setAttachmentMenuOpen(false)}
+                  >
                     <button
                       type="button"
                       className="composer-icon-button"
-                      onClick={() => setAttachmentMenuOpen((prev) => !prev)}
+                      onClick={() => setAttachmentMenuOpen(true)}
                       disabled={loading}
                     >
                       <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
