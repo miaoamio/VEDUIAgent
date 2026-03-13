@@ -6410,11 +6410,20 @@ StepD:
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {figmaVariantProperties.map((prop: any) => {
                   const propName = normalizeLabelText(prop.displayName || prop.propertyName || '');
-                  if (!propName) return null;
+                  const propKey = normalizeLabelText(prop.displayName || prop.propertyName || '');
+                  const legacyKey = String(prop.propertyName || '').trim();
+                  if (!propName || !propKey) return null;
                   const options = Array.isArray(prop.variantOptions) ? prop.variantOptions : [];
-                  const fallbackValue = variantCriteriaMap[propName] ?? prop.defaultValue ?? options[0];
+                  const fallbackValue =
+                    variantCriteriaMap[propKey] ??
+                    (legacyKey ? variantCriteriaMap[legacyKey] : undefined) ??
+                    prop.defaultValue ??
+                    options[0];
                   const currentValue = resolveVariantOptionValue(fallbackValue, options);
-                  const isBooleanVariant = String(prop.type || '').toUpperCase() === 'BOOLEAN';
+                  const normalizedOptions = options.map((opt: string) => String(opt).trim().toLowerCase());
+                  const isBooleanVariant =
+                    String(prop.type || '').toUpperCase() === 'BOOLEAN' ||
+                    (normalizedOptions.includes('true') && normalizedOptions.includes('false'));
                   const currentBooleanValue = normalizeVariantCriteriaValue('BOOLEAN', String(currentValue)) === true;
                   return (
                     <FieldRow key={propName} label={propName}>
@@ -6423,7 +6432,7 @@ StepD:
                           value={currentBooleanValue}
                           onChange={(next) => {
                             const nextCriteria = { ...variantCriteriaMap };
-                            nextCriteria[propName] = next;
+                            nextCriteria[propKey] = next;
                             const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
                             updateParam('variantCriteria', nextValue);
                           }}
@@ -6435,9 +6444,9 @@ StepD:
                             const normalized = normalizeVariantCriteriaValue(prop.type, String(next));
                             const nextCriteria = { ...variantCriteriaMap };
                             if (normalized === null || normalized === undefined || normalized === '') {
-                              delete nextCriteria[propName];
+                              delete nextCriteria[propKey];
                             } else {
-                              nextCriteria[propName] = normalized;
+                              nextCriteria[propKey] = normalized;
                             }
                             const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
                             updateParam('variantCriteria', nextValue);
@@ -6453,9 +6462,9 @@ StepD:
                           onChange={(next) => {
                             const nextCriteria = { ...variantCriteriaMap };
                             if (!next) {
-                              delete nextCriteria[propName];
+                              delete nextCriteria[propKey];
                             } else {
-                              nextCriteria[propName] = next;
+                              nextCriteria[propKey] = next;
                             }
                             const nextValue = Object.keys(nextCriteria).length > 0 ? JSON.stringify(nextCriteria) : '';
                             updateParam('variantCriteria', nextValue);
