@@ -7162,7 +7162,7 @@ StepD:
     }
     const rawName = String(selectedComponent.nodeName || '').trim();
     const resolvedName = paramName || rawName;
-    const name = resolvedName && resolvedName !== base && resolvedName !== type ? resolvedName : '';
+    const name = resolvedName && resolvedName !== base ? resolvedName : '';
     return { type, name };
   };
 
