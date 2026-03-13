@@ -7137,14 +7137,39 @@ StepD:
     );
   };
 
-  const getSelectionTitle = () => {
-    if (!selectedComponent) return '';
+  const getSelectionTypeAndName = () => {
+    if (!selectedComponent) return { type: '', name: '' };
     const def = COMPONENT_REGISTRY[selectedComponent.componentId];
     const base = def?.name || selectedComponent.componentId;
-    if (selectedComponent.nodeName && selectedComponent.nodeName !== base) {
-      return `${base} - ${selectedComponent.nodeName}`;
+    const params = selectedComponent.params || {};
+    let type = base;
+    if (selectedComponent.componentId === 'table-column') {
+      type = '列';
+    } else if (selectedComponent.componentId === 'table-header-cell') {
+      type = '表头';
+    } else if (def?.family === 'table-cell' || selectedComponent.componentId.startsWith('table-cell')) {
+      type = '单元格';
+    } else if (base.includes(' ')) {
+      type = base.split(' ').slice(-1)[0] || base;
     }
-    return base;
+    let paramName = '';
+    if (selectedComponent.componentId === 'table-column') {
+      paramName = String(params.headerText || '').trim();
+    } else if (selectedComponent.componentId === 'table-header-cell') {
+      paramName = String(params.text || '').trim();
+    } else if (selectedComponent.componentId === 'form-field') {
+      paramName = String(params.label || '').trim();
+    }
+    const rawName = String(selectedComponent.nodeName || '').trim();
+    const resolvedName = paramName || rawName;
+    const name = resolvedName && resolvedName !== base && resolvedName !== type ? resolvedName : '';
+    return { type, name };
+  };
+
+  const getSelectionTitle = () => {
+    const { type, name } = getSelectionTypeAndName();
+    if (!type) return '';
+    return name ? `${type}：${name}` : type;
   };
 
   const renderSelectionPage = () => {
@@ -7383,11 +7408,11 @@ StepD:
                 <span className="chat-selection-label">未选中画布内任何元素</span>
               ) : selectionCount > 1 ? (
                 <span className="chat-selection-label">已选中 {selectionCount} 个元素</span>
-              ) : selectedComponent?.componentId === 'table-column' && getSelectionTitle() ? (
+              ) : getSelectionTitle() ? (
                 <span className="chat-selection-group">
                   <span className="chat-selection-label">已选中</span>
                   <span className="chat-selection-tag">
-                    <span className="chat-selection-tag-text">列：{getSelectionTitle()}</span>
+                    <span className="chat-selection-tag-text">{getSelectionTitle()}</span>
                   </span>
                 </span>
               ) : (
