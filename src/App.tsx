@@ -7477,7 +7477,9 @@ StepD:
                     onMouseEnter={() => {
                       if (!loading) setAttachmentMenuOpen(true);
                     }}
-                    onMouseLeave={() => setAttachmentMenuOpen(false)}
+                    onMouseLeave={() => {
+                      if (!loading) setAttachmentMenuOpen(false);
+                    }}
                   >
                     <button
                       type="button"
