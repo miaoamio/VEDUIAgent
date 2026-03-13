@@ -165,6 +165,14 @@ function formatSeriesSpecLine(kind: string, redo: boolean): string {
   return `${redo ? '重新读取' : '读取'} ${String(kind || '').trim()} 系列组件的规格说明`;
 }
 
+function normalizeComponentSpecLine(text: string): string {
+  const componentSpecMatch = text.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
+  if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
+  const legacySpecMatch = text.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
+  if (legacySpecMatch) return toSeriesSpecText(legacySpecMatch[1]);
+  return text;
+}
+
 function buildAiDisplayItems(value: string): AiDisplayItem[] {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -205,14 +213,8 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       return subject ? `绘制 ${subject}` : raw;
     };
     if (kind !== 'thought') {
-      const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
-      if (componentSpecMatch) {
-        displayLine = toSeriesSpecText(componentSpecMatch[1]);
-      }
-      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
-      if (legacySpecMatch) {
-        displayLine = toSeriesSpecText(legacySpecMatch[1]);
-      }
+      const specNormalized = normalizeComponentSpecLine(normalized);
+      if (specNormalized !== normalized) displayLine = specNormalized;
     }
     displayLine = normalizeExampleLine(displayLine);
     displayLine = normalizeDrawLine(displayLine);
@@ -265,12 +267,8 @@ function formatAiDisplayText(value: string): string {
         const subject = String(drawMatch[1] || '').replace(/[。.!！…]+$/g, '').trim();
         if (subject) return `绘制 ${subject}`;
       }
-      const componentSpecMatch = normalized.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
-      if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
-      const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
-      if (legacySpecMatch) {
-        return toSeriesSpecText(legacySpecMatch[1]);
-      }
+      const specNormalized = normalizeComponentSpecLine(normalized);
+      if (specNormalized !== normalized) return specNormalized;
       return displayLine;
     });
   const deduped: string[] = [];
