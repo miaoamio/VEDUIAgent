@@ -1220,6 +1220,7 @@ function App() {
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
+  const [chartMenuOpen, setChartMenuOpen] = React.useState(false);
   const chartUiHtml = React.useMemo(
     () =>
       AI_CHART_UI_HTML.replace(
@@ -1241,6 +1242,8 @@ function App() {
   const tableInputRef = React.useRef<HTMLInputElement | null>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false);
   const composerAttachRef = React.useRef<HTMLDivElement | null>(null);
+  const chartDropdownRef = React.useRef<HTMLDivElement | null>(null);
+  const composerBoxRef = React.useRef<HTMLDivElement | null>(null);
   const streamTableStateRef = React.useRef<StreamTableState | null>(null);
   const streamTableQueueRef = React.useRef(Promise.resolve());
   const streamTableRunIdRef = React.useRef(0);
@@ -1252,6 +1255,42 @@ function App() {
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!composerBoxRef.current) return;
+    const updateWidth = () => {
+      const width = chartDropdownRef.current?.getBoundingClientRect().width ?? 0;
+      composerBoxRef.current?.style.setProperty('--chart-tag-width', `${width}px`);
+    };
+    updateWidth();
+    let observer: ResizeObserver | null = null;
+    if (chartDropdownRef.current) {
+      observer = new ResizeObserver(updateWidth);
+      observer.observe(chartDropdownRef.current);
+    }
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, [chartShortcutActive]);
+
+  React.useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (composerAttachRef.current && !composerAttachRef.current.contains(target)) {
+        setAttachmentMenuOpen(false);
+      }
+      if (chartDropdownRef.current && !chartDropdownRef.current.contains(target)) {
+        setChartMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, []);
   const stopRequestedRef = React.useRef(false);
   const thinkingStartedAtRef = React.useRef<number | null>(null);
   const readSpecsCacheRef = React.useRef<Set<string>>(new Set());
@@ -1284,7 +1323,12 @@ function App() {
   const [figmaComponentPropsCache, setFigmaComponentPropsCache] = React.useState<Record<string, any>>({});
   const figmaComponentPropsLoadingRef = React.useRef<Set<string>>(new Set());
   const userSummary = buildUserSummary(userInput, uploadedImages, uploadedTables);
-  const canSend = Boolean(userInput.trim() || uploadedImages.length > 0 || uploadedTables.length > 0);
+  const canSend = Boolean(
+    userInput.trim() ||
+      chartShortcutActive ||
+      uploadedImages.length > 0 ||
+      uploadedTables.length > 0
+  );
 
   React.useEffect(() => {
     // Listen for messages from the plugin code
@@ -5007,7 +5051,11 @@ StepD:
     setResponse(null); // Clear previous response
     setAttachmentError(null);
 
-    const turnInput = userInput;
+    const turnInput = userInput.trim()
+      ? userInput
+      : chartShortcutActive
+        ? `生成一个${chartShortcutActive}`
+        : userInput;
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
@@ -6026,6 +6074,73 @@ StepD:
     { label: '条形图', prompt: '生成一个条形图' },
     { label: '面积图', prompt: '生成一个面积图' }
   ];
+  const chartShortcutIcons: Record<string, JSX.Element> = {
+    折线图: (
+      <svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M0.875 0C1.03608 0 1.16667 0.130584 1.16667 0.291667V9.33333H11.375C11.5361 9.33333 11.6667 9.46392 11.6667 9.625V10.2083C11.6667 10.3694 11.5361 10.5 11.375 10.5H0.291667C0.130584 10.5 0 10.3694 0 10.2083V0.291667C0 0.130584 0.130584 0 0.291667 0H0.875ZM10.9453 1.95624L11.3578 2.36872C11.4717 2.48262 11.4717 2.66729 11.3578 2.7812L8.058 6.08103C7.94409 6.19493 7.75942 6.19493 7.64552 6.08103L7.23304 5.66855L7.2313 5.6667L5.58338 4.01878L2.48953 7.11223C2.37563 7.22613 2.19095 7.22613 2.07705 7.11223L1.66457 6.69975C1.55067 6.58584 1.55067 6.40117 1.66457 6.28727L4.96221 2.98966C4.96293 2.98892 4.96367 2.98817 4.9644 2.98744L5.19838 2.75382L5.37688 2.57496C5.42069 2.53115 5.47497 2.50419 5.53166 2.49408L5.56591 2.49004H5.60034C5.66915 2.49408 5.73679 2.52239 5.78936 2.57496L6.20184 2.98744L6.2023 2.98774L7.85196 4.6374L10.5329 1.95624C10.6468 1.84234 10.8314 1.84234 10.9453 1.95624Z"
+          fill="currentColor"
+        />
+      </svg>
+    ),
+    面积图: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M12.7708 7.18116V4.74828L10.0082 6.58999C9.7011 6.79479 9.29982 6.79019 8.99742 6.57854L6.30681 4.69512L3.68281 6.53195V8.64574L5.9765 7.04017C6.17482 6.90129 6.43883 6.90129 6.6371 7.04017L9.53508 9.06871L12.7708 7.18116ZM13.9228 7.5011V4.26994C13.9228 3.55431 13.1252 3.12747 12.5298 3.52443L9.51473 5.53447L6.82065 3.6486C6.51211 3.43264 6.1015 3.43264 5.79299 3.6486L2.7765 5.76014C2.62252 5.86793 2.53081 6.04406 2.53081 6.23202V9.74494C2.53075 9.74999 2.53075 9.75505 2.53081 9.76011V11.992C2.53081 13.0171 3.36177 13.848 4.38681 13.848H12.0668C13.0918 13.848 13.9228 13.0171 13.9228 11.992V7.5219C13.9229 7.51499 13.9229 7.50801 13.9228 7.5011ZM12.7708 8.51486L9.79704 10.2496C9.60292 10.3628 9.36062 10.3528 9.17649 10.2239L6.30681 8.21515L3.68281 10.0519V11.992C3.68281 12.3808 3.998 12.696 4.38681 12.696H12.0668C12.4556 12.696 12.7708 12.3808 12.7708 11.992V8.51486Z"
+          fill="currentColor"
+        />
+      </svg>
+    ),
+    柱状图: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M5.30843 2.91668C5.30843 2.30456 5.80465 1.80835 6.41676 1.80835H7.58343C8.19552 1.80835 8.69176 2.30456 8.69176 2.91668V11.0834C8.69176 11.6955 8.19552 12.1917 7.58343 12.1917H6.41676C5.80465 12.1917 5.30843 11.6955 5.30843 11.0834V2.91668ZM6.41676 2.85835C6.38456 2.85835 6.35843 2.88447 6.35843 2.91668V11.0834C6.35843 11.1156 6.38456 11.1417 6.41676 11.1417H7.58343C7.61563 11.1417 7.64176 11.1156 7.64176 11.0834V2.91668C7.64176 2.88447 7.61563 2.85835 7.58343 2.85835H6.41676ZM1.2251 5.83335C1.2251 5.22123 1.72132 4.72502 2.33343 4.72502H3.5001C4.11221 4.72502 4.60843 5.22123 4.60843 5.83335V11.0834C4.60843 11.6955 4.11221 12.1917 3.5001 12.1917H2.33343C1.72132 12.1917 1.2251 11.6955 1.2251 11.0834V5.83335ZM2.33343 5.77502C2.30121 5.77502 2.2751 5.80113 2.2751 5.83335V11.0834C2.2751 11.1156 2.30121 11.1417 2.33343 11.1417H3.5001C3.53232 11.1417 3.55843 11.1156 3.55843 11.0834V5.83335C3.55843 5.80113 3.53232 5.77502 3.5001 5.77502H2.33343ZM10.5001 5.89169C9.88801 5.89169 9.39176 6.38788 9.39176 7.00003V11.0834C9.39176 11.6955 9.88801 12.1917 10.5001 12.1917H11.6668C12.2789 12.1917 12.7751 11.6955 12.7751 11.0834V7.00003C12.7751 6.38788 12.2789 5.89169 11.6668 5.89169H10.5001ZM10.4418 7.00003C10.4418 6.96777 10.4679 6.94169 10.5001 6.94169H11.6668C11.699 6.94169 11.7251 6.96777 11.7251 7.00003V11.0834C11.7251 11.1156 11.699 11.1417 11.6668 11.1417H10.5001C10.4679 11.1417 10.4418 11.1156 10.4418 11.0834V7.00003Z"
+          fill="currentColor"
+        />
+      </svg>
+    ),
+    条形图: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M3.68276 3.35176C3.68276 3.03364 3.42488 2.77576 3.10676 2.77576C2.78864 2.77576 2.53076 3.03364 2.53076 3.35176V12.3118C2.53076 12.9833 3.07518 13.5278 3.74676 13.5278H13.3468C13.6648 13.5278 13.9228 13.2699 13.9228 12.9518C13.9228 12.6336 13.6648 12.3758 13.3468 12.3758H3.74676C3.71141 12.3758 3.68276 12.3471 3.68276 12.3118V3.35176ZM11.1066 8.40836C11.4248 8.40836 11.6826 8.1505 11.6826 7.83236C11.6826 7.51428 11.4248 7.25636 11.1066 7.25636H5.98663C5.66852 7.25636 5.41064 7.51428 5.41064 7.83236C5.41064 8.1505 5.66852 8.40836 5.98663 8.40836H11.1066ZM13.6026 4.95176C13.6026 5.26987 13.3447 5.52776 13.0266 5.52776H5.98663C5.66852 5.52776 5.41064 5.26987 5.41064 4.95176C5.41064 4.63364 5.66852 4.37576 5.98663 4.37576H13.0266C13.3447 4.37576 13.6026 4.63364 13.6026 4.95176ZM8.54664 11.2878C8.86478 11.2878 9.12264 11.0299 9.12264 10.7118C9.12264 10.3936 8.86478 10.1358 8.54664 10.1358H5.98663C5.66852 10.1358 5.41063 10.3936 5.41063 10.7118C5.41063 11.0299 5.66852 11.2878 5.98663 11.2878H8.54664Z"
+          fill="currentColor"
+        />
+      </svg>
+    ),
+    饼图: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g clipPath="url(#clip0_240_50760)">
+          <path
+            d="M5.83398 2.48047C3.82111 2.99845 2.33301 4.82544 2.33301 7C2.33301 9.57733 4.42267 11.667 7 11.667C9.17456 11.667 11.0016 10.1789 11.5195 8.16602L12.7168 8.16699C12.1762 10.8295 9.82202 12.833 7 12.833C3.77834 12.833 1.16699 10.2217 1.16699 7C1.16699 4.17798 3.17054 1.82379 5.83301 1.2832L5.83398 2.48047ZM7 0.583008C10.5438 0.583008 13.417 3.45617 13.417 7H7.29199C7.13091 7 7 6.86909 7 6.70801V0.583008ZM8.16699 5.83301H12.1201C11.6747 3.87045 10.1296 2.32532 8.16699 1.87988V5.83301Z"
+            fill="currentColor"
+          />
+        </g>
+        <defs>
+          <clipPath id="clip0_240_50760">
+            <rect width="14" height="14" fill="white" />
+          </clipPath>
+        </defs>
+      </svg>
+    ),
+    环形图: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M8.22712 2.96805C5.36407 2.96805 3.04311 5.289 3.04311 8.15207C3.04311 11.0151 5.36407 13.3361 8.22712 13.3361C11.0902 13.3361 13.4111 11.0151 13.4111 8.15207C13.4111 7.83393 13.669 7.57607 13.9871 7.57607C14.3052 7.57607 14.5631 7.83393 14.5631 8.15207C14.5631 11.6513 11.7264 14.4881 8.22712 14.4881C4.72784 14.4881 1.89111 11.6513 1.89111 8.15207C1.89111 4.65277 4.72784 1.81604 8.22712 1.81604C8.5452 1.81604 8.80312 2.07393 8.80312 2.39205C8.80312 2.71016 8.5452 2.96805 8.22712 2.96805ZM9.95185 2.62452C10.0765 2.33183 10.4148 2.19559 10.7074 2.32021C12.2876 2.99301 13.5379 4.28847 14.1508 5.89958C14.264 6.1969 14.1147 6.52961 13.8173 6.64276C13.52 6.75585 13.1872 6.60654 13.0742 6.30922C12.5729 4.99177 11.5489 3.93058 10.2562 3.38013C9.96344 3.2555 9.82725 2.9172 9.95185 2.62452ZM6.56312 8.15207C6.56312 7.23303 7.30808 6.48807 8.22712 6.48807C9.14609 6.48807 9.89112 7.23303 9.89112 8.15207C9.89112 9.07105 9.14609 9.81607 8.22712 9.81607C7.30808 9.81607 6.56312 9.07105 6.56312 8.15207ZM8.22712 5.33604C6.67186 5.33604 5.41111 6.59681 5.41111 8.15207C5.41111 9.70727 6.67186 10.9681 8.22712 10.9681C9.78232 10.9681 11.0431 9.70727 11.0431 8.15207C11.0431 6.59681 9.78232 5.33604 8.22712 5.33604Z"
+          fill="currentColor"
+        />
+      </svg>
+    )
+  };
 
   const normalizeFormOption = (value: unknown) => String(value || '').trim().toLowerCase();
 
@@ -7827,95 +7942,6 @@ StepD:
                 </div>
               </Tooltip>
             </div>
-            <div className="composer-quick-actions">
-              <button
-                type="button"
-                className="composer-quick-chip"
-                onClick={() => {
-                  replaceQuickPrompt('生成一个表格');
-                  setChartPromptMode(false);
-                  setChartShortcutActive(null);
-                  setAttachmentMenuOpen(false);
-                  composerTextareaRef.current?.focus();
-                }}
-                disabled={loading}
-              >
-                <span className="composer-quick-chip-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="2.75" y="3.25" width="12.5" height="11.5" rx="1.5" stroke="#111827" strokeWidth="1.5" />
-                    <path d="M2.75 7H15.25" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M7 3.25V14.75" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
-                表格
-              </button>
-              <button
-                type="button"
-                className="composer-quick-chip"
-                onClick={() => {
-                  replaceQuickPrompt('生成一个表单');
-                  setChartPromptMode(false);
-                  setChartShortcutActive(null);
-                  setAttachmentMenuOpen(false);
-                  composerTextareaRef.current?.focus();
-                }}
-                disabled={loading}
-              >
-                <span className="composer-quick-chip-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="2.5" width="12" height="13" rx="1.5" stroke="#111827" strokeWidth="1.5" />
-                    <path d="M6 6.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M6 9.5H12" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M6 12.5H10.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
-                表单
-              </button>
-              <button
-                type="button"
-                className="composer-quick-chip"
-                onClick={() => {
-                  replaceQuickPrompt('生成一个图表');
-                  setChartPromptMode(true);
-                  setChartShortcutActive(null);
-                  setAttachmentMenuOpen(false);
-                  composerTextareaRef.current?.focus();
-                }}
-                disabled={loading}
-              >
-                <span className="composer-quick-chip-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3.5 13.5V9.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M9 13.5V6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M14.5 13.5V4.5" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                    <path d="M3 14H15" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
-                图表
-              </button>
-            </div>
-            {chartPromptMode && (
-              <div className="composer-quick-actions">
-                {chartTypeShortcuts.map((shortcut) => (
-                  <button
-                    key={shortcut.label}
-                    type="button"
-                    className={`composer-quick-chip ${chartShortcutActive === shortcut.label ? 'active' : ''}`}
-                    onClick={() => {
-                      replaceQuickPrompt(shortcut.prompt);
-                      setChartPromptMode(true);
-                      setChartShortcutActive(shortcut.label);
-                      setChartOverlayOpen(true);
-                      setAttachmentMenuOpen(false);
-                      composerTextareaRef.current?.focus();
-                    }}
-                    disabled={loading}
-                  >
-                    {shortcut.label}
-                  </button>
-                ))}
-              </div>
-            )}
             <div className="composer">
               {(uploadedImages.length > 0 || uploadedTables.length > 0 || attachmentError) && (
                 <div className="attachment-list">
@@ -7965,119 +7991,320 @@ StepD:
               {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
             </div>
           )}
-              <div className="composer-box">
+              <div
+                className={`composer-box ${chartShortcutActive ? 'with-chart-tag' : ''}`}
+                ref={composerBoxRef}
+              >
+                {chartShortcutActive && (
+                  <div
+                    className="composer-chart-tag-row"
+                    ref={chartDropdownRef}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <span className="composer-chart-tag-prefix">生成一个</span>
+                    <div className="composer-chart-tag-wrap">
+                      <button
+                        type="button"
+                        className="composer-chart-tag"
+                        onClick={() => {
+                          setAttachmentMenuOpen(false);
+                          setChartMenuOpen((prev) => !prev);
+                        }}
+                        disabled={loading}
+                      >
+                        <span className="composer-chart-tag-text">{chartShortcutActive}</span>
+                        <span className="composer-chart-tag-icon" aria-hidden="true">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                              fillRule="evenodd"
+                              clipRule="evenodd"
+                              d="M3.46129 3.67509C3.22783 3.44164 2.84933 3.44164 2.61587 3.67509L2.19316 4.0978C1.9597 4.33126 1.9597 4.70977 2.19316 4.94322L5.57484 8.32491C5.6922 8.44226 5.8462 8.50062 6.00001 8.49999C6.15382 8.50062 6.30782 8.44226 6.42518 8.32491L9.80686 4.94322C10.0403 4.70977 10.0403 4.33126 9.80686 4.0978L9.38415 3.67509C9.15069 3.44164 8.77219 3.44164 8.53873 3.67509L6.00001 6.21381L3.46129 3.67509Z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </span>
+                      </button>
+                      <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
+                        {chartTypeShortcuts.map((shortcut) => (
+                          <button
+                            key={shortcut.label}
+                            type="button"
+                            className={`composer-chart-dropdown-item ${
+                              chartShortcutActive === shortcut.label ? 'active' : ''
+                            }`}
+                            onClick={() => {
+                              setUserInput('');
+                              setChartShortcutActive(shortcut.label);
+                              if (shortcut.label === '折线图') {
+                                setChartOverlayOpen(true);
+                              } else {
+                                setChartOverlayOpen(false);
+                              }
+                              setAttachmentMenuOpen(false);
+                              setChartMenuOpen(false);
+                              composerTextareaRef.current?.focus();
+                            }}
+                            disabled={loading}
+                          >
+                            <span className="composer-chart-dropdown-icon" aria-hidden="true">
+                              {chartShortcutIcons[shortcut.label]}
+                            </span>
+                            <span className="composer-chart-dropdown-label">{shortcut.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <textarea
                   className="composer-textarea"
                   value={userInput}
                   onChange={(e) => {
                     const nextValue = e.target.value;
                     setUserInput(nextValue);
+                    if (nextValue.trim()) {
+                      setChartShortcutActive(null);
+                    }
                     if (!nextValue.trim()) {
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
                     }
                   }}
                   onPaste={handlePaste}
-                  placeholder={selectionCount > 0 ? '请输入需要调整的地方...' : '让 VED UI Agent 绘制...'}
+                  placeholder={
+                    chartShortcutActive
+                      ? ''
+                      : selectionCount > 0
+                        ? '请输入需要调整的地方...'
+                        : '让 VED UI Agent 绘制...'
+                  }
                   disabled={loading}
                   rows={4}
                   ref={composerTextareaRef}
                 />
                 <div className="composer-footer">
-                  <div
-                    className="composer-attach"
-                    ref={composerAttachRef}
-                    onMouseEnter={() => {
-                      if (!loading) setAttachmentMenuOpen(true);
-                    }}
-                    onMouseLeave={() => {
-                      if (!loading) setAttachmentMenuOpen(false);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="composer-icon-button"
-                      onClick={() => setAttachmentMenuOpen(true)}
-                      disabled={loading}
+                  <div className="composer-footer-left">
+                    <div
+                      className="composer-attach"
+                      ref={composerAttachRef}
+                      onMouseDown={(event) => event.stopPropagation()}
                     >
-                      <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 3.75V14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M3.75 9H14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                    {attachmentMenuOpen && (
-                      <div className="composer-menu">
-                        <button
-                          type="button"
-                          className="composer-menu-item"
-                          onClick={() => {
-                            setAttachmentMenuOpen(false);
-                            imageInputRef.current?.click();
-                          }}
-                          disabled={loading}
-                        >
-                          <span className="composer-menu-icon">
-                            <svg
-                              className="icon-screenshot"
-                              width="16"
-                              height="16"
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              role="img"
-                              aria-label="截图图标"
-                              focusable="false"
-                            >
-                              <title>截图图标</title>
-                              <path
-                                d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
-                                fill="#18181B"
-                              />
-                            </svg>
-                          </span>
-                          上传截图
-                        </button>
-                        <button
-                          type="button"
-                          className="composer-menu-item"
-                          onClick={() => {
-                            setAttachmentMenuOpen(false);
-                            tableInputRef.current?.click();
-                          }}
-                          disabled={loading}
-                        >
-                          <span className="composer-menu-icon">
-                            <svg
-                              className="icon-spreadsheet-file"
-                              width="16"
-                              height="16"
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              role="img"
-                              aria-label="表格文件图标"
-                              focusable="false"
-                            >
-                              <title>表格文件图标</title>
-                              <g clipPath="url(#clip0_icon_spreadsheet_file)">
+                      <button
+                        type="button"
+                        className="composer-icon-button"
+                        onClick={() => setAttachmentMenuOpen((prev) => !prev)}
+                        disabled={loading}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M9 3.75V14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M3.75 9H14.25" stroke="#18181B" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                      {attachmentMenuOpen && (
+                        <div className="composer-menu">
+                          <button
+                            type="button"
+                            className="composer-menu-item"
+                            onClick={() => {
+                              setAttachmentMenuOpen(false);
+                              imageInputRef.current?.click();
+                            }}
+                            disabled={loading}
+                          >
+                            <span className="composer-menu-icon">
+                              <svg
+                                className="icon-screenshot"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                role="img"
+                                aria-label="截图图标"
+                                focusable="false"
+                              >
+                                <title>截图图标</title>
                                 <path
-                                  fillRule="evenodd"
-                                  clipRule="evenodd"
-                                  d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
+                                  d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
                                   fill="#18181B"
                                 />
-                              </g>
-                              <defs>
-                                <clipPath id="clip0_icon_spreadsheet_file">
-                                  <rect width="16" height="16" fill="white" />
-                                </clipPath>
-                              </defs>
-                            </svg>
-                          </span>
-                          上传表格
-                        </button>
-                      </div>
-                    )}
+                              </svg>
+                            </span>
+                            上传截图
+                          </button>
+                          <button
+                            type="button"
+                            className="composer-menu-item"
+                            onClick={() => {
+                              setAttachmentMenuOpen(false);
+                              tableInputRef.current?.click();
+                            }}
+                            disabled={loading}
+                          >
+                            <span className="composer-menu-icon">
+                              <svg
+                                className="icon-spreadsheet-file"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                role="img"
+                                aria-label="表格文件图标"
+                                focusable="false"
+                              >
+                                <title>表格文件图标</title>
+                                <g clipPath="url(#clip0_icon_spreadsheet_file)">
+                                  <path
+                                    fillRule="evenodd"
+                                    clipRule="evenodd"
+                                    d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
+                                    fill="#18181B"
+                                  />
+                                </g>
+                                <defs>
+                                  <clipPath id="clip0_icon_spreadsheet_file">
+                                    <rect width="16" height="16" fill="white" />
+                                  </clipPath>
+                                </defs>
+                              </svg>
+                            </span>
+                            上传表格
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="composer-quick-actions">
+                      <button
+                        type="button"
+                        className="composer-quick-chip composer-quick-chip-btn"
+                        onClick={() => {
+                          replaceQuickPrompt('生成一个表格');
+                          setChartPromptMode(false);
+                          setChartShortcutActive(null);
+                          setAttachmentMenuOpen(false);
+                          composerTextareaRef.current?.focus();
+                        }}
+                        disabled={loading}
+                      >
+                        <span className="composer-quick-chip-icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <g clipPath="url(#clip0_240_5295)">
+                              <path
+                                fillRule="evenodd"
+                                clipRule="evenodd"
+                                d="M12.1853 1.16669C12.5432 1.16669 12.8334 1.45687 12.8334 1.81484V12.1852C12.8334 12.5432 12.5432 12.8334 12.1853 12.8334H1.8149C1.45693 12.8334 1.16675 12.5432 1.16675 12.1852V1.81484C1.16675 1.45687 1.45693 1.16669 1.8149 1.16669H12.1853ZM2.33341 11.6667H4.66646L4.66675 5.83335H2.33341V11.6667ZM11.6667 5.83335H5.83341L5.83312 11.6667H11.6667V5.83335ZM11.6667 4.66669V2.33335H5.83341V4.66669H11.6667ZM4.66675 2.33335H2.33341V4.66669H4.66675V2.33335Z"
+                                fill="currentColor"
+                              />
+                            </g>
+                            <defs>
+                              <clipPath id="clip0_240_5295">
+                                <rect width="14" height="14" fill="white" />
+                              </clipPath>
+                            </defs>
+                          </svg>
+                        </span>
+                        <span className="composer-quick-chip-label">表格</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="composer-quick-chip composer-quick-chip-btn"
+                        onClick={() => {
+                          replaceQuickPrompt('生成一个表单');
+                          setChartPromptMode(false);
+                          setChartShortcutActive(null);
+                          setAttachmentMenuOpen(false);
+                          composerTextareaRef.current?.focus();
+                        }}
+                        disabled={loading}
+                      >
+                        <span className="composer-quick-chip-icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <g clipPath="url(#clip0_240_10797)">
+                              <path
+                                fillRule="evenodd"
+                                clipRule="evenodd"
+                                d="M11.6667 0.875C11.9888 0.875 12.25 1.13617 12.25 1.45833V12.5417C12.25 12.8638 11.9888 13.125 11.6667 13.125H2.33333C2.01117 13.125 1.75 12.8638 1.75 12.5417V1.45833C1.75 1.13617 2.01117 0.875 2.33333 0.875H11.6667ZM11.0833 2.04167H2.91667V11.9583H11.0833V2.04167ZM7.875 8.75C8.03608 8.75 8.16667 8.88058 8.16667 9.04167V9.625C8.16667 9.78608 8.03608 9.91667 7.875 9.91667H4.66667C4.50558 9.91667 4.375 9.78608 4.375 9.625V9.04167C4.375 8.88058 4.50558 8.75 4.66667 8.75H7.875ZM9.33333 6.125C9.49442 6.125 9.625 6.25558 9.625 6.41667V7C9.625 7.16108 9.49442 7.29167 9.33333 7.29167H4.66667C4.50558 7.29167 4.375 7.16108 4.375 7V6.41667C4.375 6.25558 4.50558 6.125 4.66667 6.125H9.33333ZM9.33333 3.5C9.49442 3.5 9.625 3.63058 9.625 3.79167V4.375C9.625 4.53608 9.49442 4.66667 9.33333 4.66667H4.66667C4.50558 4.66667 4.375 4.53608 4.375 4.375V3.79167C4.375 3.63058 4.50558 3.5 4.66667 3.5H9.33333Z"
+                                fill="#18181B"
+                              />
+                            </g>
+                            <defs>
+                              <clipPath id="clip0_240_10797">
+                                <rect width="14" height="14" fill="white" />
+                              </clipPath>
+                            </defs>
+                          </svg>
+                        </span>
+                        <span className="composer-quick-chip-label">表单</span>
+                      </button>
+                    <div
+                      className="composer-chart-dropdown-wrap"
+                      ref={chartShortcutActive ? undefined : chartDropdownRef}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="composer-quick-chip composer-quick-chip-btn"
+                        onClick={() => {
+                          replaceQuickPrompt('生成一个图表');
+                          setChartPromptMode(false);
+                          setChartShortcutActive(null);
+                          setAttachmentMenuOpen(false);
+                          setChartMenuOpen((prev) => !prev);
+                          composerTextareaRef.current?.focus();
+                        }}
+                        disabled={loading}
+                      >
+                        <span className="composer-quick-chip-icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <g clipPath="url(#clip0_240_12373)">
+                              <path
+                                fillRule="evenodd"
+                                clipRule="evenodd"
+                                d="M12.185 1.16669C12.543 1.16669 12.8332 1.45687 12.8332 1.81484V12.1852C12.8332 12.5432 12.543 12.8334 12.185 12.8334H1.81465C1.45669 12.8334 1.1665 12.5432 1.1665 12.1852V1.81484C1.1665 1.45687 1.45669 1.16669 1.81465 1.16669H12.185ZM11.6665 2.33335H2.33317V11.6667H11.6665V2.33335ZM4.37484 5.83335C4.53592 5.83335 4.6665 5.96394 4.6665 6.12502V10.2084C4.6665 10.3694 4.53592 10.5 4.37484 10.5H3.7915C3.63042 10.5 3.49984 10.3694 3.49984 10.2084V6.12502C3.49984 5.96394 3.63042 5.83335 3.7915 5.83335H4.37484ZM6.70817 4.08335C6.86925 4.08335 6.99984 4.21394 6.99984 4.37502V10.2084C6.99984 10.3694 6.86925 10.5 6.70817 10.5H6.12484C5.96375 10.5 5.83317 10.3694 5.83317 10.2084V4.37502C5.83317 4.21394 5.96375 4.08335 6.12484 4.08335H6.70817ZM9.0415 7.58335C9.20259 7.58335 9.33317 7.71394 9.33317 7.87502V10.2084C9.33317 10.3694 9.20259 10.5 9.0415 10.5H8.45817C8.29709 10.5 8.1665 10.3694 8.1665 10.2084V7.87502C8.1665 7.71394 8.29709 7.58335 8.45817 7.58335H9.0415Z"
+                                fill="#18181B"
+                              />
+                            </g>
+                            <defs>
+                              <clipPath id="clip0_240_12373">
+                                <rect width="14" height="14" fill="white" />
+                              </clipPath>
+                            </defs>
+                          </svg>
+                        </span>
+                        <span className="composer-quick-chip-label">图表</span>
+                      </button>
+                      {!chartShortcutActive && (
+                        <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
+                          {chartTypeShortcuts.map((shortcut) => (
+                            <button
+                              key={shortcut.label}
+                              type="button"
+                              className="composer-chart-dropdown-item"
+                              onClick={() => {
+                                setUserInput('');
+                                setChartShortcutActive(shortcut.label);
+                                if (shortcut.label === '折线图') {
+                                  setChartOverlayOpen(true);
+                                } else {
+                                  setChartOverlayOpen(false);
+                                }
+                                setAttachmentMenuOpen(false);
+                                setChartMenuOpen(false);
+                                composerTextareaRef.current?.focus();
+                              }}
+                              disabled={loading}
+                            >
+                              <span className="composer-chart-dropdown-icon" aria-hidden="true">
+                                {chartShortcutIcons[shortcut.label]}
+                              </span>
+                              <span className="composer-chart-dropdown-label">{shortcut.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    </div>
                   </div>
                   <Tooltip content={loading ? '停止生成' : '发送'} enabled={loading || canSend} placement="top">
                     <div className="composer-send-wrap">
