@@ -1257,16 +1257,17 @@ function App() {
   const llmAbortRef = React.useRef<AbortController | null>(null);
 
   React.useLayoutEffect(() => {
-    if (!composerBoxRef.current) return;
+    const box = composerBoxRef.current;
+    if (!box) return;
     const updateWidth = () => {
       const width = chartDropdownRef.current?.getBoundingClientRect().width ?? 0;
-      composerBoxRef.current?.style.setProperty('--chart-tag-width', `${width}px`);
+      box.style.setProperty('--chart-tag-width', `${width}px`);
     };
     updateWidth();
-    let observer: ResizeObserver | null = null;
-    if (chartDropdownRef.current) {
-      observer = new ResizeObserver(updateWidth);
-      observer.observe(chartDropdownRef.current);
+    const target = chartDropdownRef.current;
+    const observer = target ? new ResizeObserver(updateWidth) : null;
+    if (target && observer) {
+      observer.observe(target);
     }
     window.addEventListener('resize', updateWidth);
     return () => {
