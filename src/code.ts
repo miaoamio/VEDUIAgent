@@ -106,10 +106,13 @@ async function prewarmTableCellAssets(): Promise<void> {
       const instance = await createFigmaComponentInstanceByToken(token);
       if (instance) {
         try {
+          instance.visible = false;
+          instance.x = -100000;
+          instance.y = -100000;
+        } catch {}
+        try {
           instance.remove();
-        } catch {
-          // ignore cleanup failure
-        }
+        } catch {}
       }
       TABLE_CELL_PREWARM_STATE.warmedTokens.add(token);
     }
@@ -121,10 +124,13 @@ async function prewarmTableCellAssets(): Promise<void> {
         const templateNode = await createTagFromFigmaTemplate(COMPONENT_DEFS['tag'], normalizedTagParams);
         if (templateNode) {
           try {
+            templateNode.visible = false;
+            templateNode.x = -100000;
+            templateNode.y = -100000;
+          } catch {}
+          try {
             templateNode.remove();
-          } catch {
-            // ignore cleanup failure
-          }
+          } catch {}
         }
       }
       TABLE_CELL_PREWARM_STATE.warmedDefaultTag = true;
@@ -156,37 +162,10 @@ function findAiComponentNode(node: SceneNode | null): SceneNode | null {
 
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
-function classifyCanvasComponentId(componentId: string): CanvasHint {
-  const id = componentId.toLowerCase();
-  if (id.startsWith('table')) return 'table';
-  if (id.startsWith('chart')) return 'chart';
-  if (id.includes('form')) return 'form';
-  return 'mixed';
-}
-
-function getCanvasHint(): CanvasHint {
-  const nodes = figma.currentPage.findAll((node) => {
-    try {
-      return node.getPluginData('is-ai-component') === 'true' && Boolean(node.getPluginData('component-id'));
-    } catch {
-      return false;
-    }
-  });
-
-  const kinds = new Set<CanvasHint>();
-  for (const node of nodes) {
-    const componentId = node.getPluginData('component-id');
-    if (!componentId) continue;
-    kinds.add(classifyCanvasComponentId(componentId));
-  }
-  if (kinds.size === 1) return Array.from(kinds)[0];
-  return 'mixed';
-}
-
 // Helper to check selection and notify UI
 function checkSelection() {
-  const canvasHint = getCanvasHint();
   const selection = figma.currentPage.selection;
+  const canvasHint: CanvasHint = 'mixed';
   if (selection.length === 0) {
     figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
     return;
@@ -264,11 +243,14 @@ function checkSelection() {
 figma.on('selectionchange', checkSelection);
 
 let tableRowSyncInProgress = false;
+let tableRowSyncTimer: number | null = null;
+let pendingTableRowSync = new Map<
+  string,
+  { table: FrameNode; rowIndex: number; sourceNodes: SceneNode[] }
+>();
 
 figma.on('documentchange', async (event) => {
   if (tableRowSyncInProgress) return;
-
-  const rowsToSync = new Map<string, { table: FrameNode; rowIndex: number; sourceNodes: SceneNode[] }>();
 
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
@@ -277,8 +259,7 @@ figma.on('documentchange', async (event) => {
 
     const properties = change.properties || [];
     const isSizeChange = properties.includes('height') || properties.includes('width') || properties.includes('size') || properties.includes('resize');
-    const isTextChange = properties.includes('characters');
-    if (!isSizeChange && !isTextChange) continue;
+    if (!isSizeChange) continue;
 
     const cell = findTableCellFromNode(node);
     if (!cell) continue;
@@ -291,26 +272,31 @@ figma.on('documentchange', async (event) => {
     if (rowIndex < 0) continue;
 
     const key = `${table.id}:${rowIndex}`;
-    const existing = rowsToSync.get(key);
+    const existing = pendingTableRowSync.get(key);
     if (existing) {
       if (!existing.sourceNodes.includes(cell)) {
         existing.sourceNodes.push(cell);
       }
     } else {
-      rowsToSync.set(key, { table, rowIndex, sourceNodes: [cell] });
+      pendingTableRowSync.set(key, { table, rowIndex, sourceNodes: [cell] });
     }
   }
 
-  if (rowsToSync.size === 0) return;
-
-  tableRowSyncInProgress = true;
-  try {
-    for (const { table, rowIndex, sourceNodes } of rowsToSync.values()) {
-      alignTableRowHeights(table, rowIndex, sourceNodes);
+  if (pendingTableRowSync.size === 0) return;
+  if (tableRowSyncTimer !== null) return;
+  tableRowSyncTimer = setTimeout(() => {
+    tableRowSyncInProgress = true;
+    const rowsToSync = pendingTableRowSync;
+    pendingTableRowSync = new Map();
+    tableRowSyncTimer = null;
+    try {
+      for (const { table, rowIndex, sourceNodes } of rowsToSync.values()) {
+        alignTableRowHeights(table, rowIndex, sourceNodes);
+      }
+    } finally {
+      tableRowSyncInProgress = false;
     }
-  } finally {
-    tableRowSyncInProgress = false;
-  }
+  }, 120);
 });
 
 // Define Theme Tokens
@@ -6301,6 +6287,20 @@ async function renderComponent(
       const columnWidth = params.width || 150;
       const headerHeight = resolveTableHeaderHeight(params);
       const bodyHeight = resolveTableBodyHeight(params);
+      const autoHeightMode =
+        params.textDisplay === 'lineBreak' ||
+        params.height === 0 ||
+        params.height === 'auto' ||
+        params.height === 'AUTO' ||
+        params.rowHeight === 0 ||
+        params.rowHeight === 'auto' ||
+        params.rowHeight === 'AUTO' ||
+        params.headerHeight === 0 ||
+        params.headerHeight === 'auto' ||
+        params.headerHeight === 'AUTO' ||
+        params.bodyHeight === 0 ||
+        params.bodyHeight === 'auto' ||
+        params.bodyHeight === 'AUTO';
 	      frame.resize(columnWidth, 100);
 	      frame.fills = [];
 	      frame.clipsContent = false;
@@ -6317,7 +6317,7 @@ async function renderComponent(
                 params: {
                   ...(child.params || {}),
                   width: explicitHugWidth ? 0 : (toPositiveNumber((child.params as any)?.width) ?? columnWidth),
-                  height: toPositiveNumber(child.params?.height) ?? (isHeaderChild ? headerHeight : bodyHeight),
+                  height: autoHeightMode ? 0 : (toPositiveNumber(child.params?.height) ?? (isHeaderChild ? headerHeight : bodyHeight)),
                   paddingTop: child.params?.paddingTop ?? 0,
                   paddingBottom: child.params?.paddingBottom ?? 0
                 }
@@ -6331,7 +6331,7 @@ async function renderComponent(
           const headerInstance: ComponentInstance = {
               id: 'header',
               componentId: 'table-header-cell',
-              params: { text: params.headerText || 'Header', width: columnWidth, height: headerHeight }
+              params: { text: params.headerText || 'Header', width: columnWidth, height: autoHeightMode ? 0 : headerHeight }
           };
           const headerNode = await renderComponent(headerInstance, { isRoot: false });
           frame.appendChild(headerNode);
@@ -6342,7 +6342,7 @@ async function renderComponent(
 	               const cellInstance: ComponentInstance = {
 	                  id: `cell-${i}`,
 	                  componentId: 'table-cell',
-	                  params: { text: `Cell ${i+1}`, width: columnWidth, height: bodyHeight }
+                  params: { text: `Cell ${i+1}`, width: columnWidth, height: autoHeightMode ? 0 : bodyHeight }
 	              };
 	              const cellNode = await renderComponent(cellInstance, { isRoot: false });
 	              frame.appendChild(cellNode);
@@ -6367,21 +6367,42 @@ async function renderComponent(
            instance.componentId === 'table-cell-action-icon') {
     const isHeader = instance.componentId === 'table-header-cell';
     const cellHeight = isHeader ? resolveTableHeaderHeight(params) : resolveTableBodyHeight(params);
+    const autoHeightMode =
+      params.textDisplay === 'lineBreak' ||
+      params.height === 0 ||
+      params.height === 'auto' ||
+      params.height === 'AUTO' ||
+      params.rowHeight === 0 ||
+      params.rowHeight === 'auto' ||
+      params.rowHeight === 'AUTO' ||
+      params.headerHeight === 0 ||
+      params.headerHeight === 'auto' ||
+      params.headerHeight === 'AUTO' ||
+      params.bodyHeight === 0 ||
+      params.bodyHeight === 'auto' ||
+      params.bodyHeight === 'AUTO';
     const widthParam = (params as any)?.width;
     const explicitHugWidth = widthParam === 0 || widthParam === '0';
     const cellWidth = toPositiveNumber(widthParam) ?? 150;
     const frame = figma.createFrame();
     frame.layoutMode = 'HORIZONTAL';
-    frame.counterAxisSizingMode = 'FIXED';
+    frame.counterAxisSizingMode = autoHeightMode ? 'AUTO' : 'FIXED';
     frame.primaryAxisSizingMode = explicitHugWidth ? 'AUTO' : 'FIXED';
     frame.layoutAlign = 'STRETCH';
     frame.itemSpacing = 8;
-    frame.counterAxisAlignItems = 'CENTER'; // Center content vertically
+    frame.counterAxisAlignItems = 'CENTER';
     frame.paddingLeft = params.paddingLeft ?? 16;
     frame.paddingRight = params.paddingRight ?? (isHeader ? 8 : 16);
     frame.paddingTop = params.paddingTop ?? 0;
     frame.paddingBottom = params.paddingBottom ?? 0;
-    frame.resize(explicitHugWidth ? 1 : cellWidth, cellHeight);
+    frame.resize(explicitHugWidth ? 1 : cellWidth, autoHeightMode ? 1 : cellHeight);
+    if (autoHeightMode && 'layoutSizingVertical' in frame) {
+      try {
+        (frame as any).layoutSizingVertical = 'HUG';
+      } catch {
+        // ignore
+      }
+    }
     
     // Background Color
     const cellFallbackBg = params.backgroundColor || (isHeader ? '#F5F5F5' : '#FFFFFF');

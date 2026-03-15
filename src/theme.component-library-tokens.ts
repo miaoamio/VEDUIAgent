@@ -198,7 +198,7 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     componentKey: '7245c6d58b6dae1ef68cdffb0c90798cb57bfb7d',
     source: 'Figma组件库词汇表_ComponentSets.json',
     displayName: 'Cascader 级联选择',
-    category: '数据输入',
+    category: '数据展示',
     aliases: ['figma-set:Cascader 级联选择']
   },
   'lib-data-input-checkbox': {
@@ -224,14 +224,6 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     displayName: 'Datepicker 日期选择器',
     category: '数据输入',
     aliases: ['figma-set:Datepicker 日期选择器']
-  },
-  'lib-data-input-datetimepicker-segemented': {
-    token: 'lib-data-input-datetimepicker-segemented',
-    componentKey: '5a348cbb6740e5d449689350cf7e7f53447d0f30',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'DateTimepicker_segemented 分段时间输入',
-    category: '数据输入',
-    aliases: ['figma-set:DateTimepicker_segemented 分段时间输入']
   },
   'lib-data-input-drag': {
     token: 'lib-data-input-drag',
@@ -493,7 +485,7 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     token: 'lib-data-display-descriptions',
     componentKey: '28a8d9c0652b6c199e9b40641fc06d5a67a7e600',
     source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Descriptions',
+    displayName: 'Descriptions 描述列表',
     category: '数据展示',
     aliases: ['figma-set:Descriptions']
   },
@@ -633,76 +625,12 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '数据展示',
     aliases: ['figma-set:Tree']
   },
-  'lib-data-display-component-piechart': {
-    token: 'lib-data-display-component-piechart',
-    componentKey: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Component/PieChart',
-    category: '数据展示',
-    aliases: ['figma-set:Component/PieChart']
-  },
-  'lib-data-display-toplist': {
-    token: 'lib-data-display-toplist',
-    componentKey: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Toplist 条形图',
-    category: '数据展示',
-    aliases: ['figma-set:Toplist 条形图']
-  },
-  'lib-data-display-areachart': {
-    token: 'lib-data-display-areachart',
-    componentKey: '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'AreaChart 面积图',
-    category: '数据展示',
-    aliases: ['figma-set:AreaChart 面积图']
-  },
-  'lib-data-display-barchart': {
-    token: 'lib-data-display-barchart',
-    componentKey: 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'BarChart 柱状图',
-    category: '数据展示',
-    aliases: ['figma-set:BarChart 柱状图']
-  },
-  'lib-data-display-datalinescombo': {
-    token: 'lib-data-display-datalinescombo',
-    componentKey: 'fb05d0401cd1498466b2d5ee86d5a7723bc95a39',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: '折线组合/dataLinesCombo',
-    category: '数据展示',
-    aliases: ['figma-set:折线组合/dataLinesCombo']
-  },
-  'lib-data-display-card-piechart': {
-    token: 'lib-data-display-card-piechart',
-    componentKey: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Card/PieChart',
-    category: '数据展示',
-    aliases: ['figma-set:Card/PieChart']
-  },
-  'lib-data-display-linechart': {
-    token: 'lib-data-display-linechart',
-    componentKey: '62d6b59603766fdb416ff787eec5d21800264694',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: '折线图',
-    category: '数据展示',
-    aliases: ['figma-set:折线图']
-  },
-  'lib-data-display-mini-piechart': {
-    token: 'lib-data-display-mini-piechart',
-    componentKey: '4813f178fd503bfdad6cef802eb09ca927d4e733',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Mini_pie_chart',
-    category: '数据展示',
-    aliases: ['figma-set:Mini_pie_chart']
-  },
   'lib-misc-ai-button-group': {
     token: 'lib-misc-ai-button-group',
     componentKey: '60bb4b331507842afcde2d03a1a298e37b7ea5ae',
     source: 'Figma组件库词汇表_ComponentSets.json',
     displayName: 'AI Button group 智能按钮组',
-    category: '未分类',
+    category: 'AI/火山引擎智能化',
     aliases: ['figma-set:AI Button group 智能按钮组']
   },
   'lib-misc-ai-floating-menu': {
@@ -710,7 +638,7 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     componentKey: 'b5280f0d933035b99458bf63dcd3c2770d9aabee',
     source: 'Figma组件库词汇表_ComponentSets.json',
     displayName: 'AI Floating menu 悬浮菜单',
-    category: '未分类',
+    category: 'AI/火山引擎智能化',
     aliases: ['figma-set:AI Floating menu 悬浮菜单']
   },
   'lib-misc-risk-level-tag': {
@@ -857,7 +785,6 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.data-input.radio': { token: 'library.data-input.radio', baseToken: 'lib-data-input-radio' },
   'library.data-input.radio-group': { token: 'library.data-input.radio-group', baseToken: 'lib-data-input-radio-group' },
   'library.data-input.search': { token: 'library.data-input.search', baseToken: 'lib-data-input-search' },
-  'library.data-input.segmented-picker': { token: 'library.data-input.segmented-picker', baseToken: 'lib-data-input-segmented-picker' },
   'library.data-input.select': { token: 'library.data-input.select', baseToken: 'lib-data-input-select' },
   'library.data-input.select-borderless': { token: 'library.data-input.select-borderless', baseToken: 'lib-data-input-select-borderless' },
   'library.data-input.slider': { token: 'library.data-input.slider', baseToken: 'lib-data-input-slider' },
@@ -897,26 +824,6 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.data-display.timeline': { token: 'library.data-display.timeline', baseToken: 'lib-data-display-timeline' },
   'library.data-display.tooltip': { token: 'library.data-display.tooltip', baseToken: 'lib-data-display-tooltip' },
   'library.data-display.tree': { token: 'library.data-display.tree', baseToken: 'lib-data-display-tree' },
-  'library.data-display.component-piechart': {
-    token: 'library.data-display.component-piechart',
-    baseToken: 'lib-data-display-component-piechart'
-  },
-  'library.data-display.toplist': { token: 'library.data-display.toplist', baseToken: 'lib-data-display-toplist' },
-  'library.data-display.areachart': { token: 'library.data-display.areachart', baseToken: 'lib-data-display-areachart' },
-  'library.data-display.barchart': { token: 'library.data-display.barchart', baseToken: 'lib-data-display-barchart' },
-  'library.data-display.datalinescombo': {
-    token: 'library.data-display.datalinescombo',
-    baseToken: 'lib-data-display-datalinescombo'
-  },
-  'library.data-display.card-piechart': {
-    token: 'library.data-display.card-piechart',
-    baseToken: 'lib-data-display-card-piechart'
-  },
-  'library.data-display.linechart': { token: 'library.data-display.linechart', baseToken: 'lib-data-display-linechart' },
-  'library.data-display.mini-piechart': {
-    token: 'library.data-display.mini-piechart',
-    baseToken: 'lib-data-display-mini-piechart'
-  },
   'library.misc.ai-button-group': { token: 'library.misc.ai-button-group', baseToken: 'lib-misc-ai-button-group' },
   'library.misc.ai-floating-menu': { token: 'library.misc.ai-floating-menu', baseToken: 'lib-misc-ai-floating-menu' },
   'library.misc.risk-level-tag': { token: 'library.misc.risk-level-tag', baseToken: 'lib-misc-risk-level-tag' },

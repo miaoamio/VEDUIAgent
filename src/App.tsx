@@ -865,8 +865,17 @@ function buildUserSummary(
   images: UploadedImageAttachment[],
   tables: UploadedTableAttachment[]
 ): string {
-  const lines: string[] = [];
   const trimmedInput = String(input || '').trim();
+  if (trimmedInput.length === 0 && tables.length === 0 && images.length > 0) {
+    return '用户上传图片';
+  }
+  if (trimmedInput.length === 0 && images.length === 0 && tables.length > 0) {
+    return '用户上传表格';
+  }
+  if (trimmedInput.length === 0 && images.length > 0 && tables.length > 0) {
+    return '用户上传图片和表格';
+  }
+  const lines: string[] = [];
   lines.push(`需求文本长度：${trimmedInput.length}`);
   if (tables.length > 0) {
     lines.push(`表格附件：${tables.length} 个`);
@@ -904,10 +913,13 @@ function buildTableContextText(tables: UploadedTableAttachment[]): string {
 
 function buildCurrentTurnText(input: string, images: UploadedImageAttachment[], tables: UploadedTableAttachment[]): string {
   const trimmed = String(input || '').trim();
-  const sections = [
-    trimmed ? `用户需求：\n${trimmed}` : '用户需求：\n（无额外文本，仅附件）',
-    `用户提供内容：\n${buildUserSummary(input, images, tables)}`
-  ];
+  const summary = buildUserSummary(input, images, tables);
+  const sections = trimmed
+    ? [
+        `用户需求：\n${trimmed}`,
+        `用户提供内容：\n${summary}`
+      ]
+    : [summary];
 
   const tableContext = buildTableContextText(tables);
   if (tableContext) {
@@ -1221,6 +1233,7 @@ function App() {
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
   const [chartMenuOpen, setChartMenuOpen] = React.useState(false);
+  const [quickComponentMenuOpen, setQuickComponentMenuOpen] = React.useState(false);
   const chartUiHtml = React.useMemo(
     () =>
       AI_CHART_UI_HTML.replace(
@@ -1243,6 +1256,10 @@ function App() {
   const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false);
   const composerAttachRef = React.useRef<HTMLDivElement | null>(null);
   const chartDropdownRef = React.useRef<HTMLDivElement | null>(null);
+  const quickComponentDropdownRef = React.useRef<HTMLDivElement | null>(null);
+  const quickComponentMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const [quickComponentActiveCategory, setQuickComponentActiveCategory] = React.useState<string | null>(null);
+  const [quickComponentSubmenuStyle, setQuickComponentSubmenuStyle] = React.useState<React.CSSProperties>({});
   const composerBoxRef = React.useRef<HTMLDivElement | null>(null);
   const streamTableStateRef = React.useRef<StreamTableState | null>(null);
   const streamTableQueueRef = React.useRef(Promise.resolve());
@@ -1286,12 +1303,21 @@ function App() {
       if (chartDropdownRef.current && !chartDropdownRef.current.contains(target)) {
         setChartMenuOpen(false);
       }
+      if (quickComponentDropdownRef.current && !quickComponentDropdownRef.current.contains(target)) {
+        setQuickComponentMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleDocumentClick);
     return () => {
       document.removeEventListener('mousedown', handleDocumentClick);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!quickComponentMenuOpen) {
+      setQuickComponentActiveCategory(null);
+    }
+  }, [quickComponentMenuOpen]);
   const stopRequestedRef = React.useRef(false);
   const thinkingStartedAtRef = React.useRef<number | null>(null);
   const readSpecsCacheRef = React.useRef<Set<string>>(new Set());
@@ -1484,7 +1510,6 @@ function App() {
   }, [attachmentMenuOpen]);
 
   const updateParam = (key: string, value: any) => {
-    if (loading) return;
     if (!selectedComponent) return;
     const newParams = { ...selectedComponent.params, [key]: value };
     setSelectedComponent({ ...selectedComponent, params: newParams });
@@ -1492,7 +1517,6 @@ function App() {
   };
 
   const updateComponentType = (newType: string) => {
-    if (loading) return;
     if (!selectedComponent) return;
     parent.postMessage({ 
         pluginMessage: { 
@@ -1503,7 +1527,6 @@ function App() {
   };
 
   const applyColumnSettings = () => {
-    if (loading) return;
     if (!selectedComponent) return;
     const params = selectedComponent.params || {};
     const cellType = selectedComponent.componentId === 'table-column'
@@ -5060,11 +5083,12 @@ StepD:
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
+    const displaySummary = buildUserSummary(turnInput, turnImages, turnTables);
     const currentTurnRichContent = buildRichUserContent(turnInput, turnImages, turnTables);
 
     // After sending, clear composer state for the next round.
     setLastUserMessage(currentTurnText);
-    const displayInput = turnInput.trim() ? turnInput : currentTurnText;
+    const displayInput = turnInput.trim() ? turnInput : displaySummary;
     setUiMessages((prev) => [...prev, { role: 'user', content: displayInput }, { role: 'ai', content: '' }]);
     setUserInput('');
     setUploadedImages([]);
@@ -6075,6 +6099,44 @@ StepD:
     { label: '条形图', prompt: '生成一个条形图' },
     { label: '面积图', prompt: '生成一个面积图' }
   ];
+  const buildQuickComponentName = (displayName: string, token: string) => {
+    const baseName = String(displayName || '').trim();
+    const tokenLabel = token
+      .replace(/^lib-/, '')
+      .split('-')
+      .slice(-2)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+    const zhParts = baseName.match(/[\u4e00-\u9fa5]+/g) || [];
+    const enParts = baseName.match(/[A-Za-z][A-Za-z0-9\s-]*/g) || [];
+    const zh = zhParts.join('') || baseName || token;
+    const en = enParts.join(' ') || tokenLabel || baseName || token;
+    return { name: `${en} ${zh}`.trim(), zh, en };
+  };
+  const quickComponentGroups = React.useMemo(() => {
+    const grouped: Record<string, Array<{ token: string; name: string; zh: string; en: string }>> = {};
+    Object.values(BASE_COMPONENT_TOKEN_PACK).forEach((profile) => {
+      const token = String(profile?.token || '').trim();
+      if (!token) return;
+      let category = String(profile?.category || '其他').trim() || '其他';
+      if (category === '布局') return;
+      if (category === '未分类' || category === '其他') return;
+      if (category === 'AI/火山引擎智能化') category = '智能化';
+      const { name, zh, en } = buildQuickComponentName(String(profile?.displayName || ''), token);
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push({ token, name, zh, en });
+    });
+    return Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b))
+      .map((category) => ({
+        category,
+        items: grouped[category].sort((a, b) => a.name.localeCompare(b.name))
+      }));
+  }, []);
+  const quickComponentActiveGroup = React.useMemo(
+    () => quickComponentGroups.find((group) => group.category === quickComponentActiveCategory),
+    [quickComponentGroups, quickComponentActiveCategory]
+  );
   const chartShortcutIcons: Record<string, JSX.Element> = {
     折线图: (
       <svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -8184,6 +8246,7 @@ StepD:
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
                           setAttachmentMenuOpen(false);
+                          setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
                         }}
                         disabled={loading}
@@ -8215,6 +8278,7 @@ StepD:
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
                           setAttachmentMenuOpen(false);
+                          setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
                         }}
                         disabled={loading}
@@ -8251,6 +8315,7 @@ StepD:
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
                           setAttachmentMenuOpen(false);
+                          setQuickComponentMenuOpen(false);
                           setChartMenuOpen((prev) => !prev);
                           composerTextareaRef.current?.focus();
                         }}
@@ -8304,6 +8369,91 @@ StepD:
                           ))}
                         </div>
                       )}
+                    </div>
+                    <div
+                      className="composer-component-dropdown-wrap"
+                      ref={quickComponentDropdownRef}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="composer-quick-chip composer-quick-chip-btn"
+                        onClick={() => {
+                          setChartPromptMode(false);
+                          setChartShortcutActive(null);
+                          setAttachmentMenuOpen(false);
+                          setChartMenuOpen(false);
+                          setQuickComponentMenuOpen((prev) => !prev);
+                          composerTextareaRef.current?.focus();
+                        }}
+                        disabled={loading}
+                      >
+                        <span className="composer-quick-chip-label">快速组件</span>
+                      </button>
+                      <div
+                        className={`composer-component-dropdown ${quickComponentMenuOpen ? 'open' : ''}`}
+                        onMouseLeave={() => setQuickComponentActiveCategory(null)}
+                        ref={quickComponentMenuRef}
+                        style={{
+                          left: (quickComponentDropdownRef.current?.getBoundingClientRect().left || 0),
+                          bottom: window.innerHeight - (quickComponentDropdownRef.current?.getBoundingClientRect().top || 0) + 6,
+                          top: 'auto'
+                        }}
+                      >
+                        <div className="composer-component-dropdown-list">
+                          {quickComponentGroups.map((group) => (
+                            <div key={group.category} className="composer-component-group">
+                              <button
+                                type="button"
+                                className="composer-component-group-title"
+                                onMouseEnter={(event) => {
+                                  const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                  setQuickComponentActiveCategory(group.category);
+                                  setQuickComponentSubmenuStyle({
+                                    left: rect.left - 6,
+                                    bottom: window.innerHeight - rect.bottom,
+                                    top: 'auto',
+                                    transform: 'translateX(-100%)'
+                                  });
+                                }}
+                              >
+                                <span>{group.category}</span>
+                                <span className="composer-component-group-arrow">›</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {quickComponentActiveGroup && (
+                          <div className="composer-component-submenu" style={quickComponentSubmenuStyle}>
+                            {quickComponentActiveGroup.items.map((item) => (
+                              <button
+                                key={item.token}
+                                type="button"
+                                className="composer-component-item"
+                                onClick={async () => {
+                                  setAttachmentError(null);
+                                  setQuickComponentMenuOpen(false);
+                                  setAttachmentMenuOpen(false);
+                                  composerTextareaRef.current?.focus();
+                                  try {
+                                    await createComponentNode({
+                                      componentId: 'figma-component',
+                                      params: { componentToken: item.token }
+                                    });
+                                  } catch (error) {
+                                    setAttachmentError(`快速组件插入失败：${String(error)}`);
+                                  }
+                                }}
+                                disabled={loading}
+                              >
+                                <span className="composer-component-item-zh">{item.zh}</span>
+                                <span className="composer-component-item-divider">/</span>
+                                <span className="composer-component-item-en">{item.en}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     </div>
                   </div>

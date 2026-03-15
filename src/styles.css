@@ -188,7 +188,7 @@ h2 {
 .composer-quick-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -260,6 +260,10 @@ h2 {
   height: 16px;
   align-items: center;
   justify-content: center;
+}
+
+.composer-quick-chip-label {
+  white-space: nowrap;
 }
 
 .composer-chart-dropdown-wrap {
@@ -365,6 +369,140 @@ h2 {
   justify-content: flex-start;
   text-align: left;
   width: 100%;
+}
+
+.composer-component-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.composer-component-dropdown {
+  position: fixed;
+  display: none;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid #EAEDF1;
+  border-radius: 8px;
+  box-shadow: 0px 15px 35px -2px #0000000d, 0px 5px 15px 0px #0000000d;
+  background: #FFFFFF;
+  padding: 4px 6px;
+  z-index: 9999;
+  width: max-content;
+  min-width: unset;
+  overflow: visible;
+}
+
+.composer-component-dropdown.open {
+  display: flex;
+}
+
+.composer-component-dropdown-list {
+  max-height: 300px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  width: 100%;
+}
+
+.composer-component-group {
+  position: relative;
+  padding: 2px 6px;
+  width: 100%;
+}
+
+
+.composer-component-group-title {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: #111827;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.composer-component-group-title span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-component-group-title:hover {
+  background: #F3F4F6;
+}
+
+.composer-component-group-arrow {
+  color: #9CA3AF;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.composer-component-submenu {
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  border: 1px solid #EAEDF1;
+  border-radius: 8px;
+  box-shadow: 0px 15px 35px -2px #0000000d, 0px 5px 15px 0px #0000000d;
+  background: #FFFFFF;
+  padding: 6px;
+  width: max-content;
+  min-width: unset;
+  max-height: 360px;
+  overflow: auto;
+  z-index: 10000;
+}
+
+.composer-component-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  border: none;
+  background: #FFFFFF;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.composer-component-item:hover {
+  background: #F3F4F6;
+}
+
+.composer-component-item-zh {
+  font-size: 13px;
+  color: #111827;
+  line-height: 20px;
+}
+
+.composer-component-item-divider {
+  font-size: 12px;
+  color: #9CA3AF;
+  line-height: 20px;
+}
+
+.composer-component-item-en {
+  font-size: 12px;
+  color: #6B7280;
+  line-height: 20px;
 }
 
 .composer-chart-dropdown-item:hover {
