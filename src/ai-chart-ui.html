@@ -718,6 +718,7 @@
             <select id="xAxisType" class="control-input" onchange="generateTable()">
               <option value="time">时间 (HH:MM)</option>
               <option value="date">日期 (MM-DD)</option>
+              <option value="datetime">日期时间 (YYYY.MM.DD HH:MM:SS)</option>
               <option value="year">年份 (YYYY)</option>
               <option value="week">星期 (周一~周日)</option>
               <option value="version">版本号 (1.0.x)</option>
@@ -1475,11 +1476,13 @@
           for (let i = 0; i < cols; i++) {
               const d = new Date(now);
               d.setHours(now.getHours() - ((cols - 1 - i) * intervalHours));
+              const y = d.getFullYear().toString();
               const m = (d.getMonth() + 1).toString().padStart(2, '0');
               const day = d.getDate().toString().padStart(2, '0');
               const h = d.getHours().toString().padStart(2, '0');
               const min = d.getMinutes().toString().padStart(2, '0');
-              labels.push(`${m}-${day} ${h}:${min}`);
+              const sec = d.getSeconds().toString().padStart(2, '0');
+              labels.push(`${y}.${m}.${day} ${h}:${min}:${sec}`);
           }
       } else if (xAxisType === 'year') {
           const currentYear = new Date().getFullYear();

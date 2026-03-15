@@ -589,6 +589,18 @@ export async function applyPropsToFigmaNode(
       figmaNode.paddingBottom = padding;
       figmaNode.paddingLeft = padding;
     }
+
+    if (typeof props.paddingTop === "number") figmaNode.paddingTop = props.paddingTop;
+    if (typeof props.paddingRight === "number") figmaNode.paddingRight = props.paddingRight;
+    if (typeof props.paddingBottom === "number") figmaNode.paddingBottom = props.paddingBottom;
+    if (typeof props.paddingLeft === "number") figmaNode.paddingLeft = props.paddingLeft;
+
+    const direction = typeof props.direction === "string" ? props.direction.toLowerCase() : undefined;
+    if (direction === "horizontal") {
+      figmaNode.layoutMode = "HORIZONTAL";
+    } else if (direction === "vertical") {
+      figmaNode.layoutMode = "VERTICAL";
+    }
   }
 }
 

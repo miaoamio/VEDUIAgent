@@ -13,9 +13,9 @@
 
 ## 3. 决策顺序（必须按序判断）
 1. 是否“新建纯表格”：
-是 -> `read_specs(table*)` 后直接 `draw_tabl/draw_table`。
+是 -> 直接 `draw_tabl/draw_table`（无需读取 spec）。
 2. 是否“新建标准表单/筛选表单”：
-是 -> `read_specs(form*)` 后直接 `draw_form`。
+是 -> 直接 `draw_form`（无需读取 spec）。
    - 默认单列：除非用户明确要求“双列/多列/紧凑排布”，否则 `rows` 的每个子数组只放 1 个字段/控件。
 3. 是否“需要复用 Figma 组件库组件”：
 是 -> 先 `read_specs(['figma-component'])` 读取 `ComponentTokenCatalog`，再用 `params.componentToken`。
@@ -150,9 +150,9 @@
 
 ## 12. 最小执行模板
 1. 新建表格：
-`read_specs(table*) -> draw_tabl -> finish`
+`draw_tabl -> finish`
 2. 新建表单：
-`read_specs(form*) -> draw_form -> finish`
+`draw_form -> finish`
 3. 页面级复杂请求：
 `set_plan(或复用 auto plan) -> plan_next -> execute_task -> update_plan(必要时) -> ... -> finish`
 4. 简单节点：

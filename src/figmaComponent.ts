@@ -7,6 +7,7 @@ interface FigmaComponentLoadOptions {
 
 interface CreateFigmaComponentInstanceOptions extends FigmaComponentLoadOptions {
   variantCriteria?: VariantCriteria | ((variant: ComponentNode) => boolean);
+  visible?: boolean;
 }
 
 export interface DiscoveredComponentProperty {
@@ -736,7 +737,11 @@ export async function createFigmaComponentInstance(
   });
 
   const target = findFigmaVariant(component, options.variantCriteria);
-  return target.createInstance();
+  const instance = target.createInstance();
+  if (options.visible === false) {
+    instance.visible = false;
+  }
+  return instance;
 }
 
 function toDisplayPropertyName(propertyName: string): string {

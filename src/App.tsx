@@ -924,6 +924,7 @@ function buildCurrentTurnText(input: string, images: UploadedImageAttachment[], 
   const tableContext = buildTableContextText(tables);
   if (tableContext) {
     sections.push(tableContext);
+    sections.push('提示：请直接使用 draw_table 工具根据上述 JSON 结构绘制表格，无需读取 spec。');
   }
 
   return sections.join('\n\n');
@@ -1790,10 +1791,11 @@ function App() {
 
     prompt += `
 工作流 (Workflow):
-1. 若用户输入包含“表格 / 表单 / 筛选 / 图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息，不需要先分析。
+1. 若用户输入包含“表单 / 筛选 / 图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息。**注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。**
 2. 其他情况先分析用户需求，**必须**从 Component Index 里选择可用组件，再决定需要使用哪些组件。
 3. 当存在自定义组件注册表时，**必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
-   - 禁止在未读取 spec 的情况下直接猜测组件参数。
+   - ⚠️ **例外：表格组件（table/table-column等）无需读取 spec，直接使用 draw_table 即可。**
+   - 禁止在未读取 spec 的情况下直接猜测组件参数（表格除外）。
    - read_specs 会返回组件的 params 定义和使用示例。
    - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
    - 当要复用 Figma 设计系统组件时，先 read_specs([\"figma-component\"]) 获取 ComponentTokenCatalog，再使用 params.componentToken 调用。
@@ -1803,10 +1805,14 @@ function App() {
    - 对于 boolean 参数，不要显式输出默认值；仅当用户强行指定时才写入 true/false，未指定则使用默认值。
    - 对于 figma-component，不要输出 width/height，除非用户明确要求尺寸。
 3. **表格创建优先走 draw_table(payload)**（不要输出冗长 table 子树）。
-   - 当目标是创建新表格时，读取 table 系列 spec 后，直接调用 draw_table。
+   - 当目标是创建新表格时，**直接调用 draw_table**，**无需读取 table 系列 spec**。
    - 如果是“新建表格”，禁止输出 apply_scene(table-root)。
    - draw_table 与 draw_tabl 等价；为兼容旧接口，优先使用 draw_tabl。
    - draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。
+   - **支持直接定义筛选器与分页**：
+     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或详细对象。
+     - 若需分页器，请在 payload 中添加 "pagination": true。
+     - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
    - payload 使用紧凑结构即可，例如：
      {
        "headers": ["姓名", "年龄", "城市"],
@@ -1815,6 +1821,8 @@ function App() {
          ["李四", "32", "上海"]
        ],
        "columnTypes": ["Text", "Text", "Text"],
+       "filters": ["状态", "城市", "关键词"],
+       "pagination": true,
        "rowHeight": { "header": 40, "body": 40 }
      }
    - 标签列（Tag）请显式区分两类：
@@ -1829,7 +1837,7 @@ function App() {
      @@table_stream {"event":"table_done"}
    - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。
 4. **标准表单/筛选表单创建优先走 draw_form(payload)**。
-   - 当目标是创建查询表单、筛选区或编辑表单时，优先读取 form 系列 spec 后直接调用 draw_form。
+   - 当目标是创建查询表单、筛选区或编辑表单时，**直接调用 draw_form**，**无需读取 spec**。
    - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
    - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
    - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
@@ -1879,7 +1887,7 @@ function App() {
     - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
     - 禁止使用未实现类型（如 expand_header_block / expand_actions_block），否则会直接失败。
     - 若任务已完成，系统会默认跳过；如需重跑请传 payload.force=true。
-    - 纯表格请求（单区块）不要 set_plan，直接 draw_tabl。
+    - **表格+筛选器/分页器请求（单区块）不要 set_plan**，直接 draw_tabl 并带上 filters/pagination 参数。
     - 建议统一 payload 形态：payload.block.container/header/body/footer（旧字段继续兼容）。
     - expand_table_block 支持 header.tabs/actions + body.filters.items + body.table + footer.pagination。
     - expand_chart_block 支持 header.tabs/actions + body.charts[] + footer.notes。
@@ -1888,7 +1896,7 @@ function App() {
 13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
     - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
     - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
-    - 若用户目标是“根据上传图片/表格生成”，优先先 read_specs，再直接 draw_tabl / draw_form / create_node 落地。
+    - 若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。
 
 回复格式 (Response Format):
 只回复一个 JSON 对象，包含 "thought" 和 "action"。
@@ -1902,10 +1910,8 @@ function App() {
 
 表格专用示例（固定链路）:
 Step1:
-{"thought":"读table spec","action":{"type":"read_specs","payload":{"ids":["table","table-column","table-header-cell","table-cell"]}}}
-Step2:
 {"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
-Step3:
+Step2:
 {"thought":"结束","action":{"type":"finish"}}
 
 Figma组件属性探测示例:
@@ -2109,6 +2115,107 @@ StepD:
       return '';
     }
     return String(value);
+  };
+
+  const normalizeHeaderToken = (header: unknown): string =>
+    String(header || '').trim().toLowerCase().replace(/[\s_]+/g, '');
+
+  const headerIncludes = (header: unknown, tokens: string[]): boolean => {
+    const normalized = normalizeHeaderToken(header);
+    return tokens.some((token) => normalized.includes(token));
+  };
+
+  const columnHasActionText = (values: unknown[]): boolean => {
+    return values.some((value) => {
+      const text = extractCellText(value);
+      if (!text) return false;
+      const normalized = String(text).trim().toLowerCase();
+      return (
+        normalized.includes('编辑') ||
+        normalized.includes('删除') ||
+        normalized.includes('查看') ||
+        normalized.includes('更多') ||
+        normalized.includes('配置') ||
+        normalized.includes('详情') ||
+        normalized.includes('edit') ||
+        normalized.includes('delete') ||
+        normalized.includes('view') ||
+        normalized.includes('more') ||
+        normalized.includes('action') ||
+        normalized.includes('operate')
+      );
+    });
+  };
+
+  const columnHasTagObject = (values: unknown[]): boolean => {
+    return values.some((value) => {
+      if (!isObject(value)) return false;
+      return Object.keys(value as any).some((key) => /tag|status|badge|state|level/i.test(key));
+    });
+  };
+
+  const columnHasStatusText = (values: unknown[]): boolean => {
+    return values.some((value) => {
+      const text = extractCellText(value);
+      if (!text) return false;
+      const normalized = String(text).trim().toLowerCase();
+      return (
+        normalized.includes('成功') ||
+        normalized.includes('失败') ||
+        normalized.includes('告警') ||
+        normalized.includes('启用') ||
+        normalized.includes('禁用') ||
+        normalized.includes('停止') ||
+        normalized.includes('处理中') ||
+        normalized.includes('等待') ||
+        normalized.includes('success') ||
+        normalized.includes('error') ||
+        normalized.includes('warning') ||
+        normalized.includes('pending') ||
+        normalized.includes('processing') ||
+        normalized.includes('disabled') ||
+        normalized.includes('enabled')
+      );
+    });
+  };
+
+  const inferColumnType = (header: string, values: unknown[]): string => {
+    const isActionHeader = headerIncludes(header, ['操作', 'action', 'actions', 'operation']);
+    if (isActionHeader || columnHasActionText(values)) return 'ActionText';
+
+    const isUserHeader = headerIncludes(header, ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee']);
+    if (isUserHeader) return 'Avatar';
+
+    const isTagHeader = headerIncludes(header, ['状态', '标签', '类型', '分类', '品类', '级别', 'status', 'state', 'tag', 'type', 'badge']);
+    const hasTagSignal = isTagHeader || columnHasTagObject(values) || columnHasStatusText(values);
+    if (hasTagSignal) {
+      const kind = resolveTagColumnKind('Tag', header);
+      return kind === 'type' ? 'TypeTag' : 'StatusTag';
+    }
+
+    return 'Text';
+  };
+
+  const inferColumnTypesFromRows = (
+    headers: string[],
+    rows: unknown[][],
+    currentTypes?: string[]
+  ): string[] => {
+    const normalizedTypes = Array.isArray(currentTypes)
+      ? currentTypes.map((t) => String(t || '').trim())
+      : [];
+    const hasExplicitNonText = normalizedTypes.some((t) => t && t.toLowerCase() !== 'text');
+    const allTextOrEmpty = normalizedTypes.every((t) => !t || t.toLowerCase() === 'text');
+    const shouldInferAll = !hasExplicitNonText && allTextOrEmpty;
+
+    return headers.map((header, index) => {
+      const explicit = normalizedTypes[index];
+      if (explicit && explicit.toLowerCase() !== 'text') return explicit;
+      if (!shouldInferAll && explicit && explicit.toLowerCase() === 'text') return explicit;
+      const columnValues = rows.map((row) => row?.[index]);
+      const inferred = inferColumnType(header, columnValues);
+      return inferred || explicit || 'Text';
+    });
   };
 
   type TagColumnKind = 'status' | 'type';
@@ -2444,12 +2551,17 @@ StepD:
       getPositiveNumber((rowHeightSource as any)?.body) ??
       40;
 
-    const columnTypes: string[] =
+    const columnTypesBase: string[] =
       Array.isArray(source.columnTypes) ? source.columnTypes.map((t: any) => String(t)) :
       (rawColumns ? rawColumns.map((c: any) => String(c?.type || 'Text')) : headers.map(() => 'Text'));
+    const columnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase);
     const columnWidths: number[] =
       Array.isArray(source.columnWidths) ? source.columnWidths.map((w: any) => Number(w)) :
       (rawColumns ? rawColumns.map((c: any) => Number(c?.width || 0)) : headers.map(() => 0));
+
+    const hasPagination = Boolean(source.pagination);
+    const hasFilter = Boolean(source.filters);
+    const filterTexts = Array.isArray(source.filters) ? source.filters.join(',') : '';
 
     const children = headers.map((header, colIndex) => {
       const type = columnTypes[colIndex] || 'Text';
@@ -2580,7 +2692,10 @@ StepD:
         columnCount: headers.length,
         rowCount: rows.length,
         headerHeight,
-        bodyHeight
+        bodyHeight,
+        hasPagination,
+        hasFilter,
+        filterTexts
       },
       children
     };
@@ -2653,14 +2768,16 @@ StepD:
     const headers = (event.headers || []).map((h: any) => String(h));
     if (headers.length === 0) return null;
     const rows = Array.isArray(event.rows) ? event.rows : [];
-    const columnTypes = Array.isArray(event.columnTypes)
+    const normalizedRows = normalizeRowsByHeaders(rows, headers);
+    const columnTypesBase = Array.isArray(event.columnTypes)
       ? event.columnTypes.map((t: any) => String(t))
       : headers.map(() => 'Text');
+    const columnTypes = inferColumnTypesFromRows(headers, normalizedRows, columnTypesBase);
     const columnWidths = Array.isArray(event.columnWidths)
       ? event.columnWidths.map((w: any) => Number(w))
       : headers.map(() => 0);
     const rowHeight = isObject(event.rowHeight) ? (event.rowHeight as any) : {};
-    return { headers, rows, columnTypes, columnWidths, rowHeight };
+    return { headers, rows: normalizedRows, columnTypes, columnWidths, rowHeight };
   };
 
   const getBlockSource = (payload: any): any | null => {
