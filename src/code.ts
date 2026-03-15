@@ -940,100 +940,198 @@ function findManagedTableFilterGroupInParent(parent: FrameNode): FrameNode | nul
     return existing && existing.type === 'FRAME' ? (existing as FrameNode) : null;
 }
 
-async function ensureTableFilterGroup(contentStack: FrameNode, width: number, filterTexts?: string) {
-    const existing = findManagedTableFilterGroup(contentStack);
-    if (existing) {
-        existing.visible = true;
-        existing.fills = [];
-        existing.clipsContent = false;
-        existing.layoutAlign = 'STRETCH';
-        if (Number.isFinite(width) && width > 0) {
-            try {
-                existing.primaryAxisSizingMode = 'FIXED';
-                existing.resize(width, existing.height);
-            } catch {
-            }
+async function ensureTableToolbar(contentStack: FrameNode, width: number, options: { hasFilter?: boolean, hasTabs?: boolean, hasButtonGroup?: boolean, filterTexts?: string, primaryButtonText?: string, secondaryButtonText?: string }) {
+    // 1. Find existing Toolbar or Legacy Filter Group
+    let toolbar = contentStack.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
+    ) as FrameNode;
+
+    const legacyFilter = contentStack.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+    ) as FrameNode;
+
+    // 2. Create/Migrate Toolbar if needed
+    if (!toolbar) {
+        // If no toolbar but legacy filter exists, migrate it
+        if (legacyFilter && !options.hasFilter && !options.hasTabs && !options.hasButtonGroup) {
+            // Nothing to do, just let legacy filter stay or remove it?
+            // If options are all false, we should remove everything.
+            // But let's assume if we are here, we might want to create toolbar.
         }
-        if ('layoutSizingHorizontal' in existing) {
-            try {
-                (existing as any).layoutSizingHorizontal = 'FILL';
-            } catch {
-            }
-        }
-        if ('layoutSizingVertical' in existing) {
-            try {
-                (existing as any).layoutSizingVertical = 'HUG';
-            } catch {
-            }
+
+        toolbar = figma.createFrame();
+        toolbar.layoutMode = 'HORIZONTAL';
+        toolbar.itemSpacing = 20;
+        toolbar.primaryAxisSizingMode = 'FIXED';
+        toolbar.counterAxisSizingMode = 'AUTO';
+        toolbar.layoutAlign = 'STRETCH';
+        toolbar.name = 'Table Toolbar';
+        try { (toolbar as any).layoutSizingHorizontal = 'FILL'; } catch {}
+        try { (toolbar as any).layoutSizingVertical = 'HUG'; } catch {}
+        toolbar.setPluginData('table-role', 'toolbar');
+        toolbar.fills = [];
+        clearNodeStrokes(toolbar);
+        toolbar.clipsContent = false;
+
+        if (legacyFilter) {
+            toolbar.appendChild(legacyFilter);
         }
         
-        // Update params if filterTexts is provided
-        if (filterTexts) {
-            const currentParams = readNodeParams(existing);
-            if (currentParams.itemsText !== filterTexts) {
-                 const newParams = { ...currentParams, itemsText: filterTexts };
-                 // Re-render the filter group content
-                 const replacement = await renderComponent({
-                    id: existing.getPluginData('component-id') || `filter-${Date.now()}`,
+        contentStack.insertChild(0, toolbar);
+    } else {
+        toolbar.visible = true;
+        toolbar.layoutMode = 'HORIZONTAL';
+        toolbar.itemSpacing = 20;
+        toolbar.layoutAlign = 'STRETCH';
+        try { (toolbar as any).layoutSizingHorizontal = 'FILL'; } catch {}
+        try { (toolbar as any).layoutSizingVertical = 'HUG'; } catch {}
+    }
+
+    // 3. Manage Tabs (Left)
+    let tabsNode = toolbar.children.find(c => c.getPluginData('table-role') === 'tabs');
+    if (options.hasTabs) {
+        if (!tabsNode) {
+            tabsNode = await renderComponent({
+                id: `tabs-${Date.now()}`,
+                componentId: 'figma-component',
+                params: {
+                    componentToken: 'library.data-display.othertabs',
+                    variantCriteria: JSON.stringify({ Type: 'Capsule' })
+                }
+            }, { isRoot: false });
+            tabsNode.setPluginData('table-role', 'tabs');
+            toolbar.insertChild(0, tabsNode);
+        }
+    } else if (tabsNode) {
+        tabsNode.remove();
+    }
+
+    // 4. Manage Filter (Middle)
+    let filterNode = toolbar.children.find(c => c.getPluginData('table-role') === 'filter-group');
+    if (options.hasFilter) {
+        if (!filterNode) {
+             filterNode = await renderComponent({
+                id: `table-filter-${Date.now()}`,
+                componentId: 'filter-group',
+                params: { width: 300, ...(options.filterTexts ? { itemsText: options.filterTexts } : {}) }
+            }, { isRoot: false });
+            filterNode.setPluginData('table-role', 'filter-group');
+            toolbar.appendChild(filterNode);
+        } else if (options.filterTexts) {
+             const currentParams = readNodeParams(filterNode);
+             if (currentParams.itemsText !== options.filterTexts) {
+                  const newParams = { ...currentParams, itemsText: options.filterTexts };
+                  const replacement = await renderComponent({
+                    id: filterNode.getPluginData('component-id') || `filter-${Date.now()}`,
                     componentId: 'filter-group',
                     params: newParams
-                 }, { isRoot: false });
-                 
-                 // Copy properties to replacement
-                 replacement.layoutAlign = 'STRETCH';
-                 if ('layoutSizingHorizontal' in replacement) (replacement as any).layoutSizingHorizontal = 'FILL';
-                 if ('layoutSizingVertical' in replacement) (replacement as any).layoutSizingVertical = 'HUG';
-                 try { replacement.setPluginData('table-role', 'filter-group'); } catch {}
-                 
-                 // Replace existing
-                 const index = contentStack.children.indexOf(existing);
-                 contentStack.insertChild(index, replacement);
-                 existing.remove();
-                 return;
-            }
+                  }, { isRoot: false });
+                  replacement.setPluginData('table-role', 'filter-group');
+                  const index = toolbar.children.indexOf(filterNode);
+                  toolbar.insertChild(index, replacement);
+                  filterNode.remove();
+                  filterNode = replacement;
+             }
         }
-
-        const index = contentStack.children.indexOf(existing);
-        if (index > 0) {
-            try {
-                contentStack.insertChild(0, existing);
-            } catch {
-                // ignore
-            }
+        
+        if (filterNode.type === 'FRAME') {
+             filterNode.layoutMode = 'HORIZONTAL';
+             filterNode.counterAxisSizingMode = 'AUTO';
+             filterNode.itemSpacing = 12;
+             filterNode.layoutGrow = 1;
+             filterNode.primaryAxisSizingMode = 'FIXED';
+             try { (filterNode as any).layoutSizingHorizontal = 'FILL'; } catch {}
+             try { (filterNode as any).layoutSizingVertical = 'HUG'; } catch {}
         }
-        return;
+    } else if (filterNode) {
+        filterNode.remove();
     }
 
-    const filterNode = await renderComponent(
-        {
-            id: `table-filter-${Date.now()}`,
-            componentId: 'filter-group',
-            params: { width, ...(filterTexts ? { itemsText: filterTexts } : {}) }
-        },
-        { isRoot: false }
-    );
+    // 5. Manage Button Group (Right)
+    let btnGroupNode = toolbar.children.find(c => c.getPluginData('table-role') === 'button-group');
 
-    try {
-        filterNode.setPluginData('table-role', 'filter-group');
-    } catch {
-    }
-    if (filterNode.type === 'FRAME') {
-        filterNode.layoutAlign = 'STRETCH';
-        if ('layoutSizingHorizontal' in filterNode) {
-            try {
-                (filterNode as any).layoutSizingHorizontal = 'FILL';
-            } catch {
-            }
-        }
-        if ('layoutSizingVertical' in filterNode) {
-            try {
-                (filterNode as any).layoutSizingVertical = 'HUG';
-            } catch {
-            }
-        }
+    // Check if we need to migrate from old INSTANCE to new FRAME structure
+    if (btnGroupNode && btnGroupNode.type === 'INSTANCE') {
+        btnGroupNode.remove();
+        btnGroupNode = undefined; // Force recreation
     }
 
-    contentStack.insertChild(0, filterNode);
+    if (options.hasButtonGroup) {
+        if (!btnGroupNode) {
+            const container = figma.createFrame();
+            container.name = 'Button Group';
+            container.layoutMode = 'HORIZONTAL';
+            container.counterAxisSizingMode = 'AUTO';
+            container.primaryAxisSizingMode = 'AUTO';
+            container.itemSpacing = 8;
+            container.fills = [];
+            container.clipsContent = false;
+            
+            const btn1 = await renderComponent({
+                id: `btn-1-${Date.now()}`,
+                componentId: 'button',
+                params: {
+                    label: options.secondaryButtonText || '次要按钮',
+                    variant: 'outline'
+                }
+            }, { isRoot: false });
+            
+            const btn2 = await renderComponent({
+                id: `btn-2-${Date.now()}`,
+                componentId: 'button',
+                params: {
+                    label: options.primaryButtonText || '主要按钮',
+                    variant: 'primary'
+                }
+            }, { isRoot: false });
+
+            container.appendChild(btn1);
+            container.appendChild(btn2);
+            
+            btnGroupNode = container;
+            btnGroupNode.setPluginData('table-role', 'button-group');
+            toolbar.appendChild(btnGroupNode);
+        }
+
+        // Ensure properties are correct even if it existed
+        if (btnGroupNode && btnGroupNode.type === 'FRAME') {
+             btnGroupNode.clipsContent = false;
+        }
+    } else if (btnGroupNode) {
+        btnGroupNode.remove();
+    }
+
+    // 6. Reorder: Tabs, Filter, ButtonGroup
+    const order = ['tabs', 'filter-group', 'button-group'];
+    const children = [...toolbar.children];
+    children.sort((a, b) => {
+        const ra = a.getPluginData('table-role');
+        const rb = b.getPluginData('table-role');
+        return order.indexOf(ra) - order.indexOf(rb);
+    });
+    children.forEach(c => toolbar.appendChild(c));
+
+    // Align based on content
+    const hasFilter = children.some(c => c.getPluginData('table-role') === 'filter-group');
+    const hasTabs = children.some(c => c.getPluginData('table-role') === 'tabs');
+    const hasButtons = children.some(c => c.getPluginData('table-role') === 'button-group');
+
+    if (!hasFilter) {
+        if (hasTabs && hasButtons) {
+            toolbar.primaryAxisAlignItems = 'SPACE_BETWEEN';
+        } else if (hasButtons) {
+            toolbar.primaryAxisAlignItems = 'MAX';
+        } else {
+            toolbar.primaryAxisAlignItems = 'MIN';
+        }
+    } else {
+        toolbar.primaryAxisAlignItems = 'MIN';
+    }
+
+    // 7. Remove if empty
+    if (toolbar.children.length === 0) {
+        toolbar.remove();
+    }
 }
 
 async function ensureTableFilterGroupInParent(parent: FrameNode, tableRoot: FrameNode, width: number) {
@@ -1093,6 +1191,9 @@ async function ensureTableFilterGroupInParent(parent: FrameNode, tableRoot: Fram
     }
     if (filterNode.type === 'FRAME') {
         filterNode.layoutAlign = 'STRETCH';
+        filterNode.layoutMode = 'HORIZONTAL';
+        filterNode.counterAxisSizingMode = 'AUTO';
+        filterNode.itemSpacing = 12;
         if ('layoutSizingHorizontal' in filterNode) {
             try {
                 (filterNode as any).layoutSizingHorizontal = 'FILL';
@@ -1117,9 +1218,9 @@ async function ensureTableFilterGroupInParent(parent: FrameNode, tableRoot: Fram
     }
 }
 
-function removeTableFilterGroup(contentStack: FrameNode) {
+function removeTableToolbar(contentStack: FrameNode) {
     const nodes = contentStack.children.filter(
-        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+        (child) => child.type === 'FRAME' && ((child as FrameNode).getPluginData('table-role') === 'filter-group' || (child as FrameNode).getPluginData('table-role') === 'toolbar')
     ) as FrameNode[];
     for (const node of nodes) {
         try {
@@ -1129,9 +1230,9 @@ function removeTableFilterGroup(contentStack: FrameNode) {
     }
 }
 
-function removeTableFilterGroupFromParent(parent: FrameNode) {
+function removeTableToolbarFromParent(parent: FrameNode) {
     const nodes = parent.children.filter(
-        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
+        (child) => child.type === 'FRAME' && ((child as FrameNode).getPluginData('table-role') === 'filter-group' || (child as FrameNode).getPluginData('table-role') === 'toolbar')
     ) as FrameNode[];
     for (const node of nodes) {
         try {
@@ -1186,6 +1287,7 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
     wrapper.counterAxisSizingMode = 'FIXED';
     wrapper.itemSpacing = 16;
     wrapper.fills = [];
+    clearNodeStrokes(wrapper);
     wrapper.clipsContent = false;
     wrapper.layoutAlign = tableFrame.layoutAlign;
     wrapper.resize(tableFrame.width, 1);
@@ -5746,37 +5848,65 @@ async function renderComponent(
 
   // --- FIGMA COMPONENT INSTANCE ---
   if (instance.componentId === 'figma-component') {
+    // Early viewport movement for root component
+    if (isRoot) {
+      // Create a temp node just to calculate position if needed, 
+      // or we can't really do it until we have the instance.
+      // But importedInstance is created below.
+      // We can't easily move viewport before creation for figma-component because size is unknown until import.
+      // But we can do it immediately after creation below.
+    }
+
     const componentKeyFromParam = typeof params.componentKey === 'string' ? params.componentKey.trim() : '';
     const componentToken = typeof params.componentToken === 'string' ? params.componentToken.trim() : '';
     const componentKeyFromToken = componentToken ? resolveComponentTokenProfile(componentToken)?.profile.componentKey || '' : '';
     const componentKey = componentKeyFromParam || componentKeyFromToken;
     if (!componentKey) {
-      throw new Error('figma-component requires params.componentToken or params.componentKey');
+      console.error(`[FigmaUI] Missing component key for token: ${componentToken}`);
+      // Fallback: Render a placeholder for missing component instead of throwing error
+      const errorFrame = figma.createFrame();
+      errorFrame.name = `MISSING: ${componentToken || 'Unknown Component'}`;
+      errorFrame.layoutMode = 'HORIZONTAL';
+      errorFrame.primaryAxisAlignItems = 'CENTER';
+      errorFrame.counterAxisAlignItems = 'CENTER';
+      errorFrame.resize(params.width || 100, params.height || 32);
+      errorFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 0.95, b: 0.95 } }]; // Light red bg
+      errorFrame.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0.5 } }]; // Red border
+      errorFrame.strokeWeight = 1;
+      
+      const errorText = figma.createText();
+      await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+      errorText.characters = `? ${componentToken?.split('.').pop() || 'Missing'}`;
+      errorText.fontSize = 10;
+      errorText.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0.2, b: 0.2 } }];
+      errorFrame.appendChild(errorText);
+      
+      node = errorFrame;
+    } else {
+      const fallbackName =
+        typeof params.fallbackName === 'string' && params.fallbackName.trim()
+          ? params.fallbackName.trim()
+          : undefined;
+
+      const variantCriteria = parseVariantCriteria(params.variantCriteria);
+      const importedInstance = await createFigmaComponentInstance({
+        componentKey,
+        fallbackName,
+        variantCriteria
+      });
+
+      const width = Number(params.width);
+      const height = Number(params.height);
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+        importedInstance.resize(width, height);
+      } else if (Number.isFinite(width) && width > 0) {
+        importedInstance.resize(width, importedInstance.height);
+      } else if (Number.isFinite(height) && height > 0) {
+        importedInstance.resize(importedInstance.width, height);
+      }
+
+      node = importedInstance;
     }
-
-    const fallbackName =
-      typeof params.fallbackName === 'string' && params.fallbackName.trim()
-        ? params.fallbackName.trim()
-        : undefined;
-
-    const variantCriteria = parseVariantCriteria(params.variantCriteria);
-    const importedInstance = await createFigmaComponentInstance({
-      componentKey,
-      fallbackName,
-      variantCriteria
-    });
-
-    const width = Number(params.width);
-    const height = Number(params.height);
-    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
-      importedInstance.resize(width, height);
-    } else if (Number.isFinite(width) && width > 0) {
-      importedInstance.resize(width, importedInstance.height);
-    } else if (Number.isFinite(height) && height > 0) {
-      importedInstance.resize(importedInstance.width, height);
-    }
-
-    node = importedInstance;
   }
   // --- PAGE ---
   else if (instance.componentId === 'page') {
@@ -6100,6 +6230,16 @@ async function renderComponent(
   // --- TABLE ---
   else if (instance.componentId === 'table') {
       const frame = figma.createFrame();
+
+      // Early viewport movement for better UX
+      if (options?.isRoot) {
+          const { x, y, width, height } = figma.viewport.bounds;
+          frame.x = x + width / 2 - (params.width || 1176) / 2;
+          frame.y = y + height / 2 - 200; // Offset slightly up
+          figma.currentPage.appendChild(frame);
+          figma.viewport.scrollAndZoomIntoView([frame]);
+      }
+
       frame.layoutMode = 'HORIZONTAL';
       frame.primaryAxisSizingMode = 'FIXED';
       frame.counterAxisSizingMode = 'AUTO';
@@ -6108,6 +6248,8 @@ async function renderComponent(
       const bodyHeight = resolveTableBodyHeight(params);
       const wantsPagination = params.hasPagination === true;
       const wantsFilter = params.hasFilter === true;
+      const wantsTabs = params.hasTabs === true;
+      const wantsButtonGroup = params.hasButtonGroup === true;
       frame.resize(params.width || 1176, 100);
       frame.cornerRadius = params.cornerRadius || 0;
       frame.clipsContent = true;
@@ -6128,6 +6270,8 @@ async function renderComponent(
                 }
               }, { isRoot: false });
               frame.appendChild(childNode);
+              // Add delay to show step-by-step drawing
+              await new Promise(r => setTimeout(r, 50));
               if (childNode.type === 'FRAME' && childNode.getPluginData('component-id') === 'table-column') {
                   const colParams = readNodeParams(childNode);
                   if (typeof colParams.columnWidthMode === 'string') {
@@ -6171,14 +6315,21 @@ async function renderComponent(
       if (params.rowAction) {
           await applyRowActionColumn(frame, String(params.rowAction));
       }
-        if (wantsPagination || wantsFilter) {
+        if (wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) {
           const wrapper = createTableWrapperFromTableFrame(frame, params) || frame.parent as FrameNode;
           const contentStack = ensureTableContentStack(wrapper, frame);
 
-          if (wantsFilter) {
-              await ensureTableFilterGroup(contentStack, wrapper.width);
+          if (wantsFilter || wantsTabs || wantsButtonGroup) {
+              await ensureTableToolbar(contentStack, wrapper.width, {
+                  hasFilter: wantsFilter,
+                  hasTabs: wantsTabs,
+                  hasButtonGroup: wantsButtonGroup,
+                  filterTexts: params.filterTexts,
+                  primaryButtonText: params.primaryButtonText,
+                  secondaryButtonText: params.secondaryButtonText
+              });
           } else {
-              removeTableFilterGroup(contentStack);
+              removeTableToolbar(contentStack);
           }
 
           if (wantsPagination) {
@@ -6191,7 +6342,7 @@ async function renderComponent(
           // Cleanup if needed (remove wrapper/pagination/filter if they exist but are disabled)
           const stack = findTableContentStack(frame.parent as FrameNode);
           if (stack) {
-             removeTableFilterGroup(stack);
+             removeTableToolbar(stack);
              // If stack becomes empty or only has table, we might want to unwrap (omitted for safety)
           }
           removePaginationRow(frame.parent as FrameNode);
@@ -6244,6 +6395,8 @@ async function renderComponent(
                 }
               }, { isRoot: false });
               frame.appendChild(childNode);
+              // Add delay to show step-by-step drawing
+              await new Promise(r => setTimeout(r, 20));
           }
       } else {
           // Fallback: Auto-generate based on params
@@ -6419,7 +6572,7 @@ async function renderComponent(
     else if (instance.componentId === 'table-cell-action-text') {
         const rawText = String(params.text || '').trim() || '编辑 删除 …';
         const parts = rawText
-          .split(/[\s,，、]+/)
+          .split(/[\s,，、\/]+/)
           .map((part) => part.trim())
           .filter(Boolean);
 
@@ -7616,7 +7769,8 @@ figma.ui.onmessage = async (msg) => {
     // Reset theme on new creation for consistency, or read from UI settings
     // currentTheme = 'light'; 
     try {
-      const node = await renderComponent(component);
+      // Explicitly pass isRoot: true to trigger early viewport movement
+      const node = await renderComponent(component, { isRoot: true });
       if (!appendToResolvedParent(node, parentId)) {
           // Center in viewport if no parent
           node.x = figma.viewport.center.x - node.width / 2;
@@ -7795,11 +7949,13 @@ figma.ui.onmessage = async (msg) => {
 
 	            const wantsPagination = params.hasPagination === true;
 	            const wantsFilter = params.hasFilter === true;
-            if ((wantsPagination || wantsFilter) && hasDirectTableColumns(tableRoot)) {
+	            const wantsTabs = params.hasTabs === true;
+	            const wantsButtonGroup = params.hasButtonGroup === true;
+            if ((wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) && hasDirectTableColumns(tableRoot)) {
                 // If we have an existing filter group in the parent, we should clean it up before wrapping
                 // because the new filter will be placed inside the wrapper's content stack.
                 if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
-                    removeTableFilterGroupFromParent(tableRoot.parent as FrameNode);
+                    removeTableToolbarFromParent(tableRoot.parent as FrameNode);
                 }
 
                 const wrapped = createTableWrapperFromTableFrame(tableRoot, params);
@@ -7815,25 +7971,34 @@ figma.ui.onmessage = async (msg) => {
                 }
             }
 
-            if (wantsFilter) {
+            if (wantsFilter || wantsTabs || wantsButtonGroup) {
                 tableContent = resolveTableContentFrame(tableRoot);
                 if (tableContent !== tableRoot) {
                     const contentStack = ensureTableContentStack(tableRoot, tableContent);
-                    await ensureTableFilterGroup(contentStack, tableContent.width, params.filterTexts);
+                    await ensureTableToolbar(contentStack, tableContent.width, {
+                        hasFilter: wantsFilter,
+                        hasTabs: wantsTabs,
+                        hasButtonGroup: wantsButtonGroup,
+                        filterTexts: params.filterTexts,
+                        primaryButtonText: params.primaryButtonText,
+                        secondaryButtonText: params.secondaryButtonText
+                    });
                 } else if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
                     // Fallback: If wrapping failed or wasn't triggered (shouldn't happen with above logic),
                     // try inserting in parent. But we prefer wrapping.
-                    await ensureTableFilterGroupInParent(tableRoot.parent as FrameNode, tableRoot, tableRoot.width);
+                    if (wantsFilter) {
+                         await ensureTableFilterGroupInParent(tableRoot.parent as FrameNode, tableRoot, tableRoot.width);
+                    }
                 } else {
-                    figma.ui.postMessage({ type: 'action-done', message: '无法为表格添加筛选器：缺少可写入的父容器' });
+                    figma.ui.postMessage({ type: 'action-done', message: '无法为表格添加工具栏：缺少可写入的父容器' });
                 }
             } else {
                 const contentStack = findTableContentStack(tableRoot);
                 if (contentStack) {
-                    removeTableFilterGroup(contentStack);
+                    removeTableToolbar(contentStack);
                 }
                 if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
-                    removeTableFilterGroupFromParent(tableRoot.parent as FrameNode);
+                    removeTableToolbarFromParent(tableRoot.parent as FrameNode);
                 }
             }
 
@@ -7887,22 +8052,18 @@ figma.ui.onmessage = async (msg) => {
 	            }
 
 	            // Pagination rule: when pagination is enabled, the table should not render an outer border.
-	            if (wantsPagination) {
+	            // Also if we have a wrapper (content != root), the wrapper should not have a border.
+	            if (wantsPagination || tableContent !== tableRoot) {
 	                clearNodeStrokes(tableRoot);
-	                clearNodeStrokes(tableContent);
-	            } else {
-	                // Keep wrapper layout-only (no border), and apply border to the inner table frame.
-	                if (tableContent !== tableRoot) {
-	                    clearNodeStrokes(tableRoot);
-	                }
+	            }
 
-	                const borderWidth = Number(params.borderWidth ?? 0);
-	                if (Number.isFinite(borderWidth) && borderWidth > 0) {
-	                    await applyStrokeColorVariable(tableContent, 'table-border-key', params.borderColor || '#EAEDF1');
-	                    tableContent.strokeWeight = borderWidth;
-	                } else {
-	                    clearNodeStrokes(tableContent);
-	                }
+	            // The table body should ALWAYS have a border if borderWidth > 0, regardless of pagination or filters.
+	            const borderWidth = Number(params.borderWidth ?? 0);
+	            if (Number.isFinite(borderWidth) && borderWidth > 0) {
+	                await applyStrokeColorVariable(tableContent, 'table-border-key', params.borderColor || '#EAEDF1');
+	                tableContent.strokeWeight = borderWidth;
+	            } else {
+	                clearNodeStrokes(tableContent);
 	            }
 
 	            checkSelection();

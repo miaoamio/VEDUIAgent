@@ -2561,6 +2561,9 @@ StepD:
 
     const hasPagination = Boolean(source.pagination);
     const hasFilter = Boolean(source.filters);
+    const hasButtonGroup = Boolean(source.hasButtonGroup || source.buttonGroup);
+    const primaryButtonText = source.primaryButtonText;
+    const secondaryButtonText = source.secondaryButtonText;
     const filterTexts = Array.isArray(source.filters) ? source.filters.join(',') : '';
 
     const children = headers.map((header, colIndex) => {
@@ -2695,7 +2698,10 @@ StepD:
         bodyHeight,
         hasPagination,
         hasFilter,
-        filterTexts
+        hasButtonGroup,
+        filterTexts,
+        primaryButtonText,
+        secondaryButtonText
       },
       children
     };
@@ -4431,6 +4437,8 @@ StepD:
   };
 
   const inferInitialPlanFromUserInput = (input: string): AgentPlanState | null => {
+    // Disable auto plan for now as it is not mature enough.
+    return null;
     const text = String(input || '').trim();
     if (!text) return null;
     const lower = text.toLowerCase();
@@ -6327,7 +6335,6 @@ StepD:
   const getFormSelectOptionLabel = (key: string, option: string) => {
     const normalized = normalizeFormOption(option);
     if (key === 'controlType') {
-      if (normalized.includes('select') || normalized.includes('选择')) return 'Select 选择框';
       if (normalized.includes('checkbox') || normalized.includes('多选')) return 'Checkbox 多选';
       if (normalized.includes('radio') || normalized.includes('单选')) return 'Radio 单选';
       if (normalized.includes('datepicker') || normalized.includes('日期')) return 'DatePicker 日期选择';
@@ -6336,6 +6343,7 @@ StepD:
       if (normalized.includes('switch') || normalized.includes('开关')) return 'Switch 开关';
       if (normalized.includes('textarea') || normalized.includes('多行')) return 'Textarea 多行文本';
       if (normalized.includes('timepicker') || normalized.includes('时间')) return 'TimePicker 时间选择';
+      if (normalized.includes('select') || normalized.includes('选择')) return 'Select 选择框';
       if (normalized.includes('upload') || normalized.includes('上传')) return 'Upload 上传';
       if (normalized.includes('button') || normalized.includes('按钮')) return 'Button 按钮';
       if (normalized.includes('figma')) return 'Figma 组件';
@@ -6483,6 +6491,8 @@ StepD:
     rowAction: '行操作',
     hasPagination: '分页器',
     hasFilter: '筛选器',
+    hasTabs: '标签页',
+    hasButtonGroup: '按钮组',
     textAlign: '对齐方式',
     textDisplay: '文本显示',
     columnWidthMode: '列宽',
@@ -6893,6 +6903,14 @@ StepD:
             <div className="switch-item">
               <label>筛选器</label>
               <SwitchControl value={!!params.hasFilter} onChange={(value) => updateParam('hasFilter', value)} />
+            </div>
+            <div className="switch-item">
+              <label>标签页</label>
+              <SwitchControl value={!!params.hasTabs} onChange={(value) => updateParam('hasTabs', value)} />
+            </div>
+            <div className="switch-item">
+              <label>按钮组</label>
+              <SwitchControl value={!!params.hasButtonGroup} onChange={(value) => updateParam('hasButtonGroup', value)} />
             </div>
           </div>
       </div>
@@ -7896,7 +7914,7 @@ StepD:
 
   return (
     <div className="container">
-      <div className="tabs">
+      <div className="tabs" style={{ display: 'none' }}>
         <button 
           className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
           onClick={() => setActiveTab('chat')}

@@ -984,12 +984,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "id": "table-cell-action-text",
       "name": "ActionText 操作文字",
       "category": "Table",
-      "description": "以文字形式承载操作（如“编辑 / 删除 / …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
+      "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
       "schemaVersion": "2.0.0",
       "family": "table-cell",
       "prompts": {
-        "description": "以文字形式承载操作（如“编辑 / 删除 / …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
-        "usage": "用于表格“操作/Action”列：用文字链接样式展示多个操作。`text` 参数支持用空格/逗号/顿号分隔多个操作词（例如“编辑 删除 …”）。当包含“…”/“...”/“更多”或操作数 > 3 时，默认只显示前 2 个操作并在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
+        "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
+        "usage": "用于表格“操作/Action”列：用文字链接样式展示多个操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除 …”），**严禁使用斜杠/分割**。当包含“…”/“...”/“更多”或操作数 > 3 时，默认只显示前 2 个操作并在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
         "examples": [
           "操作列(文字): { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"编辑 删除 …\", \"width\": 0 } }"
         ]
@@ -998,7 +998,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "text": {
           "type": "string",
           "default": "编辑 删除 …",
-          "description": "操作文案（空格/逗号/顿号分隔）；包含“…”/“...”/“更多”会触发更多图标"
+          "description": "操作文案（空格分隔，严禁使用/）；包含“…”/“...”/“更多”会触发更多图标"
         },
         "width": {
           "type": "number",
@@ -1610,6 +1610,16 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "type": "boolean",
           "default": false,
           "description": "筛选器"
+        },
+        "hasTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "标签页"
+        },
+        "hasButtonGroup": {
+          "type": "boolean",
+          "default": false,
+          "description": "按钮组"
         },
         "headerHeight": {
           "type": "number",
@@ -3263,7 +3273,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       },
       "figmaBinding": {
         "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
+        "preferredLayoutMode": "HORIZONTAL",
         "renderKey": "filter-group"
       }
     },
