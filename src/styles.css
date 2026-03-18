@@ -974,10 +974,17 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   position: relative;
 }
 
+.composer-textarea-wrap {
+  flex-grow: 1;
+  align-self: stretch;
+  display: flex;
+  padding-top: 10px;
+}
+
 .composer-textarea {
   flex-grow: 1;
   align-self: stretch;
-  padding: 10px 12px 36px;
+  padding: 0 12px 36px;
   width: 100%;
   border: none;
   border-radius: 0;
@@ -1008,7 +1015,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: 8px 8px;
   position: relative;
   z-index: 1;
 }
@@ -1016,7 +1023,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 .composer-footer-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .composer-attach {

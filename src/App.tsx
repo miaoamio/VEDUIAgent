@@ -8809,55 +8809,57 @@ StepD:
                     </div>
                   </div>
                 )}
-                <textarea
-                  className="composer-textarea"
-                  value={userInput}
-                  onChange={(e) => {
-                    const nextValue = e.target.value;
-                    setUserInput(nextValue);
-                    if (nextValue.trim()) {
-                      setChartShortcutActive(null);
-                    }
-                    if (!nextValue.trim()) {
-                      setChartPromptMode(false);
-                      setChartShortcutActive(null);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === 'Enter' &&
-                      !e.shiftKey &&
-                      !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
-                      uploadedImages.length > 0 &&
-                      !loading
-                    ) {
-                      e.preventDefault();
-                      onSend();
-                      return;
-                    }
-                    if (
-                      (e.key === 'Backspace' || e.key === 'Delete') &&
-                      !userInput.trim() &&
+                <div className="composer-textarea-wrap">
+                  <textarea
+                    className="composer-textarea"
+                    value={userInput}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setUserInput(nextValue);
+                      if (nextValue.trim()) {
+                        setChartShortcutActive(null);
+                      }
+                      if (!nextValue.trim()) {
+                        setChartPromptMode(false);
+                        setChartShortcutActive(null);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === 'Enter' &&
+                        !e.shiftKey &&
+                        !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
+                        uploadedImages.length > 0 &&
+                        !loading
+                      ) {
+                        e.preventDefault();
+                        onSend();
+                        return;
+                      }
+                      if (
+                        (e.key === 'Backspace' || e.key === 'Delete') &&
+                        !userInput.trim() &&
+                        chartShortcutActive
+                      ) {
+                        e.preventDefault();
+                        setChartShortcutActive(null);
+                        setChartPromptMode(false);
+                        setChartMenuOpen(false);
+                      }
+                    }}
+                    onPaste={handlePaste}
+                    placeholder={
                       chartShortcutActive
-                    ) {
-                      e.preventDefault();
-                      setChartShortcutActive(null);
-                      setChartPromptMode(false);
-                      setChartMenuOpen(false);
+                        ? ''
+                        : selectionCount > 0
+                          ? '请输入需要调整的地方...'
+                          : '让 VED UI Agent 绘制...'
                     }
-                  }}
-                  onPaste={handlePaste}
-                  placeholder={
-                    chartShortcutActive
-                      ? ''
-                      : selectionCount > 0
-                        ? '请输入需要调整的地方...'
-                        : '让 VED UI Agent 绘制...'
-                  }
-                  disabled={loading}
-                  rows={4}
-                  ref={composerTextareaRef}
-                />
+                    disabled={loading}
+                    rows={4}
+                    ref={composerTextareaRef}
+                  />
+                </div>
                 <div className="composer-footer">
                   <div className="composer-footer-left">
                     <div
