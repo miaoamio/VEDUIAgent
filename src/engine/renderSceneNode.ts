@@ -282,7 +282,7 @@ function parseDelimitedText(value: unknown, fallback: string[]): string[] {
     return fromArray.length > 0 ? fromArray : fallback;
   }
   const normalized = String(value ?? "")
-    .split(/[\n,，、|]/)
+    .split(/[\n\r,，、|\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
   return normalized.length > 0 ? normalized : fallback;
@@ -411,6 +411,7 @@ async function applyTagTexts(root: SceneNode, props: Record<string, unknown>, fa
           await figma.loadFontAsync(textNode.fontName as FontName);
         }
         textNode.characters = labels[index] || textNode.characters;
+        textNode.textAutoResize = "WIDTH_AND_HEIGHT";
       } catch {
         // ignore text mutation failures
       }
@@ -440,6 +441,7 @@ async function updateFirstTextNode(root: SceneNode, value: string): Promise<void
       await figma.loadFontAsync(target.fontName as FontName);
     }
     target.characters = value;
+    target.textAutoResize = "WIDTH_AND_HEIGHT";
   } catch {
     // keep original text when font mutation fails
   }
@@ -805,6 +807,15 @@ async function createFigmaNode(
         fallbackName,
         variantCriteria
       });
+      const textOverride =
+        typeof sceneNode.props.text === "string" && sceneNode.props.text.trim()
+          ? sceneNode.props.text.trim()
+          : typeof sceneNode.props.title === "string" && sceneNode.props.title.trim()
+            ? sceneNode.props.title.trim()
+            : "";
+      if (sceneNode.componentId === "figma-component" && textOverride) {
+        await updateFirstTextNode(instance, textOverride);
+      }
       instance.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
       return instance;
     } catch (error) {

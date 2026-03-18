@@ -112,7 +112,7 @@ function parseDelimitedText(value: unknown, fallback: string[]): string[] {
     return fromArray.length > 0 ? fromArray : fallback;
   }
   const normalized = String(value ?? "")
-    .split(/[\n,，、|]/)
+    .split(/[\n\r,，、|\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
   return normalized.length > 0 ? normalized : fallback;
@@ -172,6 +172,7 @@ async function createTextNode(text: string, fontSize: number, lineHeight: number
   textNode.fontSize = fontSize;
   textNode.lineHeight = { value: lineHeight, unit: "PIXELS" };
   textNode.characters = text;
+  textNode.textAutoResize = "WIDTH_AND_HEIGHT";
   const color = parseColor(colorHex);
   if (color) {
     textNode.fills = [{ type: "SOLID", color }];

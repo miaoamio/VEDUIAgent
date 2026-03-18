@@ -123,7 +123,7 @@ export const ColorControl = ({
   value: string;
   onChange: (value: string) => void;
 }) => (
-  <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+  <div className="color-control">
     <input
       type="color"
       value={value}

@@ -153,18 +153,18 @@ function normalizeDisplayText(value: string): string {
   return String(value || '').replace(/\\n/g, '\n');
 }
 
-function toSeriesSpecText(raw: string): string {
+function normalizeSpecKind(raw: string): string {
   const rawKind = String(raw || '').trim();
   const lowered = rawKind.toLowerCase();
-  const kind =
-    lowered === 'table'
-      ? '表格'
-      : lowered === 'form'
-        ? '表单'
-        : lowered === 'chart'
-          ? '图表'
-          : rawKind;
-  return `读取 ${kind} 系列组件的规格说明`;
+  if (lowered === 'table') return '表格';
+  if (lowered === 'form') return '表单';
+  if (lowered === 'chart') return '图表';
+  return rawKind;
+}
+
+function toSeriesSpecText(raw: string, redo = false): string {
+  const kind = normalizeSpecKind(raw);
+  return `${redo ? '重新读取' : '读取'}${kind}规范`;
 }
 
 type AiDisplayItem = {
@@ -172,23 +172,31 @@ type AiDisplayItem = {
   text: string;
 };
 
-function parseSeriesSpecLine(text: string): { kind: string } | null {
+function parseSeriesSpecLine(text: string): { kind: string; redo: boolean } | null {
   const normalized = String(text || '').trim();
-  const match = normalized.match(/^(?:重新)?读取\s*(.+?)\s*系列组件的规格说明$/);
+  let match = normalized.match(/^(重新)?读取\s*(.+?)\s*规范$/);
+  if (!match) {
+    match = normalized.match(/^(重新)?读取\s*(.+?)\s*系列组件的规格说明$/);
+  }
   if (!match) return null;
-  const kind = String(match[1] || '').trim();
+  const kind = String(match[2] || '').trim();
   if (!kind) return null;
-  return { kind };
+  return { kind: normalizeSpecKind(kind), redo: Boolean(match[1]) };
 }
 
 function formatSeriesSpecLine(kind: string, redo: boolean): string {
-  return `${redo ? '重新读取' : '读取'} ${String(kind || '').trim()} 系列组件的规格说明`;
+  return toSeriesSpecText(kind, redo);
 }
 
 function normalizeComponentSpecLine(text: string): string {
-  const componentSpecMatch = text.match(/^读取\s*(.+?)\s*组件\s*spec\b/i);
-  if (componentSpecMatch) return toSeriesSpecText(componentSpecMatch[1]);
-  const legacySpecMatch = text.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
+  const normalized = String(text || '').trim();
+  const existing = parseSeriesSpecLine(normalized);
+  if (existing) return formatSeriesSpecLine(existing.kind, existing.redo);
+  const componentSpecMatch = normalized.match(/^(重新)?读(?:取)?\s*(.+?)\s*(?:组件)?\s*spec\b/i);
+  if (componentSpecMatch) {
+    return toSeriesSpecText(componentSpecMatch[2], Boolean(componentSpecMatch[1]));
+  }
+  const legacySpecMatch = normalized.match(/^读\s*(表格|表单|图表|table|form|chart)\s*系列spec$/i);
   if (legacySpecMatch) return toSeriesSpecText(legacySpecMatch[1]);
   return text;
 }
@@ -216,10 +224,26 @@ function ChevronUpIcon({ className }: { className?: string }) {
   );
 }
 
-function UserMessageBubble({ content }: { content: string }) {
+type UiMessage = {
+  role: 'user' | 'ai';
+  content: string;
+  images?: UploadedImageAttachment[];
+  tables?: UploadedTableAttachment[];
+};
+
+function UserMessageBubble({
+  content,
+  images = [],
+  tables = []
+}: {
+  content: string;
+  images?: UploadedImageAttachment[];
+  tables?: UploadedTableAttachment[];
+}) {
   const textRef = React.useRef<HTMLParagraphElement | null>(null);
   const [expanded, setExpanded] = React.useState(false);
   const [hasOverflow, setHasOverflow] = React.useState(false);
+  const hasAttachments = images.length > 0 || tables.length > 0;
 
   React.useLayoutEffect(() => {
     const el = textRef.current;
@@ -230,23 +254,56 @@ function UserMessageBubble({ content }: { content: string }) {
 
   return (
     <div
-      className={`user-bubble ${hasOverflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'}`}
+      className={`user-bubble ${hasOverflow ? 'has-overflow' : ''} ${expanded ? 'expanded' : 'collapsed'} ${hasAttachments ? 'has-attachments' : ''}`}
     >
       <div className="user-bubble-content">
-        <p ref={textRef} className="user-bubble-text">
-          {normalizeDisplayText(content)}
-        </p>
-        {hasOverflow && !expanded && <div className="user-bubble-fade" />}
+        <div className="user-bubble-text-wrap">
+          <p ref={textRef} className="user-bubble-text">
+            {normalizeDisplayText(content)}
+          </p>
+          {hasOverflow && !expanded && <div className="user-bubble-fade" />}
+        </div>
+        {hasOverflow && (
+          <button
+            type="button"
+            className="user-bubble-expand"
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            <ChevronUpIcon className={`user-bubble-expand-icon ${expanded ? 'expanded' : ''}`} />
+            <span className="user-bubble-expand-text">{expanded ? '收起' : '展开'}</span>
+          </button>
+        )}
       </div>
-      {hasOverflow && (
-        <button
-          type="button"
-          className="user-bubble-expand"
-          onClick={() => setExpanded((prev) => !prev)}
-        >
-          <ChevronUpIcon className={`user-bubble-expand-icon ${expanded ? 'expanded' : ''}`} />
-          <span className="user-bubble-expand-text">{expanded ? '收起' : '展开'}</span>
-        </button>
+      {hasAttachments && (
+        <div className="user-bubble-attachments">
+          <div className="user-attachment-title">附件</div>
+          <div className="user-attachment-grid">
+            {images.map((image) => (
+              <div key={image.id} className="user-attachment-card image">
+                <img className="user-attachment-thumb" src={image.dataUrl} alt={image.name} />
+                <div className="user-attachment-name">{image.name}</div>
+              </div>
+            ))}
+            {tables.map((table) => (
+              <div key={table.id} className={`user-attachment-card table ${table.parseError ? 'error' : ''}`}>
+                <span className="user-attachment-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="3" width="18" height="18" rx="4" fill="#E8F5E9"/>
+                    <path d="M8 8H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
+                    <path d="M8 12H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
+                    <path d="M8 16H14" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div className="user-attachment-meta">
+                  <div className="user-attachment-name">{table.name}</div>
+                  <div className={`user-attachment-subtle ${table.parseError ? 'user-attachment-error' : ''}`}>
+                    {table.parseError ? table.parseError : formatTableKind(table.kind)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -291,10 +348,8 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       const subject = String(matched[1] || '').replace(/[。.!！…]+$/g, '').trim();
       return subject ? `绘制 ${subject}` : raw;
     };
-    if (kind !== 'thought') {
-      const specNormalized = normalizeComponentSpecLine(normalized);
-      if (specNormalized !== normalized) displayLine = specNormalized;
-    }
+    const specNormalized = normalizeComponentSpecLine(normalized);
+    if (specNormalized !== normalized) displayLine = specNormalized;
     displayLine = normalizeExampleLine(displayLine);
     displayLine = normalizeDrawLine(displayLine);
 
@@ -1267,7 +1322,7 @@ function App() {
   const streamTableRunIdRef = React.useRef(0);
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [lastUserMessage, setLastUserMessage] = React.useState<string | null>(null);
-  const [uiMessages, setUiMessages] = React.useState<{ role: 'user' | 'ai'; content: string }[]>([]);
+  const [uiMessages, setUiMessages] = React.useState<UiMessage[]>([]);
   
   // State for selected AI component
   const [selectionCount, setSelectionCount] = React.useState(0);
@@ -1324,22 +1379,13 @@ function App() {
   const readSpecsCacheRef = React.useRef<Set<string>>(new Set());
   const [thinkingActive, setThinkingActive] = React.useState(false);
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
-  const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(false);
+  const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(true);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
     childComponentId?: string; // For columns, this stores the type of cells inside
     nodeName?: string;
-    analysis?: {
-      color: { type: 'variable' | 'raw', id?: string, name?: string, value?: string } | null;
-      text: { type: 'variable' | 'raw', id?: string, name?: string, fontFamily?: string, fontSize?: number, fontWeight?: string } | null;
-      availableColors: { name: string, id: string }[];
-      availableFonts: { name: string, id: string }[];
-    }
   } | null>(null);
-
-  // State for selection analysis only (when not an AI component)
-  const [selectionAnalysis, setSelectionAnalysis] = React.useState<any>(null);
 
   // Tab state
   const [activeTab, setActiveTab] = React.useState<'chat' | 'docs' | 'selection'>('chat');
@@ -1375,10 +1421,6 @@ function App() {
         setActiveTab('selection');
         if (data.componentId) {
           setSelectedComponent(data);
-          setSelectionAnalysis(null);
-        } else if (data.analysis) {
-          setSelectionAnalysis(data.analysis);
-          setSelectedComponent(null);
         }
         setChartOverlayOpen(Boolean(data?.componentId && data.componentId.startsWith('chart')));
       }
@@ -1388,7 +1430,6 @@ function App() {
         setCanvasHint(data?.canvasHint ?? 'mixed');
         setActiveTab('selection');
         setSelectedComponent(null);
-        setSelectionAnalysis(null);
         setChartOverlayOpen(false);
       }
       
@@ -1397,7 +1438,6 @@ function App() {
         setCanvasHint(data?.canvasHint ?? 'mixed');
         setActiveTab('chat');
         setSelectedComponent(null);
-        setSelectionAnalysis(null);
         setChartOverlayOpen(false);
       }
     };
@@ -1809,9 +1849,11 @@ function App() {
    - 如果是“新建表格”，禁止输出 apply_scene(table-root)。
    - draw_table 与 draw_tabl 等价；为兼容旧接口，优先使用 draw_tabl。
    - draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。
-   - **支持直接定义筛选器与分页**：
-     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或详细对象。
-     - 若需分页器，请在 payload 中添加 "pagination": true。
+   - **支持直接定义表格工具栏与分页**：
+     - 若需标签页，请在 payload 中添加 "tabs": ["全部", "进行中"] 或 "hasTabs": true。
+     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或字符串。
+     - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
+     - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
      - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
    - payload 使用紧凑结构即可，例如：
      {
@@ -1821,16 +1863,22 @@ function App() {
          ["李四", "32", "上海"]
        ],
        "columnTypes": ["Text", "Text", "Text"],
+       "tabs": ["全部", "进行中"],
        "filters": ["状态", "城市", "关键词"],
+       "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" },
        "pagination": true,
        "rowHeight": { "header": 40, "body": 40 }
-     }
+    }
+   - 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 "rowAction": "multiple"。
+   - 单选列请使用 "rowAction": "single"。
+   - 不要把勾选列写进 headers/rows/columnTypes。
    - 标签列（Tag）请显式区分两类：
      - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：
        { "text": "启用", "statusTheme": "Success 成功" } 或 { "statusText": "禁用", "statusColor": "red" }
      - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：
        { "text": "企业", "tagType": "Outline 线型标签" }
      - 兼容：旧的 columnTypes "Tag" 视为 "StatusTag"。
+   - 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 "ActionText" 或 "ActionIcon"。
    - 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：
     @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
      @@table_stream {"event":"table_row","row":["李四",32]}
@@ -2019,7 +2067,7 @@ StepD:
           specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
         }
         if (id === 'form' || id.startsWith('form-')) {
-          specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
+          specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], sections?: { title?: string; rows?: any[][]; fields?: any[]; groups?: any[] }[], groups?: any[], groupLabelMode?: "all"|"first", layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
         }
         if (id === 'filter-group') {
           specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
@@ -2064,8 +2112,8 @@ StepD:
     const inferredKind = inferredFromPrompt || inferredFromIds;
     if (inferredKind) {
       return isCachedRead
-        ? `[AI]: 已加载 ${inferredKind} 系列组件规格说明，跳过重复读取`
-        : `[AI]: 读取 ${inferredKind} 系列组件的规格说明`;
+        ? `[AI]: 已加载${normalizeSpecKind(inferredKind)}规范，跳过重复读取`
+        : `[AI]: ${toSeriesSpecText(inferredKind)}`;
     }
     if (ids.length === 0) {
       return `[System]: read_specs received empty ids.`;
@@ -2134,13 +2182,59 @@ StepD:
         normalized.includes('编辑') ||
         normalized.includes('删除') ||
         normalized.includes('查看') ||
+        normalized.includes('详情') ||
         normalized.includes('更多') ||
         normalized.includes('配置') ||
-        normalized.includes('详情') ||
+        normalized.includes('设置') ||
+        normalized.includes('启用') ||
+        normalized.includes('禁用') ||
+        normalized.includes('重置') ||
+        normalized.includes('下载') ||
+        normalized.includes('导出') ||
+        normalized.includes('复制') ||
+        normalized.includes('更新') ||
+        normalized.includes('保存') ||
+        normalized.includes('发布') ||
+        normalized.includes('撤回') ||
+        normalized.includes('审核') ||
+        normalized.includes('通过') ||
+        normalized.includes('驳回') ||
+        normalized.includes('拒绝') ||
+        normalized.includes('分配') ||
+        normalized.includes('授权') ||
+        normalized.includes('解绑') ||
+        normalized.includes('绑定') ||
+        normalized.includes('打开') ||
+        normalized.includes('关闭') ||
+        normalized.includes('暂停') ||
+        normalized.includes('恢复') ||
         normalized.includes('edit') ||
         normalized.includes('delete') ||
         normalized.includes('view') ||
+        normalized.includes('detail') ||
         normalized.includes('more') ||
+        normalized.includes('config') ||
+        normalized.includes('setting') ||
+        normalized.includes('enable') ||
+        normalized.includes('disable') ||
+        normalized.includes('reset') ||
+        normalized.includes('download') ||
+        normalized.includes('export') ||
+        normalized.includes('copy') ||
+        normalized.includes('update') ||
+        normalized.includes('save') ||
+        normalized.includes('publish') ||
+        normalized.includes('revoke') ||
+        normalized.includes('approve') ||
+        normalized.includes('reject') ||
+        normalized.includes('assign') ||
+        normalized.includes('authorize') ||
+        normalized.includes('unbind') ||
+        normalized.includes('bind') ||
+        normalized.includes('open') ||
+        normalized.includes('close') ||
+        normalized.includes('pause') ||
+        normalized.includes('resume') ||
         normalized.includes('action') ||
         normalized.includes('operate')
       );
@@ -2559,12 +2653,26 @@ StepD:
       Array.isArray(source.columnWidths) ? source.columnWidths.map((w: any) => Number(w)) :
       (rawColumns ? rawColumns.map((c: any) => Number(c?.width || 0)) : headers.map(() => 0));
 
-    const hasPagination = Boolean(source.pagination);
+    const hasPagination = source.pagination === undefined ? true : Boolean(source.pagination);
     const hasFilter = Boolean(source.filters);
+    const hasTabs = Boolean(source.hasTabs || source.tabs);
     const hasButtonGroup = Boolean(source.hasButtonGroup || source.buttonGroup);
-    const primaryButtonText = source.primaryButtonText;
-    const secondaryButtonText = source.secondaryButtonText;
-    const filterTexts = Array.isArray(source.filters) ? source.filters.join(',') : '';
+    const buttonGroup = isObject(source.buttonGroup) ? source.buttonGroup : null;
+    const primaryButtonText =
+      source.primaryButtonText ?? buttonGroup?.primaryText ?? buttonGroup?.primary ?? buttonGroup?.primaryLabel;
+    const secondaryButtonText =
+      source.secondaryButtonText ?? buttonGroup?.secondaryText ?? buttonGroup?.secondary ?? buttonGroup?.secondaryLabel;
+    const filterTexts = Array.isArray(source.filters)
+      ? source.filters.join(',')
+      : (typeof source.filters === 'string' ? source.filters : '');
+    const rowActionRaw =
+      source.rowAction ??
+      source.rowSelection ??
+      source.selection ??
+      source.selectionMode;
+    const rowActionText =
+      rowActionRaw === undefined || rowActionRaw === null ? '' : String(rowActionRaw).trim();
+    const rowAction = rowActionText ? rowActionText : undefined;
 
     const children = headers.map((header, colIndex) => {
       const type = columnTypes[colIndex] || 'Text';
@@ -2699,9 +2807,11 @@ StepD:
         hasPagination,
         hasFilter,
         hasButtonGroup,
+        hasTabs,
         filterTexts,
         primaryButtonText,
-        secondaryButtonText
+        secondaryButtonText,
+        ...(rowAction ? { rowAction } : {})
       },
       children
     };
@@ -3074,6 +3184,19 @@ StepD:
     }
   };
 
+  const SECTION_TITLE_COMPONENT_KEY = 'f02c3053469b8fadc3b6113a508e1b7b98330d95';
+  const SEGMENTED_PICKER_COMPONENT_KEY = '94125fa758354931512313d1bb6ce37aae02b8c7';
+  const DELETE_ICON_COMPONENT_TOKEN = 'table.cell.icon.delete';
+
+  const resolveGroupLabelMode = (value: unknown): 'all' | 'first' => {
+    if (value === false) return 'first';
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return 'all';
+    if (normalized === 'first' || normalized === 'first-only' || normalized === 'firstonly') return 'first';
+    if (normalized.includes('仅首') || normalized.includes('首行') || normalized.includes('只展示首')) return 'first';
+    return 'all';
+  };
+
   const buildOptionsTextFromValue = (value: unknown, fallback = '选项一,选项二'): string => {
     if (Array.isArray(value)) {
       const items = value.map((item) => String(item || '').trim()).filter(Boolean);
@@ -3207,6 +3330,54 @@ StepD:
       return matched ? matched[1] : null;
     };
 
+    const isSegmentedPickerItem = (item: any): boolean => {
+      const itemObj = isObject(item) ? item : {};
+      const props = isObject(itemObj.props) ? itemObj.props : {};
+      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
+      if (rawType.includes('segmented')) return true;
+      const componentKey = String(props.componentKey || itemObj.componentKey || '');
+      const componentToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '');
+      return componentKey === SEGMENTED_PICKER_COMPONENT_KEY || componentToken.includes('segmented');
+    };
+
+    const buildControlComponentFromItem = (item: any, index: number): any | null => {
+      const itemObj = isObject(item) ? item : { componentId: 'input', props: { value: String(item ?? '') } };
+      const explicitComponentId = String(itemObj.componentId || '').trim();
+      if (explicitComponentId) {
+        if (explicitComponentId === 'figma-component') {
+          return { componentId: 'figma-component', params: buildExplicitComponentParams(itemObj) };
+        }
+        if (explicitComponentId === 'button' || explicitComponentId === 'text' || explicitComponentId === 'input' || explicitComponentId === 'select' || explicitComponentId === 'checkbox-group' || explicitComponentId === 'radio-group') {
+          return { componentId: explicitComponentId, params: buildExplicitComponentParams(itemObj) };
+        }
+      }
+      const props = isObject(itemObj.props) ? itemObj.props : {};
+      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
+      if (rawType.includes('segmented')) {
+        return {
+          componentId: 'figma-component',
+          params: {
+            ...buildExplicitComponentParams(itemObj),
+            componentToken: 'library.data-input.segmented-picker',
+            componentKey: String(props.componentKey || itemObj.componentKey || SEGMENTED_PICKER_COMPONENT_KEY)
+          }
+        };
+      }
+      if (rawType.includes('select')) {
+        return { componentId: 'select', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('checkbox')) {
+        return { componentId: 'checkbox-group', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('radio')) {
+        return { componentId: 'radio-group', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('button') || rawType.includes('btn')) {
+        return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
+      }
+      return { componentId: 'input', params: buildExplicitComponentParams(itemObj) };
+    };
+
     const buildFormComponentFromSource = (formSource: any): any | null => {
       const formObj = isObject(formSource) ? formSource : {};
       const body = getBlockBody(formObj);
@@ -3298,6 +3469,20 @@ StepD:
           props.optionsText ?? props.options ?? itemObj.optionsText ?? itemObj.options
         );
 
+        const inputs = Array.isArray(props.inputs ?? itemObj.inputs)
+          ? (props.inputs ?? itemObj.inputs)
+          : [];
+        const inputChildren = inputs.map((inputItem: any, inputIndex: number) =>
+          buildControlComponentFromItem(inputItem, inputIndex)
+        ).filter(Boolean);
+        const inputLayout = inputChildren.length > 0
+          ? {
+            componentId: 'layout',
+            params: { direction: 'horizontal', spacing: 12 },
+            children: inputChildren
+          }
+          : null;
+
         if (rawType.includes('checkbox')) {
           return {
             componentId: 'form-field',
@@ -3307,7 +3492,8 @@ StepD:
               optionsText,
               checkedValues: String(props.checkedValues || itemObj.checkedValues || props.value || itemObj.value || '选项一'),
               direction: String(props.direction || itemObj.direction || 'horizontal')
-            }
+            },
+            children: inputLayout ? [inputLayout] : undefined
           };
         }
 
@@ -3320,7 +3506,8 @@ StepD:
               optionsText,
               value: String(props.value || itemObj.value || '选项一'),
               direction: String(props.direction || itemObj.direction || 'horizontal')
-            }
+            },
+            children: inputLayout ? [inputLayout] : undefined
           };
         }
 
@@ -3331,7 +3518,8 @@ StepD:
               ...fieldBaseParams,
               controlType: 'select',
               value: String(props.value || itemObj.value || '请选择')
-            }
+            },
+            children: inputLayout ? [inputLayout] : undefined
           };
         }
 
@@ -3342,7 +3530,8 @@ StepD:
               ...fieldBaseParams,
               controlType: 'input',
               ...buildInputParamsFromSource(props, itemObj)
-            }
+            },
+            children: inputLayout ? [inputLayout] : undefined
           };
         }
 
@@ -3354,15 +3543,17 @@ StepD:
         ).trim();
         const componentToken = explicitToken || resolveLibraryFormControlToken(rawType);
         if (componentToken) {
+          const segmentedKey = rawType.includes('segmented') ? SEGMENTED_PICKER_COMPONENT_KEY : '';
           return {
             componentId: 'form-field',
             params: {
               ...fieldBaseParams,
               controlType: 'figma-component',
               componentToken,
-              componentKey: String(props.componentKey || itemObj.componentKey || ''),
+              componentKey: String(props.componentKey || itemObj.componentKey || segmentedKey),
               variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
-            }
+            },
+            children: inputLayout ? [inputLayout] : undefined
           };
         }
 
@@ -3373,65 +3564,14 @@ StepD:
             controlType: 'input',
             placeholder: String(props.placeholder || itemObj.placeholder || '请输入'),
             value: String(props.value || itemObj.value || '')
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       };
-
-      const children: any[] = [];
-      rows.forEach((row: any) => {
-        if (!Array.isArray(row)) return;
-        const rowChildren = row
-          .map((item: any, index: number) => buildRowChildFromItem(item, index))
-          .filter(Boolean);
-
-        if (rowChildren.length > 0) {
-          children.push({
-            componentId: 'form-row',
-            params: {
-              spacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
-              align: 'start'
-            },
-            children: rowChildren
-          });
-        }
-      });
-
-      if (children.length === 0) {
-        children.push({
-          componentId: 'form-row',
-          params: {
-            spacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
-            align: 'start'
-          },
-          children: [
-            {
-              componentId: 'form-field',
-              params: {
-                ...sharedFieldParams,
-                label: '关键词',
-                controlType: 'input',
-                placeholder: '请输入关键词'
-              }
-            },
-            {
-              componentId: 'form-field',
-              params: {
-                ...sharedFieldParams,
-                label: '状态',
-                controlType: 'select',
-                value: '全部状态'
-              }
-            },
-            { componentId: 'button', params: { label: '查询', variant: 'primary' } },
-            { componentId: 'button', params: { label: '重置', variant: 'secondary' } }
-          ]
-        });
-      }
-
       const footer = isObject(formObj.footer) ? formObj.footer : {};
       const footerActions = Array.isArray(footer.actions) ? footer.actions : [];
-      if (footerActions.length > 0) {
-        children.push({
+      const footerRow = footerActions.length > 0
+        ? {
           componentId: 'form-row',
           params: {
             spacing: 8,
@@ -3440,7 +3580,176 @@ StepD:
           children: footerActions.map((item: any, index: number) =>
             toButtonFromItem(item, `操作${index + 1}`, 'secondary')
           )
+        }
+        : null;
+
+      const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
+      const baseColumnSpacing = Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16;
+      const groupLabelMode = resolveGroupLabelMode(body.groupLabelMode ?? body.showGroupLabel ?? formObj.groupLabelMode ?? formObj.showGroupLabel);
+
+      const buildFormRowFromItems = (
+        row: any[],
+        options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
+      ): any | null => {
+        if (!Array.isArray(row)) return null;
+        const rowChildren = row.map((item: any, index: number) => buildRowChildFromItem(item, index)).filter(Boolean);
+        if (rowChildren.length === 0) return null;
+        rowChildren.forEach((child: any) => {
+          if (child?.componentId !== 'form-field' || !child.params) return;
+          if (options?.forceVertical) {
+            child.params.layout = 'vertical';
+            child.params.align = 'top';
+            child.params.labelWidth = 0;
+          }
+          if (options?.hideLabels) {
+            child.params.label = '';
+          }
         });
+        if (options?.showDelete) {
+          rowChildren.push({
+            componentId: 'figma-component',
+            params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
+          });
+        }
+        const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
+        const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
+        const spacing = Number.isFinite(options?.spacing)
+          ? Number(options?.spacing)
+          : (isSegmentedRow ? 8 : baseColumnSpacing);
+        return {
+          componentId: 'form-row',
+          params: {
+            spacing,
+            align: 'start'
+          },
+          children: rowChildren
+        };
+      };
+
+      const buildRowsFromArray = (rowsArray: any[], options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }): any[] => {
+        const result: any[] = [];
+        rowsArray.forEach((row: any) => {
+          const rowNode = buildFormRowFromItems(row, options);
+          if (rowNode) result.push(rowNode);
+        });
+        return result;
+      };
+
+      const buildGroupLayoutFromGroups = (groups: any[]): any | null => {
+        const groupRows = groups.map((group: any, groupIndex: number) => {
+          const groupObj = isObject(group) ? group : {};
+          const groupFields = Array.isArray(group)
+            ? group
+            : Array.isArray(groupObj.fields)
+              ? groupObj.fields
+              : Array.isArray(groupObj.items)
+                ? groupObj.items
+                : [];
+          if (!Array.isArray(groupFields) || groupFields.length === 0) return null;
+          const showDelete = Boolean(groupObj.deletable ?? groupObj.allowDelete ?? groupObj.canDelete ?? groupObj.showDelete);
+          const hideLabels = groupLabelMode === 'first' && groupIndex > 0;
+          return buildFormRowFromItems(groupFields, {
+            spacing: 12,
+            forceVertical: true,
+            hideLabels,
+            showDelete
+          });
+        }).filter(Boolean);
+        if (groupRows.length === 0) return null;
+        return {
+          componentId: 'layout',
+          params: { direction: 'vertical', spacing: 12 },
+          children: groupRows
+        };
+      };
+
+      const sections = Array.isArray(body.sections)
+        ? body.sections
+        : Array.isArray(formObj.sections)
+          ? formObj.sections
+          : [];
+      const groupSource = Array.isArray(body.groups)
+        ? body.groups
+        : Array.isArray(body.fieldGroups)
+          ? body.fieldGroups
+          : Array.isArray(formObj.groups)
+            ? formObj.groups
+            : Array.isArray(formObj.fieldGroups)
+              ? formObj.fieldGroups
+              : [];
+
+      const children: any[] = [];
+      if (sections.length > 0) {
+        sections.forEach((section: any) => {
+          const sectionObj = isObject(section) ? section : { title: String(section ?? '') };
+          const sectionTitle = String(sectionObj.title || '').trim();
+          const sectionRows = Array.isArray(sectionObj.rows)
+            ? sectionObj.rows
+            : Array.isArray(sectionObj.fields)
+              ? [sectionObj.fields]
+              : [];
+          const sectionGroups = Array.isArray(sectionObj.groups)
+            ? sectionObj.groups
+            : Array.isArray(sectionObj.fieldGroups)
+              ? sectionObj.fieldGroups
+              : [];
+          const groupLayout = sectionGroups.length > 0 ? buildGroupLayoutFromGroups(sectionGroups) : null;
+          const sectionContent = groupLayout ? [groupLayout] : buildRowsFromArray(sectionRows);
+          if (sectionContent.length === 0) return;
+          const sectionBody = sectionContent.length === 1
+            ? sectionContent[0]
+            : {
+              componentId: 'layout',
+              params: { direction: 'vertical', spacing: baseRowSpacing },
+              children: sectionContent
+            };
+          const sectionChildren: any[] = [];
+          if (sectionTitle) {
+            sectionChildren.push({
+              componentId: 'figma-component',
+              params: {
+                componentKey: SECTION_TITLE_COMPONENT_KEY,
+                text: sectionTitle,
+                fallbackName: 'Section Title'
+              }
+            });
+          }
+          sectionChildren.push(sectionBody);
+          children.push({
+            componentId: 'layout',
+            params: {
+              direction: 'vertical',
+              spacing: sectionTitle ? (layout === 'vertical' ? 12 : 24) : baseRowSpacing
+            },
+            children: sectionChildren
+          });
+        });
+      } else if (groupSource.length > 0) {
+        const groupLayout = buildGroupLayoutFromGroups(groupSource);
+        if (groupLayout) {
+          if (footerRow) {
+            children.push({
+              componentId: 'layout',
+              params: { direction: 'vertical', spacing: 4 },
+              children: [groupLayout, footerRow]
+            });
+          } else {
+            children.push(groupLayout);
+          }
+        }
+      } else {
+        children.push(...buildRowsFromArray(rows));
+        if (footerRow) children.push(footerRow);
+      }
+
+      if (children.length === 0) {
+        const fallbackRow = buildFormRowFromItems([
+          { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
+          { componentId: 'select', label: '状态', props: { value: '全部状态' } },
+          { componentId: 'button', props: { label: '查询', variant: 'primary' } },
+          { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
+        ]);
+        if (fallbackRow) children.push(fallbackRow);
       }
 
       return {
@@ -3451,11 +3760,12 @@ StepD:
           layout,
           labelWidthPreset,
           width: 0,
-          rowSpacing: Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12),
-          columnSpacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
+          rowSpacing: sections.length > 0 ? 40 : baseRowSpacing,
+          columnSpacing: baseColumnSpacing,
           labelWidth: sharedFieldParams.labelWidth,
           controlWidth: sharedFieldParams.controlWidth,
           showColon: sharedFieldParams.showColon,
+          labelWidthAuto: layout !== 'vertical',
           requiredMark: true
         },
         children
@@ -3566,6 +3876,54 @@ StepD:
       return matched ? matched[1] : null;
     };
 
+    const isSegmentedPickerItem = (item: any): boolean => {
+      const itemObj = isObject(item) ? item : {};
+      const props = isObject(itemObj.props) ? itemObj.props : {};
+      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
+      if (rawType.includes('segmented')) return true;
+      const componentKey = String(props.componentKey || itemObj.componentKey || '');
+      const componentToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '');
+      return componentKey === SEGMENTED_PICKER_COMPONENT_KEY || componentToken.includes('segmented');
+    };
+
+    const buildControlComponentFromItem = (item: any, index: number): any | null => {
+      const itemObj = isObject(item) ? item : { componentId: 'input', props: { value: String(item ?? '') } };
+      const explicitComponentId = String(itemObj.componentId || '').trim();
+      if (explicitComponentId) {
+        if (explicitComponentId === 'figma-component') {
+          return { componentId: 'figma-component', params: buildExplicitComponentParams(itemObj) };
+        }
+        if (explicitComponentId === 'button' || explicitComponentId === 'text' || explicitComponentId === 'input' || explicitComponentId === 'select' || explicitComponentId === 'checkbox-group' || explicitComponentId === 'radio-group') {
+          return { componentId: explicitComponentId, params: buildExplicitComponentParams(itemObj) };
+        }
+      }
+      const props = isObject(itemObj.props) ? itemObj.props : {};
+      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
+      if (rawType.includes('segmented')) {
+        return {
+          componentId: 'figma-component',
+          params: {
+            ...buildExplicitComponentParams(itemObj),
+            componentToken: 'library.data-input.segmented-picker',
+            componentKey: String(props.componentKey || itemObj.componentKey || SEGMENTED_PICKER_COMPONENT_KEY)
+          }
+        };
+      }
+      if (rawType.includes('select')) {
+        return { componentId: 'select', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('checkbox')) {
+        return { componentId: 'checkbox-group', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('radio')) {
+        return { componentId: 'radio-group', params: buildExplicitComponentParams(itemObj) };
+      }
+      if (rawType.includes('button') || rawType.includes('btn')) {
+        return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
+      }
+      return { componentId: 'input', params: buildExplicitComponentParams(itemObj) };
+    };
+
     const buildRowChild = (item: any, index: number): any | null => {
       const itemObj = isObject(item) ? item : { label: String(item || '') };
       const props = isObject(itemObj.props) ? itemObj.props : {};
@@ -3606,6 +3964,20 @@ StepD:
         props.optionsText ?? props.options ?? itemObj.optionsText ?? itemObj.options
       );
 
+      const inputs = Array.isArray(props.inputs ?? itemObj.inputs)
+        ? (props.inputs ?? itemObj.inputs)
+        : [];
+      const inputChildren = inputs.map((inputItem: any, inputIndex: number) =>
+        buildControlComponentFromItem(inputItem, inputIndex)
+      ).filter(Boolean);
+      const inputLayout = inputChildren.length > 0
+        ? {
+          componentId: 'layout',
+          params: { direction: 'horizontal', spacing: 12 },
+          children: inputChildren
+        }
+        : null;
+
       if (rawType.includes('checkbox')) {
         return {
           componentId: 'form-field',
@@ -3615,7 +3987,8 @@ StepD:
             optionsText,
             checkedValues: String(props.checkedValues || itemObj.checkedValues || props.value || itemObj.value || '选项一'),
             direction: String(props.direction || itemObj.direction || 'horizontal')
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       }
 
@@ -3628,7 +4001,8 @@ StepD:
             optionsText,
             value: String(props.value || itemObj.value || '选项一'),
             direction: String(props.direction || itemObj.direction || 'horizontal')
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       }
 
@@ -3639,7 +4013,8 @@ StepD:
             ...baseParams,
             controlType: 'select',
             value: String(props.value || itemObj.value || '请选择')
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       }
 
@@ -3650,22 +4025,25 @@ StepD:
             ...baseParams,
             controlType: 'input',
             ...buildInputParamsFromSource(props, itemObj)
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       }
 
       const explicitToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '').trim();
       const componentToken = explicitToken || resolveLibraryToken(rawType);
       if (componentToken) {
+        const segmentedKey = rawType.includes('segmented') ? SEGMENTED_PICKER_COMPONENT_KEY : '';
         return {
           componentId: 'form-field',
           params: {
             ...baseParams,
             controlType: 'figma-component',
             componentToken,
-            componentKey: String(props.componentKey || itemObj.componentKey || ''),
+            componentKey: String(props.componentKey || itemObj.componentKey || segmentedKey),
             variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
-          }
+          },
+          children: inputLayout ? [inputLayout] : undefined
         };
       }
 
@@ -3676,7 +4054,8 @@ StepD:
           controlType: 'input',
           placeholder: String(props.placeholder || itemObj.placeholder || '请输入'),
           value: String(props.value || itemObj.value || '')
-        }
+        },
+        children: inputLayout ? [inputLayout] : undefined
       };
     };
 
@@ -3690,62 +4069,14 @@ StepD:
             ? [source.fields]
             : [];
 
-    const children: any[] = [];
-    rows.forEach((row: any) => {
-      if (!Array.isArray(row)) return;
-      const rowChildren = row.map((item: any, index: number) => buildRowChild(item, index)).filter(Boolean);
-      if (rowChildren.length > 0) {
-        children.push({
-          componentId: 'form-row',
-          params: {
-            spacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
-            align: 'start'
-          },
-          children: rowChildren
-        });
-      }
-    });
-
-    if (children.length === 0) {
-      children.push({
-        componentId: 'form-row',
-        params: {
-          spacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
-          align: 'start'
-        },
-        children: [
-          {
-            componentId: 'form-field',
-            params: {
-              ...sharedFieldParams,
-              label: '关键词',
-              controlType: 'input',
-              placeholder: '请输入关键词'
-            }
-          },
-          {
-            componentId: 'form-field',
-            params: {
-              ...sharedFieldParams,
-              label: '状态',
-              controlType: 'select',
-              value: '全部状态'
-            }
-          },
-          { componentId: 'button', params: { label: '查询', variant: 'primary' } },
-          { componentId: 'button', params: { label: '重置', variant: 'secondary' } }
-        ]
-      });
-    }
-
     const footer = isObject(source.footer) ? source.footer : {};
     const footerActions = Array.isArray(footer.actions)
       ? footer.actions
       : Array.isArray(source.actions)
         ? source.actions
         : [];
-    if (footerActions.length > 0) {
-      children.push({
+    const footerRow = footerActions.length > 0
+      ? {
         componentId: 'form-row',
         params: {
           spacing: 8,
@@ -3754,7 +4085,176 @@ StepD:
         children: footerActions.map((item: any, index: number) =>
           toButtonFromItem(item, `操作${index + 1}`, 'secondary')
         )
+      }
+      : null;
+
+    const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
+    const baseColumnSpacing = Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16;
+    const groupLabelMode = resolveGroupLabelMode(body.groupLabelMode ?? body.showGroupLabel ?? source.groupLabelMode ?? source.showGroupLabel);
+
+    const buildFormRowFromItems = (
+      row: any[],
+      options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
+    ): any | null => {
+      if (!Array.isArray(row)) return null;
+      const rowChildren = row.map((item: any, index: number) => buildRowChild(item, index)).filter(Boolean);
+      if (rowChildren.length === 0) return null;
+      rowChildren.forEach((child: any) => {
+        if (child?.componentId !== 'form-field' || !child.params) return;
+        if (options?.forceVertical) {
+          child.params.layout = 'vertical';
+          child.params.align = 'top';
+          child.params.labelWidth = 0;
+        }
+        if (options?.hideLabels) {
+          child.params.label = '';
+        }
       });
+      if (options?.showDelete) {
+        rowChildren.push({
+          componentId: 'figma-component',
+          params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
+        });
+      }
+      const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
+      const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
+      const spacing = Number.isFinite(options?.spacing)
+        ? Number(options?.spacing)
+        : (isSegmentedRow ? 8 : baseColumnSpacing);
+      return {
+        componentId: 'form-row',
+        params: {
+          spacing,
+          align: 'start'
+        },
+        children: rowChildren
+      };
+    };
+
+    const buildRowsFromArray = (rowsArray: any[], options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }): any[] => {
+      const result: any[] = [];
+      rowsArray.forEach((row: any) => {
+        const rowNode = buildFormRowFromItems(row, options);
+        if (rowNode) result.push(rowNode);
+      });
+      return result;
+    };
+
+    const buildGroupLayoutFromGroups = (groups: any[]): any | null => {
+      const groupRows = groups.map((group: any, groupIndex: number) => {
+        const groupObj = isObject(group) ? group : {};
+        const groupFields = Array.isArray(group)
+          ? group
+          : Array.isArray(groupObj.fields)
+            ? groupObj.fields
+            : Array.isArray(groupObj.items)
+              ? groupObj.items
+              : [];
+        if (!Array.isArray(groupFields) || groupFields.length === 0) return null;
+        const showDelete = Boolean(groupObj.deletable ?? groupObj.allowDelete ?? groupObj.canDelete ?? groupObj.showDelete);
+        const hideLabels = groupLabelMode === 'first' && groupIndex > 0;
+        return buildFormRowFromItems(groupFields, {
+          spacing: 12,
+          forceVertical: true,
+          hideLabels,
+          showDelete
+        });
+      }).filter(Boolean);
+      if (groupRows.length === 0) return null;
+      return {
+        componentId: 'layout',
+        params: { direction: 'vertical', spacing: 12 },
+        children: groupRows
+      };
+    };
+
+    const sections = Array.isArray(body.sections)
+      ? body.sections
+      : Array.isArray(source.sections)
+        ? source.sections
+        : [];
+    const groupSource = Array.isArray(body.groups)
+      ? body.groups
+      : Array.isArray(body.fieldGroups)
+        ? body.fieldGroups
+        : Array.isArray(source.groups)
+          ? source.groups
+          : Array.isArray(source.fieldGroups)
+            ? source.fieldGroups
+            : [];
+
+    const children: any[] = [];
+    if (sections.length > 0) {
+      sections.forEach((section: any) => {
+        const sectionObj = isObject(section) ? section : { title: String(section ?? '') };
+        const sectionTitle = String(sectionObj.title || '').trim();
+        const sectionRows = Array.isArray(sectionObj.rows)
+          ? sectionObj.rows
+          : Array.isArray(sectionObj.fields)
+            ? [sectionObj.fields]
+            : [];
+        const sectionGroups = Array.isArray(sectionObj.groups)
+          ? sectionObj.groups
+          : Array.isArray(sectionObj.fieldGroups)
+            ? sectionObj.fieldGroups
+            : [];
+        const groupLayout = sectionGroups.length > 0 ? buildGroupLayoutFromGroups(sectionGroups) : null;
+        const sectionContent = groupLayout ? [groupLayout] : buildRowsFromArray(sectionRows);
+        if (sectionContent.length === 0) return;
+        const sectionBody = sectionContent.length === 1
+          ? sectionContent[0]
+          : {
+            componentId: 'layout',
+            params: { direction: 'vertical', spacing: baseRowSpacing },
+            children: sectionContent
+          };
+        const sectionChildren: any[] = [];
+        if (sectionTitle) {
+          sectionChildren.push({
+            componentId: 'figma-component',
+            params: {
+              componentKey: SECTION_TITLE_COMPONENT_KEY,
+              text: sectionTitle,
+              fallbackName: 'Section Title'
+            }
+          });
+        }
+        sectionChildren.push(sectionBody);
+        children.push({
+          componentId: 'layout',
+          params: {
+            direction: 'vertical',
+            spacing: sectionTitle ? (layout === 'vertical' ? 12 : 24) : baseRowSpacing
+          },
+          children: sectionChildren
+        });
+      });
+    } else if (groupSource.length > 0) {
+      const groupLayout = buildGroupLayoutFromGroups(groupSource);
+      if (groupLayout) {
+        if (footerRow) {
+          children.push({
+            componentId: 'layout',
+            params: { direction: 'vertical', spacing: 4 },
+            children: [groupLayout, footerRow]
+          });
+        } else {
+          children.push(groupLayout);
+        }
+      }
+    } else {
+      children.push(...buildRowsFromArray(rows));
+      if (footerRow) children.push(footerRow);
+    }
+
+    if (children.length === 0) {
+      const fallbackRow = buildFormRowFromItems([
+        { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
+        { componentId: 'select', label: '状态', props: { value: '全部状态' } },
+        { componentId: 'button', props: { label: '查询', variant: 'primary' } },
+        { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
+      ]);
+      if (fallbackRow) children.push(fallbackRow);
     }
 
     return {
@@ -3765,11 +4265,12 @@ StepD:
         layout,
         labelWidthPreset,
         width: Number.isFinite(widthRaw) && widthRaw > 0 ? widthRaw : 720,
-        rowSpacing: Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12),
-        columnSpacing: Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16,
+        rowSpacing: sections.length > 0 ? 40 : baseRowSpacing,
+        columnSpacing: baseColumnSpacing,
         labelWidth: sharedFieldParams.labelWidth,
         controlWidth: sharedFieldParams.controlWidth,
         showColon: sharedFieldParams.showColon,
+        labelWidthAuto: layout !== 'vertical',
         requiredMark: true
       },
       children
@@ -5193,7 +5694,7 @@ StepD:
     thinkingStartedAtRef.current = Date.now();
     setThinkingSeconds(null);
     setThinkingActive(true);
-    setThoughtDetailsExpanded(false);
+    setThoughtDetailsExpanded(true);
 
     setGenerationLock(true);
     setLoading(true);
@@ -5214,7 +5715,11 @@ StepD:
     // After sending, clear composer state for the next round.
     setLastUserMessage(currentTurnText);
     const displayInput = turnInput.trim() ? turnInput : displaySummary;
-    setUiMessages((prev) => [...prev, { role: 'user', content: displayInput }, { role: 'ai', content: '' }]);
+    setUiMessages((prev) => [
+      ...prev,
+      { role: 'user', content: displayInput, images: turnImages, tables: turnTables },
+      { role: 'ai', content: '' }
+    ]);
     setUserInput('');
     setUploadedImages([]);
     setUploadedTables([]);
@@ -6166,47 +6671,6 @@ StepD:
     }
   };
 
-  const renderSelectionAnalysis = () => {
-    const analysis = selectedComponent?.analysis || selectionAnalysis;
-    if (!analysis) return null;
-
-    return (
-      <div className="analysis-panel">
-        <h3>选中分析</h3>
-        
-        {analysis.color && (
-          <div className="analysis-item">
-            <label>颜色:</label>
-            {analysis.color.type === 'variable' ? (
-              <span className="variable-tag">{analysis.color.name}</span>
-            ) : (
-              <div className="raw-value">
-                <div 
-                  className="color-preview" 
-                  style={{ backgroundColor: analysis.color.value }}
-                />
-                <span>{analysis.color.value}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {analysis.text && (
-          <div className="analysis-item">
-            <label>文字:</label>
-            {analysis.text.type === 'variable' ? (
-              <span className="variable-tag">{analysis.text.name}</span>
-            ) : (
-              <div className="raw-value">
-                <span>{analysis.text.fontFamily} / {analysis.text.fontWeight} / {analysis.text.fontSize}px</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const isFormComponent = (componentId: string) => ['form', 'form-row', 'form-field'].includes(componentId);
   const isTableCellComponent = (componentId: string) =>
     componentId === 'table-header-cell' || componentId.startsWith('table-cell');
@@ -6331,6 +6795,68 @@ StepD:
   };
 
   const normalizeFormOption = (value: unknown) => String(value || '').trim().toLowerCase();
+
+  const normalizeFormControlType = (value: unknown) => {
+    const normalized = normalizeFormOption(value);
+    if (!normalized) return 'input';
+    if (normalized.includes('checkbox') || normalized.includes('多选')) return 'checkbox-group';
+    if (normalized.includes('radio') || normalized.includes('单选')) return 'radio-group';
+    if (normalized.includes('datepicker') || normalized.includes('日期')) return 'datepicker';
+    if (normalized.includes('inputnumber') || normalized.includes('数字')) return 'inputnumber';
+    if (normalized.includes('slider') || normalized.includes('滑动')) return 'slider';
+    if (normalized.includes('switch') || normalized.includes('开关')) return 'switch';
+    if (normalized.includes('textarea') || normalized.includes('多行')) return 'textarea';
+    if (normalized.includes('timepicker') || normalized.includes('时间')) return 'timepicker';
+    if (normalized.includes('select') || normalized.includes('选择')) return 'select';
+    if (normalized.includes('upload') || normalized.includes('上传')) return 'upload';
+    if (normalized.includes('button') || normalized.includes('按钮')) return 'button';
+    if (normalized.includes('figma')) return 'figma-component';
+    if (normalized.includes('text') || normalized.includes('文本')) return 'text';
+    return 'input';
+  };
+
+  const shouldDisplayFormFieldParam = (key: string, params: Record<string, any>) => {
+    const controlType = normalizeFormControlType(params.controlType);
+    const showPrefix = !!params.showPrefix;
+    const showSuffix = !!params.showSuffix;
+    if (key === 'labelAlign' || key === 'labelWidthPreset' || key === 'labelWidth' || key === 'controlWidth') {
+      return false;
+    }
+    if (key === 'size' || key === 'state' || key === 'filled' || key === 'error') {
+      return controlType === 'input' || controlType === 'select';
+    }
+    if (key === 'multiple' || key === 'selectType') {
+      return controlType === 'select';
+    }
+    if (key === 'language') {
+      return controlType === 'radio-group';
+    }
+    if (key === 'checkedValues') {
+      return controlType === 'checkbox-group';
+    }
+    if (key === 'optionsText') {
+      return controlType === 'select' || controlType === 'checkbox-group' || controlType === 'radio-group';
+    }
+    if (key === 'showPrefix' || key === 'showSuffix') {
+      return controlType === 'input';
+    }
+    if (key === 'prefixText') {
+      return controlType === 'input' && showPrefix;
+    }
+    if (key === 'suffixText') {
+      return controlType === 'input' && showSuffix;
+    }
+    if (key === 'componentToken' || key === 'componentKey' || key === 'variantCriteria') {
+      return controlType === 'figma-component';
+    }
+    if (key === 'text') {
+      return controlType === 'text';
+    }
+    if (key === 'buttonLabel' || key === 'buttonVariant') {
+      return controlType === 'button';
+    }
+    return true;
+  };
 
   const getFormSelectOptionLabel = (key: string, option: string) => {
     const normalized = normalizeFormOption(option);
@@ -6496,6 +7022,7 @@ StepD:
     textAlign: '对齐方式',
     textDisplay: '文本显示',
     columnWidthMode: '列宽',
+    itemCount: '表单项数量',
     headerHeight: '表头行高',
     bodyHeight: '内容行高',
     rowHeight: '行高',
@@ -6659,7 +7186,6 @@ StepD:
   };
 
   const renderPropertyEditor = () => {
-    // Also render analysis if available
     const editor = (() => {
       if (!selectedComponent) return null;
       const def = COMPONENT_DEFS[selectedComponent.componentId];
@@ -6693,6 +7219,14 @@ StepD:
         : [];
       const variantCriteriaMap = parseVariantCriteria(selectedComponent.params?.variantCriteria) || {};
       const showFigmaVariantProperties = def.id === 'figma-component' && figmaVariantProperties.length > 0;
+      const isFormComponent = def.id === 'form';
+      const formItemCountRaw = Number(selectedComponent.params?.itemCount);
+      const formItemCountValue =
+        Number.isFinite(formItemCountRaw) && formItemCountRaw > 0 ? Math.round(formItemCountRaw) : 1;
+      const baseFormItemOptions = Array.from({ length: 10 }, (_, index) => index + 1);
+      const formItemOptions = baseFormItemOptions.includes(formItemCountValue)
+        ? baseFormItemOptions
+        : [...baseFormItemOptions, formItemCountValue].sort((a, b) => a - b);
 
       return (
         <div className="property-editor">
@@ -6783,6 +7317,19 @@ StepD:
             </div>
           )}
 
+          {isFormComponent && (
+            <FieldRow label="表单项数量">
+              <SelectControl
+                value={String(formItemCountValue)}
+                onChange={(value) => updateParam('itemCount', Number(value))}
+              >
+                {formItemOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </SelectControl>
+            </FieldRow>
+          )}
+
           {(() => {
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             const isFormField = def.id === 'form-field';
@@ -6801,6 +7348,7 @@ StepD:
             const paramKeys = Object.keys(def.params).filter((key) => {
               const paramDef = def.params[key];
               if (!isParamEditable(def, key, paramDef)) return false;
+              if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
               if (isFormField && formFieldHiddenKeys.has(key)) return false;
               if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
               if (def.id === 'figma-component' && ['componentToken', 'componentKey', 'fallbackName', 'width', 'height'].includes(key)) {
@@ -6809,12 +7357,15 @@ StepD:
               if (def.id !== 'tag' && def.id !== 'table-cell-tag') return true;
               return shouldDisplayTagParam(key, effectiveParams);
             });
-            const orderedParamKeys = isFormField
-              ? [
-                  ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
-                  ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
-                ]
-              : paramKeys;
+            const isForm = def.id === 'form';
+            const orderedParamKeys = isForm
+              ? ['layout', 'title', 'showColon'].filter((key) => paramKeys.includes(key))
+              : isFormField
+                ? [
+                    ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
+                    ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
+                  ]
+                : paramKeys;
             const { mainRows, switchRows } = buildParamControlRows(def, orderedParamKeys, selectedComponent.params || {});
             return (
               <>
@@ -7050,7 +7601,10 @@ StepD:
           </div>
         )}
 
-        {contentDef && selectedComponent.componentId !== 'table-header-cell' && contentParamKeys.length > 0 && (
+        {contentDef &&
+          selectedComponent.componentId !== 'table-header-cell' &&
+          contentParamKeys.length > 0 &&
+          (!isCell || isColumn) && (
           <>
             <div className="section-title">单元格内容</div>
             {(() => {
@@ -7072,10 +7626,12 @@ StepD:
     );
   };
 
+  const renderSelectionAnalysis = () => {
+    return null;
+  };
+
   const renderSelectionEditor = () => {
-    if (!selectedComponent) {
-      return selectionAnalysis ? renderSelectionAnalysis() : null;
-    }
+    if (!selectedComponent) return null;
     if (selectedComponent.componentId === 'table') {
       return renderTablePropertyEditor();
     }
@@ -7882,7 +8438,7 @@ StepD:
   };
 
   const renderSelectionPage = () => {
-    const hasSelection = Boolean(selectedComponent || selectionAnalysis);
+    const hasSelection = Boolean(selectedComponent);
     const selectionTitle = getSelectionTitle();
     return (
       <div className="selection-layout">
@@ -7965,11 +8521,14 @@ StepD:
                           const showThinkingRow = isLast && (thinkingActive || thinkingSeconds !== null);
                           const isHiddenSpecThought = (text: string) => {
                             const normalized = String(text || '').trim();
+                            if (parseSeriesSpecLine(normalized)) return true;
                             const compact = normalized.replace(/\s+/g, '').replace(/[。.!！…]+$/g, '');
-                            if ((compact.startsWith('读') || compact.startsWith('读取')) && /spec$/i.test(compact)) {
-                              return true;
-                            }
-                            return false;
+                            return (
+                              (compact.startsWith('读') ||
+                                compact.startsWith('读取') ||
+                                compact.startsWith('重新读取')) &&
+                              /spec$/i.test(compact)
+                            );
                           };
                           const hasSpecThought = items.some((item) => item.kind === 'thought' && isHiddenSpecThought(item.text));
                           return (
@@ -8005,9 +8564,7 @@ StepD:
                                   const shouldHide = isHiddenSpecThought(item.text);
                                   if (shouldHide && !thoughtDetailsExpanded) return null;
                                   const compact = String(item.text || '').replace(/\s+/g, '');
-                                  const isReadSpecsLine =
-                                    (compact.startsWith('读取') || compact.startsWith('重新读取')) &&
-                                    compact.endsWith('系列组件的规格说明');
+                                  const isReadSpecsLine = Boolean(parseSeriesSpecLine(item.text));
                                   const isDrawLine = compact.startsWith('绘制');
                                   if (isReadSpecsLine) {
                                     return (
@@ -8034,9 +8591,7 @@ StepD:
                                 }
 
                                 const compact = String(item.text || '').replace(/\s+/g, '');
-                                const isReadSpecsLine =
-                                  (compact.startsWith('读取') || compact.startsWith('重新读取')) &&
-                                  compact.endsWith('系列组件的规格说明');
+                                const isReadSpecsLine = Boolean(parseSeriesSpecLine(item.text));
                                 const isDrawLine = compact.startsWith('绘制');
                                 if (isReadSpecsLine) {
                                   return (
@@ -8065,7 +8620,7 @@ StepD:
                         })()}
                       </div>
                     ) : (
-                      <UserMessageBubble content={msg.content} />
+                      <UserMessageBubble content={msg.content} images={msg.images} tables={msg.tables} />
                     )}
                   </div>
                 </div>
@@ -8266,6 +8821,29 @@ StepD:
                     if (!nextValue.trim()) {
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Enter' &&
+                      !e.shiftKey &&
+                      !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
+                      uploadedImages.length > 0 &&
+                      !loading
+                    ) {
+                      e.preventDefault();
+                      onSend();
+                      return;
+                    }
+                    if (
+                      (e.key === 'Backspace' || e.key === 'Delete') &&
+                      !userInput.trim() &&
+                      chartShortcutActive
+                    ) {
+                      e.preventDefault();
+                      setChartShortcutActive(null);
+                      setChartPromptMode(false);
+                      setChartMenuOpen(false);
                     }
                   }}
                   onPaste={handlePaste}

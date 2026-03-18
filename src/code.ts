@@ -28,6 +28,11 @@ figma.showUI(__html__, { width: 398, height: 680 });
 const FONT_LOAD_CACHE = new Map<string, Promise<void>>();
 const FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE = new Map<string, InstanceNode>();
 const TAG_TEMPLATE_CACHE = new Map<string, SceneNode>();
+const TEMPLATE_CACHE_FRAME_KEY = 'uia-template-cache-frame';
+const TEMPLATE_CACHE_NODE_KEY = 'uia-template-cache-node';
+const TEMPLATE_CACHE_NODE_CACHE_KEY = 'uia-template-cache-key';
+const TEMPLATE_CACHE_NODE_KIND = 'uia-template-cache-kind';
+type TemplateCacheKind = 'component-instance' | 'tag-template';
 const TABLE_CELL_PREWARM_STATE = {
   scheduled: false,
   inFlight: false,
@@ -98,6 +103,126 @@ function buildTagTemplateCacheKey(componentKey: string, criteria?: Record<string
   if (!serialized) return `${componentKey}::default`;
   return `${componentKey}::${serialized}`;
 }
+
+function getTemplateCacheFrame(): FrameNode {
+  const existing = figma.currentPage.findAll((node) => {
+    if (node.type !== 'FRAME') return false;
+    if (!('getPluginData' in node)) return false;
+    return node.getPluginData(TEMPLATE_CACHE_FRAME_KEY) === 'true';
+  }) as FrameNode[];
+  const primary = existing[0];
+  if (primary) {
+    for (let index = 1; index < existing.length; index += 1) {
+      try {
+        existing[index].remove();
+      } catch {}
+    }
+    return primary;
+  }
+  const frame = figma.createFrame();
+  frame.name = 'UIA Template Cache';
+  frame.visible = false;
+  frame.x = -100000;
+  frame.y = -100000;
+  frame.resizeWithoutConstraints(1, 1);
+  frame.setPluginData(TEMPLATE_CACHE_FRAME_KEY, 'true');
+  return frame;
+}
+
+function registerTemplateNode(cacheKey: string, kind: TemplateCacheKind, node: SceneNode): void {
+  const frame = getTemplateCacheFrame();
+  node.setPluginData(TEMPLATE_CACHE_NODE_KEY, 'true');
+  node.setPluginData(TEMPLATE_CACHE_NODE_CACHE_KEY, cacheKey);
+  node.setPluginData(TEMPLATE_CACHE_NODE_KIND, kind);
+  node.visible = false;
+  if (node.parent !== frame) {
+    frame.appendChild(node);
+  }
+  node.x = 0;
+  node.y = 0;
+}
+
+function cleanupLegacyPrewarmTemplates(): void {
+  const componentKeyToToken = new Map<string, string>();
+  for (const token of TABLE_CELL_PREWARM_TOKENS) {
+    const componentKey = resolveComponentTokenProfile(token)?.profile.componentKey;
+    if (componentKey && !componentKeyToToken.has(componentKey)) {
+      componentKeyToToken.set(componentKey, token);
+    }
+  }
+  if (componentKeyToToken.size === 0) return;
+  const candidates = figma.currentPage.findAll((node) => node.type === 'INSTANCE') as InstanceNode[];
+  for (const node of candidates) {
+    if (node.getPluginData(TEMPLATE_CACHE_NODE_KEY) === 'true') continue;
+    if (node.visible || node.x > -99999 || node.y > -99999) continue;
+    const componentKey = node.mainComponent?.key;
+    if (!componentKey) continue;
+    const token = componentKeyToToken.get(componentKey);
+    if (!token) continue;
+    const cacheKey = buildTokenCacheKey(token);
+    if (!cacheKey) continue;
+    if (FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.has(cacheKey)) {
+      try {
+        node.remove();
+      } catch {}
+      continue;
+    }
+    registerTemplateNode(cacheKey, 'component-instance', node);
+    FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.set(cacheKey, node);
+  }
+}
+
+function hydrateTemplateCaches(): void {
+  const frame = getTemplateCacheFrame();
+  const existing = figma.currentPage.findAll((node) => {
+    if (!('getPluginData' in node)) return false;
+    return node.getPluginData(TEMPLATE_CACHE_NODE_KEY) === 'true';
+  }) as SceneNode[];
+  for (const node of existing) {
+    const cacheKey = node.getPluginData(TEMPLATE_CACHE_NODE_CACHE_KEY);
+    const kind = node.getPluginData(TEMPLATE_CACHE_NODE_KIND) as TemplateCacheKind;
+    if (!cacheKey || (kind !== 'component-instance' && kind !== 'tag-template')) {
+      try {
+        node.remove();
+      } catch {}
+      continue;
+    }
+    if (kind === 'component-instance') {
+      if (node.type !== 'INSTANCE') {
+        try {
+          node.remove();
+        } catch {}
+        continue;
+      }
+      if (FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.has(cacheKey)) {
+        try {
+          node.remove();
+        } catch {}
+        continue;
+      }
+      if (node.parent !== frame) {
+        frame.appendChild(node);
+      }
+      node.visible = false;
+      FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.set(cacheKey, node as InstanceNode);
+      continue;
+    }
+    if (TAG_TEMPLATE_CACHE.has(cacheKey)) {
+      try {
+        node.remove();
+      } catch {}
+      continue;
+    }
+    if (node.parent !== frame) {
+      frame.appendChild(node);
+    }
+    node.visible = false;
+    TAG_TEMPLATE_CACHE.set(cacheKey, node);
+  }
+  cleanupLegacyPrewarmTemplates();
+}
+
+hydrateTemplateCaches();
 
 async function prewarmTableCellAssets(): Promise<void> {
   if (TABLE_CELL_PREWARM_STATE.inFlight) return;
@@ -189,6 +314,10 @@ function checkSelection() {
       const componentId = targetNode.getPluginData('component-id');
       const params = targetNode.getPluginData('params');
       if (componentId && params) {
+        if (componentId === 'figma-component') {
+          figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
+          return;
+        }
         let childComponentId;
         if (componentId === 'table-column' && targetNode.type === 'FRAME') {
             const storedCellType = targetNode.getPluginData('cellType');
@@ -220,6 +349,14 @@ function checkSelection() {
             normalizedParams.width = merged.width ?? normalizedParams.width;
             normalizedParams.textAlign = merged.textAlign ?? normalizedParams.textAlign;
             normalizedParams.textDisplay = merged.textDisplay ?? normalizedParams.textDisplay;
+          }
+        }
+
+        if (componentId === 'form') {
+          const formInstance = buildComponentInstanceFromNode(targetNode);
+          const itemCount = formInstance ? countFormItemInstances(formInstance) : 0;
+          if (itemCount > 0) {
+            normalizedParams.itemCount = itemCount;
           }
         }
 
@@ -1937,6 +2074,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         componentId: 'table-header-cell',
         params: {
             text: '',
+            allowEmptyText: true,
             width: expectedWidth,
             height: 40,
             paddingLeft: 0,
@@ -2877,8 +3015,7 @@ async function createTagFromFigmaTemplate(
             const detached = importedInstance.detachInstance();
             try {
                 const template = detached.clone();
-                template.visible = false;
-                template.x = -100000;
+                registerTemplateNode(cacheKey, 'tag-template', template);
                 TAG_TEMPLATE_CACHE.set(cacheKey, template);
             } catch (e) {
                 console.warn('[TagTemplate] failed to cache template', e);
@@ -2917,8 +3054,7 @@ async function createTagFromFigmaTemplate(
         const detached = fallbackInstance.detachInstance();
         try {
             const template = detached.clone();
-            template.visible = false;
-            template.x = -100000;
+            registerTemplateNode(fallbackKey, 'tag-template', template);
             TAG_TEMPLATE_CACHE.set(fallbackKey, template);
         } catch (e) {
             console.warn('[TagTemplate] failed to cache fallback template', e);
@@ -3880,6 +4016,15 @@ async function updateFormFieldLabelTemplate(root: SceneNode, params: Record<stri
     const contentContainer = findFormFieldContentContainer(root);
     if (!contentContainer) return;
 
+    const layout = resolveFormFieldLayout(params);
+    if (layout !== 'vertical' && 'itemSpacing' in contentContainer) {
+        const explicitSpacing = Number(params.labelControlSpacing);
+        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 20;
+        try {
+            (contentContainer as FrameNode | InstanceNode | ComponentNode).itemSpacing = nextSpacing;
+        } catch {}
+    }
+
     const labelInstance = contentContainer.children.find(isFormFieldLabelInstance);
     if (!labelInstance) return;
 
@@ -4142,6 +4287,9 @@ async function createFormFieldFromFigmaTemplate(
     params: Record<string, any>
 ): Promise<SceneNode | null> {
     const layout = resolveFormFieldLayout(params);
+    if (params.labelWidthAuto && layout !== 'vertical') {
+        return null;
+    }
     const controlType = normalizeFormFieldControlType(params.controlType);
     const supportsTemplateControl =
         controlType === 'input' ||
@@ -4287,10 +4435,169 @@ function resolveFormLabelWidth(params: Record<string, any>): number {
     }
 }
 
+function collectFormFieldInstances(instance: ComponentInstance): ComponentInstance[] {
+    if (instance.componentId === 'form-field') return [instance];
+    if (!Array.isArray(instance.children)) return [];
+    const result: ComponentInstance[] = [];
+    instance.children.forEach((child) => {
+        result.push(...collectFormFieldInstances(child));
+    });
+    return result;
+}
+
+function hasFormFieldInstance(instance: ComponentInstance): boolean {
+    if (instance.componentId === 'form-field') return true;
+    if (!Array.isArray(instance.children)) return false;
+    return instance.children.some((child) => hasFormFieldInstance(child));
+}
+
+function isFormItemInstance(instance: ComponentInstance): boolean {
+    if (instance.componentId === 'form-field') return true;
+    if (instance.componentId === 'form-row') {
+        return Array.isArray(instance.children) && instance.children.some((child) => hasFormFieldInstance(child));
+    }
+    return false;
+}
+
+function countFormItemInstances(instance: ComponentInstance): number {
+    if (!Array.isArray(instance.children)) return 0;
+    return instance.children.filter((child) => isFormItemInstance(child)).length;
+}
+
+function normalizeFormItemCount(value: unknown): number | null {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return null;
+    const rounded = Math.round(parsed);
+    return rounded <= 0 ? 1 : rounded;
+}
+
+function cloneComponentInstance(instance: ComponentInstance, suffix: string): ComponentInstance {
+    const baseId = instance.id || instance.componentId || 'instance';
+    const cloned: ComponentInstance = {
+        id: `${baseId}-${suffix}`,
+        componentId: instance.componentId,
+        params: { ...(instance.params || {}) }
+    };
+    if (Array.isArray(instance.children)) {
+        cloned.children = instance.children.map((child, index) =>
+            cloneComponentInstance(child, `${suffix}-${index}`)
+        );
+    }
+    return cloned;
+}
+
+function applyFormItemLabel(instance: ComponentInstance, label: string): ComponentInstance {
+    if (instance.componentId === 'form-field') {
+        return {
+            ...instance,
+            params: {
+                ...(instance.params || {}),
+                label
+            }
+        };
+    }
+    if (!Array.isArray(instance.children)) return instance;
+    let updated = false;
+    const nextChildren = instance.children.map((child) => {
+        if (!updated && hasFormFieldInstance(child)) {
+            const nextChild = applyFormItemLabel(child, label);
+            if (nextChild !== child) updated = true;
+            return nextChild;
+        }
+        return child;
+    });
+    if (!updated) return instance;
+    return { ...instance, children: nextChildren };
+}
+
+function createDefaultFormItem(index: number): ComponentInstance {
+    return {
+        id: `form-item-${Date.now()}-${index}`,
+        componentId: 'form-field',
+        params: {
+            label: `字段${index}`,
+            controlType: 'input',
+            placeholder: '请输入'
+        }
+    };
+}
+
+function adjustFormItemChildren(
+    children: ComponentInstance[] | undefined,
+    targetCount: number
+): ComponentInstance[] | undefined {
+    if (!Array.isArray(children)) {
+        if (targetCount <= 0) return children;
+        return Array.from({ length: targetCount }, (_, index) => createDefaultFormItem(index + 1));
+    }
+    const nextChildren = [...children];
+    const itemIndices = nextChildren.reduce((acc, child, index) => {
+        if (isFormItemInstance(child)) acc.push(index);
+        return acc;
+    }, [] as number[]);
+    const currentCount = itemIndices.length;
+    if (currentCount === targetCount) return nextChildren;
+
+    if (targetCount < currentCount) {
+        let remaining = targetCount;
+        return nextChildren.filter((child) => {
+            if (!isFormItemInstance(child)) return true;
+            if (remaining > 0) {
+                remaining -= 1;
+                return true;
+            }
+            return false;
+        });
+    }
+
+    const template = currentCount > 0 ? nextChildren[itemIndices[itemIndices.length - 1]] : createDefaultFormItem(1);
+    const insertAt = currentCount > 0 ? itemIndices[itemIndices.length - 1] + 1 : nextChildren.length;
+    const additions: ComponentInstance[] = [];
+    for (let i = 0; i < targetCount - currentCount; i += 1) {
+        const index = currentCount + i + 1;
+        const cloned = cloneComponentInstance(template, `auto-${Date.now()}-${i}`);
+        additions.push(applyFormItemLabel(cloned, `字段${index}`));
+    }
+    nextChildren.splice(insertAt, 0, ...additions);
+    return nextChildren;
+}
+
+async function resolveAutoFormLabelWidth(
+    formParams: Record<string, any>,
+    instance: ComponentInstance
+): Promise<number> {
+    if (!Array.isArray(instance.children)) return 0;
+    const fields = instance.children.flatMap((child) => collectFormFieldInstances(child));
+    if (fields.length === 0) return 0;
+
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+    const tempText = figma.createText();
+    tempText.visible = false;
+    tempText.fontName = { family: 'Inter', style: 'Regular' };
+    tempText.fontSize = 13;
+    figma.currentPage.appendChild(tempText);
+
+    let maxWidth = 0;
+    for (const field of fields) {
+        const inherited = inheritFormFieldParams(formParams, field);
+        const fieldParams = inherited.params || {};
+        const layout = resolveFormFieldLayout(fieldParams);
+        if (layout === 'vertical') continue;
+        const label = String(fieldParams.label || '').trim();
+        if (!label) continue;
+        const textValue = `${label}${fieldParams.showColon === false ? '' : '：'}`;
+        tempText.characters = textValue;
+        if (tempText.width > maxWidth) maxWidth = tempText.width;
+    }
+
+    tempText.remove();
+    return Math.ceil(maxWidth);
+}
+
 function parseDelimitedText(value: unknown, fallback: string[]): string[] {
     const raw = String(value || '').trim();
     const items = raw
-        ? raw.split(/[\n\r,，|]/).map((item) => item.trim()).filter(Boolean)
+        ? raw.split(/[\n\r,，、|\s]+/).map((item) => item.trim()).filter(Boolean)
         : [];
     return items.length > 0 ? items : fallback;
 }
@@ -4373,6 +4680,7 @@ function patchFormInstanceSnapshot(
 ): ComponentInstance {
     const oldColumnSpacing = toPositiveNumber(prevParams.columnSpacing);
     const newColumnSpacing = toPositiveNumber(nextParams.columnSpacing);
+    const nextItemCount = normalizeFormItemCount(nextParams.itemCount);
 
     const shouldInheritValue = (current: unknown, previous: unknown): boolean =>
         current === undefined || current === previous;
@@ -4412,13 +4720,22 @@ function patchFormInstanceSnapshot(
         return nextChild;
     };
 
+    const normalizedParams = nextItemCount !== null
+        ? { ...nextParams, itemCount: nextItemCount }
+        : nextParams;
     const next: ComponentInstance = {
         ...snapshot,
         componentId: 'form',
-        params: nextParams
+        params: normalizedParams
     };
-    if (Array.isArray(snapshot.children)) {
-        next.children = snapshot.children.map(patchChild);
+    let patchedChildren = Array.isArray(snapshot.children)
+        ? snapshot.children.map(patchChild)
+        : snapshot.children;
+    if (nextItemCount !== null) {
+        patchedChildren = adjustFormItemChildren(patchedChildren, nextItemCount) || patchedChildren;
+    }
+    if (patchedChildren) {
+        next.children = patchedChildren;
     }
     return next;
 }
@@ -5266,8 +5583,7 @@ async function createFigmaComponentInstanceByToken(
         if (cacheKey && instance) {
             try {
                 const template = instance.clone();
-                template.visible = false;
-                template.x = -100000;
+                registerTemplateNode(cacheKey, 'component-instance', template);
                 FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.set(cacheKey, template);
             } catch (e) {
                 console.warn('[FigmaComponent] failed to cache instance', e);
@@ -5648,12 +5964,18 @@ async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'ce
 }
 
 function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
+  const componentId = 'getPluginData' in cell ? cell.getPluginData('component-id') : '';
+  const useAutoWidth = componentId === 'table-cell' || componentId === 'table-header-cell';
+  const isTagCell = componentId === 'table-cell-tag';
   const textNodes = collectTextNodes(cell);
   for (const textNode of textNodes) {
     try {
-      if (mode === 'lineBreak') {
-        textNode.textAutoResize = 'HEIGHT';
-        textNode.textTruncation = 'NONE';
+      if (isTagCell) {
+        textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+        textNode.textTruncation = 'DISABLED';
+      } else if (mode === 'lineBreak') {
+        textNode.textAutoResize = useAutoWidth ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
+        textNode.textTruncation = 'DISABLED';
       } else {
         textNode.textAutoResize = 'NONE';
         textNode.textTruncation = 'ENDING';
@@ -6084,6 +6406,19 @@ async function renderComponent(
         frame.appendChild(titleNode);
     }
 
+    const formLayout = normalizeFormLayout(params.layout);
+    const shouldAutoLabelWidth = Boolean(params.labelWidthAuto) && formLayout !== 'vertical';
+    const resolvedFormParams = shouldAutoLabelWidth
+        ? (() => ({ ...params }))()
+        : params;
+    if (shouldAutoLabelWidth) {
+        const maxLabelWidth = await resolveAutoFormLabelWidth(params, instance);
+        if (maxLabelWidth > 0) {
+            resolvedFormParams.labelWidth = maxLabelWidth;
+            resolvedFormParams.labelWidthPreset = 'custom';
+        }
+    }
+
     if (instance.children) {
         for (const child of instance.children) {
             let processedChild = child;
@@ -6105,7 +6440,7 @@ async function renderComponent(
                     }
                 };
             }
-            const childNode = await renderComponent(inheritFormFieldParams(params, processedChild), { isRoot: false });
+            const childNode = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
             if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && frame.counterAxisSizingMode === 'FIXED') {
                 childNode.layoutAlign = 'STRETCH';
             }
@@ -6157,7 +6492,10 @@ async function renderComponent(
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
     frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : 'CENTER';
-    frame.itemSpacing = layout === 'vertical' ? 8 : 8;
+    const explicitSpacing = Number(params.labelControlSpacing);
+    const resolvedSpacing =
+        Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 20);
+    frame.itemSpacing = resolvedSpacing;
     frame.fills = [];
     frame.clipsContent = false;
 
@@ -6239,6 +6577,8 @@ async function renderComponent(
           figma.currentPage.appendChild(frame);
           figma.viewport.scrollAndZoomIntoView([frame]);
       }
+
+      lockGeneratedContainerNode(frame, 'table');
 
       frame.layoutMode = 'HORIZONTAL';
       frame.primaryAxisSizingMode = 'FIXED';
@@ -6683,8 +7023,13 @@ async function renderComponent(
               : 'Regular';
         await applyTextStyleBinding(textNode, typographyKey, { family: 'Inter', style: fallbackStyle, size: 13 });
         
-        // Set characters AFTER setting the font (allow empty string)
-        if (params.text !== undefined && params.text !== null) {
+        // Set characters AFTER setting the font
+        const allowEmptyText = params.allowEmptyText === true;
+        if (
+            params.text !== undefined &&
+            params.text !== null &&
+            (allowEmptyText || String(params.text).trim() !== '')
+        ) {
             textNode.characters = String(params.text);
         } else {
             textNode.characters = isHeader ? 'Header' : 'Cell';
@@ -6700,6 +7045,7 @@ async function renderComponent(
         if (!explicitHugWidth && !isHeader) {
             textNode.layoutGrow = 1;
         }
+        textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
         frame.appendChild(textNode);
     }
 
@@ -7801,6 +8147,7 @@ figma.ui.onmessage = async (msg) => {
       const componentId = node.getPluginData('component-id');
       
       if (componentId) {
+        let shouldRefreshSelection = true;
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
           const previousParams = readNodeParams(node);
           let snapshot = readComponentInstanceSnapshot(node);
@@ -8067,6 +8414,7 @@ figma.ui.onmessage = async (msg) => {
 	            }
 
 	            checkSelection();
+            shouldRefreshSelection = false;
 	        }
 
 	        if (componentId === 'table-column' && node.type === 'FRAME') {
@@ -8119,6 +8467,9 @@ figma.ui.onmessage = async (msg) => {
                     applyColumnWidthMode(column, params.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', params.width);
                 }
             }
+        }
+        if (shouldRefreshSelection) {
+            checkSelection();
         }
       }
     }
@@ -8265,6 +8616,7 @@ figma.ui.onmessage = async (msg) => {
                   applyColumnWidthMode(node, 'HUG');
                   mergeNodeParams(node, { width: undefined });
               }
+              checkSelection();
               figma.ui.postMessage({ type: 'action-done', message: `Updated ${swappedCount} cells in column` });
           } 
           // Single component swap
