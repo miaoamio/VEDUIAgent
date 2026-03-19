@@ -17,6 +17,7 @@ body {
   --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
   --ved-button-primary-bg: #18181B;
   --ved-button-primary-text: #FFFFFF;
+  --ved-input-focus: #181818;
 }
 
 body {
@@ -1458,6 +1459,33 @@ button:disabled {
   width: auto;
 }
 
+.select-control {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.select-control .select-icon-wrapper {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--ved-icon-secondary, #71717A);
+}
+
+.select-control .select-icon-wrapper svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
 .field-row {
   display: flex;
   flex-direction: column;
@@ -1493,27 +1521,49 @@ button:disabled {
 
 .field-row select {
   padding-right: 32px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 14px;
 }
 
 .selection-layout .field-row label,
 .selection-layout .selection-panel .section-title {
   color: var(--ved-text-primary, var(--color-text-primary, #18181B));
-  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-family: var(--ved-font-family);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 16px;
 }
 
+.selection-layout .control-row label,
+.selection-layout .switch-item > label:not(.switch) {
+  font-size: 12px;
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-weight: 500;
+}
+
 .selection-layout .field-row select,
 .selection-layout .selection-panel select {
   height: 28px;
   border-radius: 4px;
-  font-size: 12px;
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.selection-layout .field-row input[type="number"],
+.selection-layout .field-row input[type="text"],
+.selection-layout .selection-panel input[type="number"],
+.selection-layout .selection-panel input[type="text"] {
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-size: 13px;
+  font-weight: 400;
+  height: 28px;
+  border-radius: 4px;
   line-height: 16px;
   padding-top: 0;
   padding-bottom: 0;
@@ -1522,7 +1572,7 @@ button:disabled {
 .field-row select:focus,
 .field-row input[type="number"]:focus,
 .field-row input[type="text"]:focus {
-  border-color: #1664ff;
+  border-color: var(--ved-input-focus, #1664ff);
   box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
 }
 
@@ -1552,6 +1602,13 @@ button:disabled {
 }
 
 .selection-panel-group .selection-panel {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.selection-panel-group .property-editor {
   padding: 0;
   border: none;
   background: transparent;
@@ -1606,16 +1663,12 @@ button:disabled {
 
 .selection-panel select {
   padding-right: 32px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 14px;
 }
 
 .selection-panel select:focus,
 .selection-panel input[type="number"]:focus,
 .selection-panel input[type="text"]:focus {
-  border-color: #1664FF;
+  border-color: var(--ved-input-focus, #1664ff);
   box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
 }
 
@@ -1699,7 +1752,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   height: 40px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #F4F4F5;
   gap: 8px;
   min-width: 0;
 }
@@ -1722,8 +1775,8 @@ button:disabled {
   position: relative;
   display: inline-block;
   flex: 0 0 auto;
-  width: 34px;
-  height: 18px;
+  width: 32px;
+  height: 16px;
 }
 
 .switch input {
@@ -1739,26 +1792,25 @@ button:disabled {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #e5e7eb;
+  background-color: var(--color-switch-off-bg, #e4e4e7);
   transition: .2s;
-  border-radius: 18px;
+  border-radius: 9999px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 14px;
-  width: 14px;
+  height: 12px;
+  width: 12px;
   left: 2px;
-  bottom: 2px;
-  background-color: white;
+  top: 2px;
+  background-color: var(--color-layout-bg, #ffffff);
   transition: .2s;
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
 }
 
 .switch input:checked + .slider {
-  background-color: #1664FF;
+  background-color: var(--color-switch-on-bg, #18181b);
 }
 
 .switch input:checked + .slider:before {
