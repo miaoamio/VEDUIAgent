@@ -1346,7 +1346,13 @@ function App() {
       params: { componentToken: 'library.navigation.header' },
       nodeName: 'Mock Selection'
     });
-  }, [mockSelectionEnabled]);
+  }, [
+    mockSelectionEnabled,
+    setActiveTab,
+    setSelectionCount,
+    setCanvasHint,
+    setSelectedComponent
+  ]);
 
   React.useLayoutEffect(() => {
     const box = composerBoxRef.current;
@@ -1427,8 +1433,8 @@ function App() {
     // Listen for messages from the plugin code
     window.onmessage = (event) => {
       const pluginMessage = event?.data?.pluginMessage;
-      if (!pluginMessage) return;
-      const { type, message, data } = pluginMessage;
+      if (!pluginMessage || typeof pluginMessage !== 'object') return;
+      const { type, message, data } = pluginMessage as any;
       
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
