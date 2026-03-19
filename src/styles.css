@@ -259,6 +259,8 @@ h2 {
 .composer-quick-chip:disabled {
   opacity: 1;
   cursor: not-allowed;
+  background: #FFFFFF;
+  border-color: #E4E4E7;
 }
 
 .composer-quick-chip:disabled,
@@ -1136,6 +1138,8 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   cursor: not-allowed;
   opacity: 1;
   color: var(--ved-text-disabled, #A1A1AA);
+  background: #FFFFFF;
+  border-color: #E4E4E7;
 }
 
 .composer-send {
@@ -1212,7 +1216,9 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 
 .composer-menu-item:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 1;
+  color: var(--ved-text-disabled, #A1A1AA);
+  background: #FFFFFF;
 }
 
 .composer-menu-icon {
@@ -1491,6 +1497,26 @@ button:disabled {
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 14px;
+}
+
+.selection-layout .field-row label,
+.selection-layout .selection-panel .section-title {
+  color: var(--ved-text-primary, var(--color-text-primary, #18181B));
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 16px;
+}
+
+.selection-layout .field-row select,
+.selection-layout .selection-panel select {
+  height: 28px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .field-row select:focus,

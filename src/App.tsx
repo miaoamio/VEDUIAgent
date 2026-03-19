@@ -1328,14 +1328,6 @@ function App() {
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
-  const mockSelectionKind = React.useMemo(() => {
-    try {
-      return new URLSearchParams(window.location.search).get('mockSelection');
-    } catch {
-      return null;
-    }
-  }, []);
-  const mockSelectionEnabled = mockSelectionKind === '1' || mockSelectionKind === 'form';
 
   React.useLayoutEffect(() => {
     const box = composerBoxRef.current;
@@ -1411,20 +1403,6 @@ function App() {
       uploadedImages.length > 0 ||
       uploadedTables.length > 0
   );
-
-  React.useEffect(() => {
-    if (!mockSelectionEnabled) return;
-    const kind = mockSelectionKind === 'form' ? 'form' : 'header';
-    const componentToken = kind === 'form' ? 'library.data-input.form' : 'library.navigation.header';
-    setActiveTab('selection');
-    setSelectionCount(1);
-    setCanvasHint(kind === 'form' ? 'form' : 'mixed');
-    setSelectedComponent({
-      componentId: 'figma-component',
-      params: { componentToken },
-      nodeName: kind === 'form' ? 'Form 表单' : 'Header 页头'
-    });
-  }, [mockSelectionEnabled, mockSelectionKind]);
 
   React.useEffect(() => {
     // Listen for messages from the plugin code
