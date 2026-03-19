@@ -251,8 +251,14 @@ h2 {
 }
 
 .composer-quick-chip:disabled {
-  opacity: 0.6;
+  opacity: 1;
   cursor: not-allowed;
+}
+
+.composer-quick-chip:disabled,
+.composer-quick-chip:disabled .composer-quick-chip-label,
+.composer-quick-chip:disabled .composer-quick-chip-icon {
+  color: var(--ved-text-disabled, #A1A1AA);
 }
 
 .composer-quick-chip-icon {
@@ -905,7 +911,43 @@ h2 {
 }
 
 .selection-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 4px;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-button-primary-bg, #18181B);
+  padding: 0 6px;
+  width: 108px;
+  height: 28px;
+  overflow: hidden;
+  color: var(--color-button-primary-text, #FFFFFF);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  cursor: pointer;
   align-self: auto;
+}
+
+.selection-back:hover,
+.selection-back:active {
+  background: var(--color-button-primary-bg, #18181B);
+}
+
+.selection-back-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  overflow: hidden;
+}
+
+.selection-back-text {
+  flex-shrink: 0;
+  padding: 0 4px;
+  line-height: 18px;
+  letter-spacing: 0;
 }
 
 .selection-title {
@@ -1038,6 +1080,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   border: 1px solid #E4E4E7;
   border-radius: 4px;
   background: #FFFFFF;
+  color: var(--ved-text-primary, #18181B);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1056,7 +1099,8 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 
 .composer-icon-button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 1;
+  color: var(--ved-text-disabled, #A1A1AA);
 }
 
 .composer-send {
