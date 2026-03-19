@@ -15,6 +15,7 @@ body {
   --ved-font-family: "Roboto", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
   --ved-font-size-body: 13px;
   --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
+  --color-button-primary-bg: #18181B;
 }
 
 body {
