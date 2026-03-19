@@ -1278,7 +1278,7 @@ button {
 }
 
 button:hover {
-  background-color: #0D8CE0;
+  background-color: var(--ved-button-hover, #0D8CE0);
 }
 
 button.secondary-button:hover {
