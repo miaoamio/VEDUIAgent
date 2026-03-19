@@ -17,6 +17,7 @@ body {
   --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
   --ved-button-primary-bg: #18181B;
   --ved-button-primary-text: #FFFFFF;
+  --ved-button-hover: #F4F4F5;
   --ved-input-focus: #181818;
 }
 
