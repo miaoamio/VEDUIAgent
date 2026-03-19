@@ -1712,39 +1712,99 @@ button:disabled {
   box-shadow: 0 0 0 1px #e5e7eb;
 }
 
+.othertabs-group {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--color-button-hover-bg, #f4f4f5);
+  padding: 3px;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.othertabs-button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 12px;
+  line-height: 20px;
+  letter-spacing: 0.04px;
+  color: var(--color-text-secondary, #71717a);
+  font-family: var(--ved-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.othertabs-button:not(.active):hover {
+  background: transparent;
+  color: var(--color-text-primary, #18181b);
+}
+
+.othertabs-button.active {
+  background: var(--color-layout-bg, #ffffff);
+  box-shadow:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.0706),
+    0px 1px 1px 0px rgba(0, 0, 0, 0.051),
+    0px 0px 0px 1px var(--color-border-default, #e4e4e7);
+  color: var(--color-text-primary, #18181b);
+  font-weight: 500;
+}
+
 .align-group {
   display: inline-flex;
   width: 100%;
-  border-radius: 10px;
-  padding: 4px;
+  border-radius: 4px;
+  padding: 3px;
   box-sizing: border-box;
-  background: #f3f4f6;
-  gap: 4px;
+  background: var(--color-button-hover-bg, #f4f4f5);
+  gap: 2px;
 }
 
 .align-button {
   flex: 1;
-  height: 34px;
+  height: 22px;
   border: none;
   background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 .align-button svg path {
-  fill: #9ca3af;
+  fill: var(--color-icon-secondary, #71717a);
+}
+
+.align-button:not(.active):hover svg path {
+  fill: var(--color-icon-primary, #18181b);
+}
+
+.align-button:not(.active):hover {
+  background: transparent;
+  box-shadow: none;
 }
 
 .align-button.active {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px #e5e7eb;
+  background: var(--color-layout-bg, #ffffff);
+  box-shadow:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.0706),
+    0px 1px 1px 0px rgba(0, 0, 0, 0.051),
+    0px 0px 0px 1px var(--color-border-default, #e4e4e7);
+  border-radius: 4px;
 }
 
 .align-button.active svg path {
-  fill: #1664FF;
+  fill: var(--color-icon-primary, #18181b);
 }
 
 .switch-item {
@@ -1861,9 +1921,9 @@ button:disabled {
   align-self: auto;
 }
 
-.tab-button:hover {
-  background: rgba(0,0,0,0.05);
-  color: #333;
+.tab-button:not(.active):hover {
+  background: transparent;
+  color: var(--color-text-primary, #18181b);
 }
 
 .tab-button.active {

@@ -7586,6 +7586,8 @@ StepD:
             <SegmentedControl
               value={widthModeValue}
               onChange={(value) => updateParam('columnWidthMode', value)}
+              groupClassName="othertabs-group"
+              buttonClassName="othertabs-button"
               options={[
                 { value: 'FIXED', label: '固定' },
                 { value: 'HUG', label: '适应' },
