@@ -1328,31 +1328,14 @@ function App() {
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
-  const mockSelectionEnabled = React.useMemo(() => {
+  const mockSelectionKind = React.useMemo(() => {
     try {
-      return new URLSearchParams(window.location.search).get('mockSelection') === '1';
+      return new URLSearchParams(window.location.search).get('mockSelection');
     } catch {
-      return false;
+      return null;
     }
   }, []);
-
-  React.useEffect(() => {
-    if (!mockSelectionEnabled) return;
-    setActiveTab('selection');
-    setSelectionCount(1);
-    setCanvasHint('mixed');
-    setSelectedComponent({
-      componentId: 'figma-component',
-      params: { componentToken: 'library.navigation.header' },
-      nodeName: 'Mock Selection'
-    });
-  }, [
-    mockSelectionEnabled,
-    setActiveTab,
-    setSelectionCount,
-    setCanvasHint,
-    setSelectedComponent
-  ]);
+  const mockSelectionEnabled = mockSelectionKind === '1' || mockSelectionKind === 'form';
 
   React.useLayoutEffect(() => {
     const box = composerBoxRef.current;
@@ -1428,6 +1411,20 @@ function App() {
       uploadedImages.length > 0 ||
       uploadedTables.length > 0
   );
+
+  React.useEffect(() => {
+    if (!mockSelectionEnabled) return;
+    const kind = mockSelectionKind === 'form' ? 'form' : 'header';
+    const componentToken = kind === 'form' ? 'library.data-input.form' : 'library.navigation.header';
+    setActiveTab('selection');
+    setSelectionCount(1);
+    setCanvasHint(kind === 'form' ? 'form' : 'mixed');
+    setSelectedComponent({
+      componentId: 'figma-component',
+      params: { componentToken },
+      nodeName: kind === 'form' ? 'Form 表单' : 'Header 页头'
+    });
+  }, [mockSelectionEnabled, mockSelectionKind, setActiveTab, setSelectionCount, setCanvasHint, setSelectedComponent]);
 
   React.useEffect(() => {
     // Listen for messages from the plugin code
@@ -8519,26 +8516,28 @@ StepD:
 
   return (
     <div className={`container ${activeTab === 'selection' ? 'container-selection' : ''}`}>
-      <div className="tabs" style={{ display: 'none' }}>
-        <button 
-          className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chat')}
-        >
-          对话 & 编辑
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'selection' ? 'active' : ''}`}
-          onClick={() => setActiveTab('selection')}
-        >
-          选中属性
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'docs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('docs')}
-        >
-          组件库
-        </button>
-      </div>
+      {activeTab !== 'selection' && (
+        <div className="tabs">
+          <button 
+            className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveTab('chat')}
+          >
+            对话 & 编辑
+          </button>
+          <button
+            className="tab-button"
+            onClick={() => setActiveTab('selection')}
+          >
+            选中属性
+          </button>
+          <button 
+            className={`tab-button ${activeTab === 'docs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('docs')}
+          >
+            组件库
+          </button>
+        </div>
+      )}
 
       {activeTab === 'chat' ? (
         <div className="chat-layout">
