@@ -1328,6 +1328,25 @@ function App() {
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
+  const mockSelectionEnabled = React.useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mockSelection') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!mockSelectionEnabled) return;
+    setActiveTab('selection');
+    setSelectionCount(1);
+    setCanvasHint('mixed');
+    setSelectedComponent({
+      componentId: 'figma-component',
+      params: { componentToken: 'library.navigation.header' },
+      nodeName: 'Mock Selection'
+    });
+  }, [mockSelectionEnabled]);
 
   React.useLayoutEffect(() => {
     const box = composerBoxRef.current;
@@ -1407,7 +1426,9 @@ function App() {
   React.useEffect(() => {
     // Listen for messages from the plugin code
     window.onmessage = (event) => {
-      const { type, message, data } = event.data.pluginMessage;
+      const pluginMessage = event?.data?.pluginMessage;
+      if (!pluginMessage) return;
+      const { type, message, data } = pluginMessage;
       
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
@@ -8440,34 +8461,46 @@ StepD:
   const renderSelectionPage = () => {
     const hasSelection = Boolean(selectedComponent);
     const selectionTitle = getSelectionTitle();
+    const selectionTitleDisplay = selectionTitle
+      ? selectionTitle
+      : selectedComponent
+        ? String(selectedComponent.nodeName || selectedComponent.componentId || '').trim()
+        : '';
     return (
       <div className="selection-layout">
         <div className="selection-header">
-          <button
-            className="selection-back"
-            onClick={() => setActiveTab('chat')}
-          >
-            <span className="selection-back-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M11.1 11.3609C11.4113 11.6721 11.4113 12.1768 11.1 12.4881L10.5364 13.0517C10.2252 13.363 9.72047 13.363 9.4092 13.0517L4.90029 8.54279C4.74381 8.38632 4.666 8.18098 4.66684 7.9759C4.666 7.77082 4.74381 7.56548 4.90029 7.40901L9.4092 2.90009C9.72047 2.58882 10.2252 2.58882 10.5364 2.90009L11.1 3.46371C11.4113 3.77498 11.4113 4.27966 11.1 4.59094L7.71508 7.9759L11.1 11.3609Z"
-                  fill="currentColor"
-                />
-              </svg>
-            </span>
-            <span className="selection-back-text">返回对话模式</span>
-          </button>
+          <div className="selection-header-left">
+            <button
+              className="selection-back"
+              onClick={() => setActiveTab('chat')}
+            >
+              <span className="selection-back-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M11.1 11.3609C11.4113 11.6721 11.4113 12.1768 11.1 12.4881L10.5364 13.0517C10.2252 13.363 9.72047 13.363 9.4092 13.0517L4.90029 8.54279C4.74381 8.38632 4.666 8.18098 4.66684 7.9759C4.666 7.77082 4.74381 7.56548 4.90029 7.40901L9.4092 2.90009C9.72047 2.58882 10.2252 2.58882 10.5364 2.90009L11.1 3.46371C11.4113 3.77498 11.4113 4.27966 11.1 4.59094L7.71508 7.9759L11.1 11.3609Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span className="selection-back-text">返回对话模式</span>
+            </button>
+          </div>
           <div className="selection-title">选中内容属性</div>
         </div>
         <div className="selection-scroll">
           {hasSelection ? (
             <>
-              {selectionTitle && (
-                <div className="selection-label">当前选中：{selectionTitle}</div>
-              )}
-              {renderSelectionEditor()}
+              <div className="selection-panel-group">
+                <div className="selection-current">
+                  <span className="selection-current-label">当前选中</span>
+                  <span className="chat-selection-tag">
+                    <span className="chat-selection-tag-text">{selectionTitleDisplay}</span>
+                  </span>
+                </div>
+                {renderSelectionEditor()}
+              </div>
             </>
           ) : (
             <div className="selection-empty">未选中任何内容</div>
@@ -8479,7 +8512,7 @@ StepD:
 
 
   return (
-    <div className="container">
+    <div className={`container ${activeTab === 'selection' ? 'container-selection' : ''}`}>
       <div className="tabs" style={{ display: 'none' }}>
         <button 
           className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
