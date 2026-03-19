@@ -1424,7 +1424,7 @@ function App() {
       params: { componentToken },
       nodeName: kind === 'form' ? 'Form 表单' : 'Header 页头'
     });
-  }, [mockSelectionEnabled, mockSelectionKind, setActiveTab, setSelectionCount, setCanvasHint, setSelectedComponent]);
+  }, [mockSelectionEnabled, mockSelectionKind]);
 
   React.useEffect(() => {
     // Listen for messages from the plugin code
