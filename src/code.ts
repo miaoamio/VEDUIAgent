@@ -8512,41 +8512,164 @@ function resolveAppendParent(parentId?: string): BaseNode | null {
   return parentNode;
 }
 
+function formatYValue(val: number): string {
+  if (Math.abs(val) >= 1000000000) {
+    return (val / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+  }
+  if (Math.abs(val) >= 1000000) {
+    return (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (Math.abs(val) >= 10000) {
+    return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  }
+  return Math.round(val).toString();
+}
+
 async function drawAiChart(data: any, options: any) {
-  await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-  await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+  // Validate input
+  if (!data || !data.datasets) {
+    console.error("Invalid data provided");
+    figma.notify("Invalid data");
+    return;
+  }
 
-  const frame = figma.createFrame();
-  frame.name = 'AI Chart';
-  frame.layoutMode = 'VERTICAL';
-  frame.primaryAxisSizingMode = 'AUTO';
-  frame.counterAxisSizingMode = 'AUTO';
-  frame.paddingLeft = 16;
-  frame.paddingRight = 16;
-  frame.paddingTop = 16;
-  frame.paddingBottom = 16;
-  frame.itemSpacing = 16;
-  frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-  frame.cornerRadius = 8;
-  frame.effects = [{
-    type: 'DROP_SHADOW',
-    color: { r: 0, g: 0, b: 0, a: 0.1 },
-    offset: { x: 0, y: 2 },
-    radius: 10,
-    visible: true,
-    blendMode: 'NORMAL'
-  }];
+  // Load fonts - Critical Step
+  try {
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+  } catch (e) {
+    console.error("Failed to load Inter font", e);
+    figma.notify("Failed to load standard fonts");
+    return;
+  }
+  
+  // Load PingFang SC Medium for Title (Optional)
+  try {
+    await figma.loadFontAsync({ family: "PingFang SC", style: "Medium" });
+  } catch (e) {
+    console.log("PingFang SC Medium not available, falling back");
+  }
+  try {
+    await figma.loadFontAsync({ family: "PingFang SC", style: "Regular" });
+  } catch (e) {
+    console.log("PingFang SC Regular not available, falling back");
+  }
 
-  const chartArea = figma.createFrame();
-	  chartArea.name = 'Chart Area';
-	  chartArea.resize(600, 300);
-	  chartArea.layoutMode = 'NONE';
-	  chartArea.fills = [];
-	  chartArea.clipsContent = false;
-	  frame.appendChild(chartArea);
+  let frame: FrameNode;
+  let width = 600;
+  let height = 300;
+  let useSelection = false;
 
+  // Check selection - support RECTANGLE, FRAME, GROUP
+  if (figma.currentPage.selection.length > 0) {
+    const node = figma.currentPage.selection[0];
+    if (node.type === 'RECTANGLE' || node.type === 'FRAME' || node.type === 'GROUP') {
+      useSelection = true;
+      width = node.width;
+      height = node.height;
+      
+      if (node.type === 'FRAME') {
+        frame = node;
+        frame.clipsContent = false; // Ensure existing frame doesn't clip labels
+        const existing = node.findChild((n: SceneNode) => n.name === "AI Chart Container");
+        if (existing) existing.remove();
+      } else {
+        frame = figma.createFrame();
+        frame.x = node.x;
+        frame.y = node.y;
+        frame.resize(width, height);
+        frame.name = "AI Chart";
+        
+        if (node.type === 'RECTANGLE' && node.fills) {
+          frame.fills = node.fills;
+        } else {
+          frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+        }
+        
+        const parent = node.parent;
+        if (parent) {
+          parent.insertChild(parent.children.indexOf(node) + 1, frame);
+        }
+      }
+    }
+  }
+
+  if (!frame) {
+    frame = figma.createFrame();
+    frame.name = "AI Chart";
+    frame.resize(600, 300);
+    frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    frame.cornerRadius = 8;
+    frame.clipsContent = false; // Prevent clipping of labels
+    frame.effects = [{
+      type: "DROP_SHADOW",
+      color: { r: 0, g: 0, b: 0, a: 0.1 },
+      offset: { x: 0, y: 2 },
+      radius: 10,
+      visible: true,
+      blendMode: "NORMAL"
+    }];
+  }
+
+  // Create AI Chart Container inside the frame
+  const chartContainer = figma.createFrame();
+  chartContainer.name = "AI Chart Container";
+  chartContainer.layoutMode = "VERTICAL";
+  chartContainer.primaryAxisSizingMode = "AUTO"; 
+  chartContainer.clipsContent = false; // Prevent clipping
+  
+  // Set Padding on Chart Container to ensure internal spacing
+  chartContainer.paddingLeft = 16;
+  chartContainer.paddingRight = 16;
+  chartContainer.paddingTop = 16;
+  chartContainer.paddingBottom = 16;
+
+  // If frame is AutoLayout:
+  if (frame.layoutMode !== "NONE") {
+    chartContainer.layoutAlign = "STRETCH";
+    chartContainer.layoutGrow = 1;
+  } else {
+    // Frame is FIXED/NONE. Use Constraints.
+    chartContainer.resize(frame.width, frame.height); // Fill completely
+    chartContainer.x = 0;
+    chartContainer.y = 0;
+    chartContainer.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
+  }
+  
+  chartContainer.fills = [];
+  chartContainer.itemSpacing = 8; // Default spacing between items
+  frame.appendChild(chartContainer);
+
+  // 1. Title
+  if (options.title && options.title.length > 0) {
+    const titleLabel = figma.createText();
+    titleLabel.characters = options.title;
+    titleLabel.fontSize = 14;
+    try {
+      titleLabel.fontName = { family: "PingFang SC", style: "Medium" };
+    } catch (e) {
+      titleLabel.fontName = { family: "Inter", style: "Bold" };
+    }
+    titleLabel.fills = [{ type: 'SOLID', color: hexToRgb('#0C0D0E') }];
+    chartContainer.appendChild(titleLabel);
+  }
+
+  // 2. Chart Body (Holds Plot and Axes)
+  const chartBody = figma.createFrame();
+  chartBody.name = "Chart Body";
+  chartBody.layoutMode = "VERTICAL"; // AutoLayout Vertical
+  chartBody.primaryAxisSizingMode = "AUTO"; // Allow it to grow/shrink
+  chartBody.counterAxisSizingMode = "AUTO"; // Fill width
+  chartBody.fills = [];
+  chartBody.layoutAlign = "STRETCH"; // Fill Width
+  chartBody.layoutGrow = 1; // Fill Remaining Height
+  chartBody.clipsContent = false; // Prevent clipping
+  chartContainer.appendChild(chartBody);
+  
+  // Calculate Data Range
   let maxVal = -Infinity;
   let minVal = Infinity;
+  
   data.datasets.forEach((ds: any) => {
     ds.data.forEach((v: number) => {
       if (v > maxVal) maxVal = v;
@@ -8554,138 +8677,392 @@ async function drawAiChart(data: any, options: any) {
     });
   });
 
-  const niceMax = Math.ceil(maxVal / 10) * 10;
-  const niceMin = Math.floor(minVal / 10) * 10;
+  if (maxVal === -Infinity) maxVal = 100;
+  if (minVal === Infinity) minVal = 0;
+
+  let niceMax = Math.ceil(maxVal / 10) * 10;
+  let niceMin = Math.floor(minVal / 10) * 10;
+  
+  if (niceMax === niceMin) {
+    niceMax += 10;
+    niceMin -= 10;
+  }
+  
+  if (minVal >= 0) niceMin = 0;
+  
+  // Adaptive Grid Steps
+  const showLegend = data.datasets.length > 0; 
+  const legendHeight = showLegend ? 20 : 0;
+  const hasTitle = options.title && options.title.length > 0;
+  const estimatedHeight = (height - 32) - (hasTitle ? 30 : 0) - (legendHeight > 0 ? (legendHeight + 8) : 0);
+  
+  // Adaptive Grid Steps
+  const targetIntervalHeight = 30;
+  let gridSteps = Math.max(2, Math.floor(estimatedHeight / targetIntervalHeight));
+  
+  let roughInterval = (niceMax - niceMin) / gridSteps;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughInterval)));
+  const normalized = roughInterval / magnitude;
+  
+  let niceInterval: number;
+  if (normalized < 1.5) niceInterval = 1 * magnitude;
+  else if (normalized < 3) niceInterval = 2 * magnitude; 
+  else if (normalized < 7) niceInterval = 5 * magnitude;
+  else niceInterval = 10 * magnitude;
+  
+  niceMin = Math.floor(niceMin / niceInterval) * niceInterval;
+  niceMax = Math.ceil(niceMax / niceInterval) * niceInterval;
+  
+  if (niceMax === niceMin) niceMax += niceInterval;
+  
+  gridSteps = Math.round((niceMax - niceMin) / niceInterval);
+  
   const range = niceMax - niceMin;
 
-  const width = 600;
-  const height = 300;
-  const padding = 16;
-  const graphWidth = width - padding * 2;
-  const graphHeight = height - padding * 2;
-
-  const gridSteps = 5;
+  // Calculate Layout Dimensions
+  const tempText = figma.createText();
+  tempText.fontSize = 10;
+  tempText.fontName = { family: "Inter", style: "Regular" }; 
+  tempText.visible = false;
+  chartContainer.appendChild(tempText); 
+  
+  let maxLabelW = 0;
   for (let i = 0; i <= gridSteps; i++) {
-    const value = niceMin + (range * i) / gridSteps;
-    const y = height - padding - (i / gridSteps) * graphHeight;
+    const val = niceMin + (range * i) / gridSteps;
+    let txt = formatYValue(val);
+    if (options.unit) txt += options.unit;
+    tempText.characters = txt;
+    if (tempText.width > maxLabelW) maxLabelW = tempText.width;
+  }
+  tempText.remove();
+  
+  const plotX = maxLabelW + 4; // Exact width + 4px gap
+  const rightMargin = 0; 
+  const xAxisHeight = 16; 
+  const topSpacerHeight = hasTitle ? 6 : 0;
 
-    const line = figma.createLine();
-    line.resize(graphWidth, 0);
-    line.x = padding;
-    line.y = y;
-    line.strokes = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }];
-    line.strokeCap = 'ROUND';
-    line.dashPattern = [4, 4];
-    chartArea.appendChild(line);
-
-    const label = figma.createText();
-    label.characters = Math.round(value).toString();
-    label.fontSize = 10;
-    label.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
-    label.x = 0;
-    label.y = y - 6;
-    label.resize(padding - 8, 12);
-    label.textAlignHorizontal = 'RIGHT';
-    chartArea.appendChild(label);
+  // Top Spacer
+  if (topSpacerHeight > 0) {
+    const topSpacer = figma.createFrame();
+    topSpacer.name = "Top Spacer";
+    topSpacer.resize(1, topSpacerHeight);
+    topSpacer.layoutMode = "NONE";
+    topSpacer.layoutAlign = "STRETCH";
+    topSpacer.fills = [];
+    chartBody.appendChild(topSpacer);
   }
 
-  const stepX = graphWidth / (data.labels.length - 1);
-  data.labels.forEach((text: string, i: number) => {
-    const x = padding + i * stepX;
-    const label = figma.createText();
-    label.characters = text;
-    label.fontSize = 10;
-    label.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
-    label.x = x - 20;
-    label.y = height - padding + 8;
-    label.resize(40, 12);
-    label.textAlignHorizontal = 'CENTER';
-    chartArea.appendChild(label);
-  });
+  // Plot Frame
+  const plotFrame = figma.createFrame();
+  plotFrame.name = "Plot Frame";
+  plotFrame.layoutMode = "HORIZONTAL"; 
+  plotFrame.itemSpacing = 0;
+  plotFrame.fills = [];
+  plotFrame.clipsContent = false;
+  
+  const currentBodyW = width - 32;
+  const chartBodyH = estimatedHeight; 
+  const plotH = Math.max(10, chartBodyH - xAxisHeight - topSpacerHeight);
+  const fullPlotW = currentBodyW;
+  
+  plotFrame.resize(fullPlotW, plotH);
+  chartBody.appendChild(plotFrame);
 
+  // Y-Axis Frame
+  const yAxisFrame = figma.createFrame();
+  yAxisFrame.name = "Y Axis Labels";
+  yAxisFrame.layoutMode = "NONE";
+  yAxisFrame.resize(plotX, plotH);
+  yAxisFrame.layoutSizingHorizontal = "FIXED";
+  yAxisFrame.layoutAlign = "STRETCH"; 
+  yAxisFrame.fills = [];
+  yAxisFrame.clipsContent = false;
+  plotFrame.appendChild(yAxisFrame);
+
+  // Data Frame
+  const dataFrame = figma.createFrame();
+  dataFrame.name = "Data Area";
+  dataFrame.layoutMode = "NONE";
+  const drawW = Math.max(0.01, fullPlotW - plotX - rightMargin);
+  dataFrame.resize(drawW, plotH); 
+  dataFrame.layoutGrow = 1; 
+  dataFrame.layoutAlign = "STRETCH"; 
+  dataFrame.fills = [];
+  dataFrame.clipsContent = false;
+  plotFrame.appendChild(dataFrame);
+
+  // Draw Grid & Y-Axis Labels
+  const labelColor = hexToRgb('#737A87');
+  const labelFontSize = 10;
+  
+  for (let i = 0; i <= gridSteps; i++) {
+    const value = niceMin + (range * i) / gridSteps;
+    const normalizedY = (i / gridSteps); 
+    const y = plotH - normalizedY * plotH;
+
+    // Grid Line
+    const line = figma.createLine();
+    line.resize(drawW, 0);
+    line.x = 0;
+    line.y = y;
+    
+    if (i === 0) {
+      line.strokes = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }]; 
+      line.strokeCap = "ROUND";
+    } else {
+      line.strokes = [{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9 } }];
+      line.strokeCap = "ROUND";
+      line.dashPattern = [2, 2];
+    }
+    
+    line.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    dataFrame.appendChild(line);
+
+    // Label
+    const label = figma.createText();
+    let labelText = formatYValue(value);
+    if (options.unit) labelText += options.unit;
+    
+    label.characters = labelText;
+    label.fontSize = labelFontSize;
+    label.fills = [{ type: 'SOLID', color: labelColor }];
+    
+    label.textAutoResize = "WIDTH_AND_HEIGHT"; 
+    const naturalWidth = label.width;
+    label.textAutoResize = "NONE";
+    label.resize(naturalWidth, 12); 
+    label.textAlignVertical = "CENTER";
+    label.textAlignHorizontal = "RIGHT";
+    label.x = plotX - naturalWidth - 4;
+    label.y = y - 6; 
+    
+    label.constraints = { horizontal: "MAX", vertical: "SCALE" }; 
+    yAxisFrame.appendChild(label);
+  }
+
+  // X-Axis Frame
+  const xAxisFrame = figma.createFrame();
+  xAxisFrame.name = "X Axis";
+  xAxisFrame.layoutMode = "HORIZONTAL"; 
+  xAxisFrame.itemSpacing = 0;
+  xAxisFrame.primaryAxisSizingMode = "FIXED"; 
+  xAxisFrame.counterAxisSizingMode = "FIXED"; 
+  xAxisFrame.resize(fullPlotW, xAxisHeight); 
+  xAxisFrame.layoutAlign = "STRETCH"; 
+  xAxisFrame.fills = [];
+  xAxisFrame.clipsContent = false;
+  chartBody.appendChild(xAxisFrame);
+
+  // X Spacer
+  const xSpacer = figma.createFrame();
+  xSpacer.name = "Spacer";
+  xSpacer.layoutMode = "NONE";
+  xSpacer.resize(plotX, xAxisHeight);
+  xSpacer.layoutSizingHorizontal = "FIXED";
+  xSpacer.layoutAlign = "STRETCH"; 
+  xSpacer.fills = [];
+  xAxisFrame.appendChild(xSpacer);
+
+  // X Labels Container
+  const xLabelsContainer = figma.createFrame();
+  xLabelsContainer.name = "Labels Container";
+  xLabelsContainer.layoutMode = "NONE";
+  xLabelsContainer.resize(drawW, xAxisHeight);
+  xLabelsContainer.layoutGrow = 1; 
+  xLabelsContainer.layoutAlign = "STRETCH"; 
+  xLabelsContainer.fills = [];
+  xLabelsContainer.clipsContent = false;
+  xAxisFrame.appendChild(xLabelsContainer);
+
+  const count = data.labels.length;
+  const stepX = drawW / (count - 1);
+
+  // Draw X-Axis Labels (Aligned with PlotFrame structure)
+  const showXLabels = true; 
+  if (showXLabels) {
+    // 1. Measure all labels
+    const labelWidths: number[] = [];
+    const tempText = figma.createText();
+    tempText.fontSize = labelFontSize; 
+    try {
+      tempText.fontName = { family: "Inter", style: "Regular" };
+    } catch(e) {}
+    
+    data.labels.forEach((l: string) => {
+      tempText.characters = l;
+      labelWidths.push(tempText.width);
+    });
+    tempText.remove(); 
+    
+    // 2. Find best number of labels to show
+    const isCategorical = false;
+    
+    const rotateLabels = false;
+    let finalIndices: number[] = [];
+    let finalMaxLabelW = drawW;
+    
+    // Combined Loop Strategy - Optimized for Density & Uniformity
+    const minGap = 12; 
+    finalIndices = [0, count - 1]; 
+    finalMaxLabelW = drawW;
+    
+    let bestS = -1;
+    let bestMaxW = 0;
+    
+    // Calculate Max Label Width from data
+    let maxLW = 0;
+    if (labelWidths && labelWidths.length > 0) {
+      maxLW = Math.max(...labelWidths);
+    }
+    
+    // Iterate all possible steps to find the smallest s (most labels)
+    for (let s = 1; s < count; s++) {
+      const currentStepX = stepX * s;
+      const limitW = (currentStepX - minGap);
+      
+      // 1. Strict Width Constraint (36px)
+      if (limitW < 36) continue;
+      
+      // 2. Check against actual label width to avoid overlap (with 20% tolerance)
+      if (maxLW > 0 && limitW < maxLW * 0.8) continue; 
+      
+      // Found the smallest valid s (since we iterate up)
+      bestS = s;
+      bestMaxW = limitW;
+      break; 
+    }
+    
+    // Fallback if nothing fits
+    if (bestS === -1) {
+      // Force a step that gives ~40px
+      const safeStep = Math.ceil(40 / stepX);
+      bestS = Math.max(1, safeStep);
+      bestMaxW = stepX * bestS - minGap;
+    }
+    
+    if (bestS !== -1) {
+      const indices: number[] = [];
+      for (let i = 0; i < count; i += bestS) {
+        indices.push(i);
+      }
+      // Do NOT force last index to ensure strict spatial uniformity
+      finalIndices = indices;
+      finalMaxLabelW = bestMaxW;
+    } else {
+      finalIndices = [0, count - 1];
+      finalMaxLabelW = Math.max(1, (drawW - minGap) / 2);
+    }
+
+    // Render Labels
+    finalIndices.forEach((i: number, index: number) => {
+      const text = data.labels[i];
+      const isLast = index === finalIndices.length - 1;
+      const isFirst = index === 0;
+      
+      const x = i * stepX; 
+      
+      const label = figma.createText();
+      label.characters = text;
+      label.fontSize = labelFontSize;
+      label.fills = [{ type: 'SOLID', color: labelColor }];
+      
+      // Enable Truncation - Use NONE (Fixed Size) to support single-line truncation
+      label.textAutoResize = "NONE"; 
+      
+      // Attempt to set truncation safely
+      try {
+        (label as any).textTruncation = "ENDING"; // Ends with ...
+      } catch (e) {
+        // Fallback for older Figma API versions or if property is not supported
+      }
+      
+      if (rotateLabels) {
+        // Rotated Logic - not used in default mode
+      } else {
+        // Standard Horizontal Logic
+        if (isFirst) {
+          label.textAlignHorizontal = "LEFT";
+          label.x = x; 
+        } else if (isLast) {
+          // Cancel right alignment for last label, use CENTER like middle labels
+          label.textAlignHorizontal = "CENTER";
+          label.x = x - (finalMaxLabelW / 2);
+        } else {
+          label.textAlignHorizontal = "CENTER";
+          label.x = x - (finalMaxLabelW / 2);
+        }
+        label.y = 0; 
+        
+        // Set width to strict limit to ensure no collision
+        if (finalMaxLabelW > 0.01) {
+          label.resize(finalMaxLabelW, label.height); 
+        } else {
+          label.resize(0.01, label.height);
+        }
+      }
+      
+      label.constraints = { horizontal: "SCALE", vertical: "MIN" };
+      
+      xLabelsContainer.appendChild(label);
+    });
+  }
+
+  // Draw Lines
   data.datasets.forEach((ds: any) => {
     const pathData = ds.data.map((val: number, i: number) => {
-      const x = padding + i * stepX;
-      const y = height - padding - ((val - niceMin) / (range || 1)) * graphHeight;
+      const x = i * stepX;
+      const normalizedY = (val - niceMin) / (range || 1);
+      const y = plotH - normalizedY * plotH;
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
 
     const vector = figma.createVector();
     vector.vectorPaths = [{
-      windingRule: 'NONZERO',
+      windingRule: "NONZERO",
       data: pathData
     }];
     const rgb = hexToRgb(ds.color);
     vector.strokes = [{ type: 'SOLID', color: rgb }];
     vector.strokeWeight = 2;
-    vector.strokeJoin = 'ROUND';
-    vector.strokeCap = 'ROUND';
-    chartArea.appendChild(vector);
+    vector.strokeJoin = "ROUND";
+    vector.strokeCap = "ROUND";
+    vector.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    dataFrame.appendChild(vector);
+  });
 
-    ds.data.forEach((val: number, i: number) => {
-      const x = padding + i * stepX;
-      const y = height - padding - ((val - niceMin) / (range || 1)) * graphHeight;
-      const dot = figma.createEllipse();
-      dot.resize(6, 6);
-      dot.x = x - 3;
-      dot.y = y - 3;
-      dot.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-      dot.strokes = [{ type: 'SOLID', color: rgb }];
-      dot.strokeWeight = 2;
-      chartArea.appendChild(dot);
+  // Legend Area
+  if (showLegend) {
+    const legendFrame = figma.createFrame();
+    legendFrame.layoutMode = "HORIZONTAL";
+    legendFrame.counterAxisSizingMode = "AUTO";
+    legendFrame.itemSpacing = 16;
+    legendFrame.fills = [];
+    
+    data.datasets.forEach((ds: any, i: number) => {
+      const item = figma.createFrame();
+      item.layoutMode = "HORIZONTAL";
+      item.counterAxisSizingMode = "AUTO";
+      item.itemSpacing = 8;
+      item.fills = [];
+      item.verticalPadding = 4;
+      item.horizontalPadding = 4;
+
+      const rect = figma.createRectangle();
+      rect.resize(12, 12);
+      rect.cornerRadius = 2;
+      rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
+      item.appendChild(rect);
+
+      const label = figma.createText();
+      label.characters = ds.name || `Series ${i+1}`;
+      label.fontSize = 12;
+      label.fills = [{ type: 'SOLID', color: labelColor }];
+      item.appendChild(label);
+
+      legendFrame.appendChild(item);
     });
-  });
-
-  if (options.type === 'threshold') {
-    const thresholdY = height - padding - 0.8 * graphHeight;
-    const line = figma.createLine();
-    line.resize(graphWidth, 0);
-    line.x = padding;
-    line.y = thresholdY;
-    line.strokes = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }];
-    line.dashPattern = [4, 4];
-    chartArea.appendChild(line);
-
-    const label = figma.createText();
-    label.characters = 'Threshold';
-    label.fontSize = 10;
-    label.fills = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }];
-    label.x = width - padding + 4;
-    label.y = thresholdY - 6;
-    chartArea.appendChild(label);
+    chartContainer.appendChild(legendFrame);
   }
-
-  const legendFrame = figma.createFrame();
-	  legendFrame.layoutMode = 'HORIZONTAL';
-	  legendFrame.counterAxisSizingMode = 'AUTO';
-	  legendFrame.itemSpacing = 16;
-	  legendFrame.fills = [];
-	  legendFrame.clipsContent = false;
-
-  data.datasets.forEach((ds: any, i: number) => {
-    const item = figma.createFrame();
-    item.layoutMode = 'HORIZONTAL';
-	    item.counterAxisSizingMode = 'AUTO';
-	    item.itemSpacing = 8;
-	    item.fills = [];
-	    item.clipsContent = false;
-	    item.verticalPadding = 4;
-	    item.horizontalPadding = 4;
-
-    const rect = figma.createRectangle();
-    rect.resize(12, 12);
-    rect.cornerRadius = 2;
-    rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
-    item.appendChild(rect);
-
-    const label = figma.createText();
-    label.characters = `Series ${i + 1}`;
-    label.fontSize = 12;
-    item.appendChild(label);
-
-    legendFrame.appendChild(item);
-  });
-  frame.appendChild(legendFrame);
 
   figma.currentPage.selection = [frame];
   figma.viewport.scrollAndZoomIntoView([frame]);
