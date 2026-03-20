@@ -1328,6 +1328,13 @@ function App() {
   const [selectionCount, setSelectionCount] = React.useState(0);
   const [canvasHint, setCanvasHint] = React.useState<'table' | 'form' | 'chart' | 'mixed'>('mixed');
   const llmAbortRef = React.useRef<AbortController | null>(null);
+  const mockSelectionEnabled = React.useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mockSelection') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
 
   React.useLayoutEffect(() => {
     const box = composerBoxRef.current;
@@ -1386,6 +1393,8 @@ function App() {
     childComponentId?: string; // For columns, this stores the type of cells inside
     nodeName?: string;
   } | null>(null);
+  const [selectionVersion, setSelectionVersion] = React.useState(0);
+  const [formFieldTextMode, setFormFieldTextMode] = React.useState<'value' | 'placeholder'>('placeholder');
 
   // Tab state
   const [activeTab, setActiveTab] = React.useState<'chat' | 'docs' | 'selection'>('chat');
@@ -1396,6 +1405,25 @@ function App() {
   const [componentInspectJson, setComponentInspectJson] = React.useState('');
   const [figmaComponentPropsCache, setFigmaComponentPropsCache] = React.useState<Record<string, any>>({});
   const figmaComponentPropsLoadingRef = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    if (!mockSelectionEnabled) return;
+    setActiveTab('selection');
+    setSelectionCount(1);
+    setCanvasHint('mixed');
+    setSelectedComponent({
+      componentId: 'figma-component',
+      params: { componentToken: 'library.navigation.header' },
+      nodeName: 'Mock Selection'
+    });
+  }, [
+    mockSelectionEnabled,
+    setActiveTab,
+    setSelectionCount,
+    setCanvasHint,
+    setSelectedComponent
+  ]);
+
   const userSummary = buildUserSummary(userInput, uploadedImages, uploadedTables);
   const canSend = Boolean(
     userInput.trim() ||
@@ -1410,6 +1438,9 @@ function App() {
       const pluginMessage = event?.data?.pluginMessage;
       if (!pluginMessage || typeof pluginMessage !== 'object') return;
       const { type, message, data } = pluginMessage as any;
+      // #region debug-point A:ui-onmessage
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"A",location:"App.tsx:1436",msg:"[DEBUG] ui onmessage",data:{type,message,hasData:typeof data !== 'undefined'}})}).catch(()=>{});
+      // #endregion
       
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
@@ -1423,6 +1454,7 @@ function App() {
         setActiveTab('selection');
         if (data.componentId) {
           setSelectedComponent(data);
+          setSelectionVersion((prev) => prev + 1);
         }
         setChartOverlayOpen(Boolean(data?.componentId && data.componentId.startsWith('chart')));
       }
@@ -1444,6 +1476,22 @@ function App() {
       }
     };
   }, [activeTab]);
+
+  React.useEffect(() => {
+    if (!selectedComponent || selectedComponent.componentId !== 'form-field') return;
+    const params = selectedComponent.params || {};
+    const hasValue = String(params.value ?? '').trim().length > 0;
+    const hasPlaceholder = String(params.placeholder ?? '').trim().length > 0;
+    if (hasValue) {
+      setFormFieldTextMode('value');
+      return;
+    }
+    if (hasPlaceholder) {
+      setFormFieldTextMode('placeholder');
+      return;
+    }
+    setFormFieldTextMode('placeholder');
+  }, [selectionVersion, selectedComponent?.params?.controlType]);
 
   const resolveFigmaComponentPropsCacheKey = (token: string, componentKey: string) => {
     const normalizedToken = String(token || '').trim();
@@ -5034,6 +5082,9 @@ StepD:
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         const { type, nodeId, message } = data;
+        // #region debug-point B:create-component-recv
+        fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:5069",msg:"[DEBUG] create-component recv",data:{type,hasNodeId:Boolean(nodeId),hasMessage:Boolean(message)}})}).catch(()=>{});
+        // #endregion
         if (type === 'create-success') {
           window.removeEventListener('message', handler);
           abortSignal?.removeEventListener('abort', onAbort);
@@ -5065,6 +5116,9 @@ StepD:
           parentId: parentIdVal
         }
       }, '*');
+      // #region debug-point B:create-component-send
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:5096",msg:"[DEBUG] create-component send",data:{hasParentId:Boolean(parentIdVal)}})}).catch(()=>{});
+      // #endregion
     });
   };
 
@@ -5077,6 +5131,9 @@ StepD:
       const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
+        // #region debug-point C:apply-envelope-recv
+        fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:5113",msg:"[DEBUG] apply-envelope recv",data:{type:data.type,hasResult:typeof data.result !== 'undefined',hasMessage:Boolean(data.message)}})}).catch(()=>{});
+        // #endregion
         if (data.type === 'apply-result') {
           window.removeEventListener('message', handler);
           abortSignal?.removeEventListener('abort', onAbort);
@@ -5109,6 +5166,9 @@ StepD:
           parentId
         }
       }, '*');
+      // #region debug-point C:apply-envelope-send
+      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:5139",msg:"[DEBUG] apply-envelope send",data:{mode:applyMode,hasParentId:Boolean(parentId)}})}).catch(()=>{});
+      // #endregion
     });
   };
 
@@ -7391,6 +7451,14 @@ StepD:
           {(() => {
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             const isFormField = def.id === 'form-field';
+            const formFieldControlType = isFormField ? normalizeFormControlType(effectiveParams.controlType) : '';
+            const useMergedFormFieldText =
+              isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select');
+            const formFieldTextValue = useMergedFormFieldText
+              ? formFieldTextMode === 'value'
+                ? String(effectiveParams.value ?? '')
+                : String(effectiveParams.placeholder ?? '')
+              : '';
             const formFieldHiddenKeys = new Set([
               'label',
               'helpText',
@@ -7407,6 +7475,7 @@ StepD:
               const paramDef = def.params[key];
               if (!isParamEditable(def, key, paramDef)) return false;
               if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
+              if (isFormField && useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
               if (isFormField && formFieldHiddenKeys.has(key)) return false;
               if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
               if (def.id === 'figma-component' && ['componentToken', 'componentKey', 'fallbackName', 'width', 'height'].includes(key)) {
@@ -7425,9 +7494,43 @@ StepD:
                   ]
                 : paramKeys;
             const { mainRows, switchRows } = buildParamControlRows(def, orderedParamKeys, selectedComponent.params || {});
+            const primaryFormFieldKeyCount = isFormField
+              ? ['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)).length
+              : 0;
+            const formFieldTextControl = useMergedFormFieldText ? (
+              <FieldRow key="form-field-text" label="填写文字">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <SegmentedControl
+                    value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
+                    onChange={(next) => setFormFieldTextMode(next === 'value' ? 'value' : 'placeholder')}
+                    options={[
+                      { value: 'value', label: '已填写' },
+                      { value: 'placeholder', label: '占位文字' }
+                    ]}
+                  />
+                  <TextInputControl
+                    value={formFieldTextValue}
+                    onChange={(next) => {
+                      if (formFieldTextMode === 'value') {
+                        updateParam('value', next);
+                      } else {
+                        updateParam('placeholder', next);
+                      }
+                    }}
+                  />
+                </div>
+              </FieldRow>
+            ) : null;
+            const mainRowsWithFormFieldText = useMergedFormFieldText && formFieldTextControl
+              ? [
+                  ...mainRows.slice(0, primaryFormFieldKeyCount),
+                  formFieldTextControl,
+                  ...mainRows.slice(primaryFormFieldKeyCount)
+                ]
+              : mainRows;
             return (
               <>
-                {mainRows}
+                {mainRowsWithFormFieldText}
                 {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
               </>
             );

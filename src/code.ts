@@ -3886,7 +3886,6 @@ function resolveFormLabelWidthVariantLabel(params: Record<string, any>): 'Fill �
 function normalizeFormFieldControlType(controlType: unknown): string {
     const normalized = String(controlType || '').trim().toLowerCase();
     if (!normalized) return 'input';
-    if (normalized.includes('select') || normalized.includes('选择')) return 'select';
     if (normalized.includes('checkbox') || normalized.includes('多选')) return 'checkbox-group';
     if (normalized.includes('radio') || normalized.includes('单选')) return 'radio-group';
     if (normalized.includes('datepicker') || normalized.includes('日期')) return 'datepicker';
@@ -3895,6 +3894,7 @@ function normalizeFormFieldControlType(controlType: unknown): string {
     if (normalized.includes('switch') || normalized.includes('开关')) return 'switch';
     if (normalized.includes('textarea') || normalized.includes('多行')) return 'textarea';
     if (normalized.includes('timepicker') || normalized.includes('时间')) return 'timepicker';
+    if (normalized.includes('select') || normalized.includes('选择')) return 'select';
     if (normalized.includes('upload') || normalized.includes('上传')) return 'upload';
     if (normalized.includes('button') || normalized.includes('按钮')) return 'button';
     if (normalized.includes('figma-component') || normalized.includes('figma')) return 'figma-component';
@@ -4227,7 +4227,31 @@ async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Re
     if (controlType === 'radio-group') {
         return await updateRadioGroupControlTemplateInPlace(existingControlNode, params);
     }
-    return true;
+    return false;
+}
+
+function shouldUseChildControlInstance(
+    instance: ComponentInstance,
+    params: Record<string, any>
+): boolean {
+    if (!Array.isArray(instance.children) || instance.children.length === 0) return false;
+    const child = instance.children[0];
+    if (!child) return false;
+    const controlType = normalizeFormFieldControlType(params.controlType);
+    if (controlType === 'input') return child.componentId === 'input';
+    if (controlType === 'select') return child.componentId === 'select';
+    if (controlType === 'checkbox-group') return child.componentId === 'checkbox-group';
+    if (controlType === 'radio-group') return child.componentId === 'radio-group';
+    if (controlType === 'button') return child.componentId === 'button';
+    if (controlType === 'text') return child.componentId === 'text';
+    if (controlType === 'figma-component') {
+        const token = String(params.componentToken || '').trim();
+        const key = String(params.componentKey || '').trim();
+        const criteria = String(params.variantCriteria || '').trim();
+        if (token || key || criteria) return false;
+        return child.componentId === 'figma-component';
+    }
+    return false;
 }
 
 async function replaceFormFieldControlTemplate(
@@ -4243,14 +4267,17 @@ async function replaceFormFieldControlTemplate(
     ) || contentContainer.children.find(isLikelyFormFieldControlNode);
     if (!existingControlNode) return;
 
+    const controlType = normalizeFormFieldControlType(params.controlType);
     const nextControlWidth =
-        toPositiveNumber(params.controlWidth) ??
-        toPositiveNumber(params.width) ??
-        Math.round(existingControlNode.width);
+        controlType === 'switch'
+            ? undefined
+            : toPositiveNumber(params.controlWidth) ??
+              toPositiveNumber(params.width) ??
+              Math.round(existingControlNode.width);
 
     const controlInstance =
-        instance.children && instance.children.length > 0
-            ? instance.children[0]
+        shouldUseChildControlInstance(instance, params)
+            ? instance.children![0]
             : createControlInstanceFromFormFieldParams({
                 ...params,
                 controlWidth: nextControlWidth
@@ -4740,6 +4767,46 @@ function patchFormInstanceSnapshot(
     return next;
 }
 
+function shouldResetFormFieldChildren(
+    prevParams: Record<string, any>,
+    nextParams: Record<string, any>
+): boolean {
+    const prevType = normalizeFormFieldControlType(prevParams.controlType);
+    const nextType = normalizeFormFieldControlType(nextParams.controlType);
+    if (prevType !== nextType) return true;
+
+    if (nextType === 'figma-component') {
+        const prevToken = String(prevParams.componentToken || '').trim();
+        const nextToken = String(nextParams.componentToken || '').trim();
+        const prevKey = String(prevParams.componentKey || '').trim();
+        const nextKey = String(nextParams.componentKey || '').trim();
+        const prevCriteria = String(prevParams.variantCriteria || '').trim();
+        const nextCriteria = String(nextParams.variantCriteria || '').trim();
+        if (prevToken !== nextToken || prevKey !== nextKey || prevCriteria !== nextCriteria) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function patchFormFieldInstanceSnapshot(
+    snapshot: ComponentInstance,
+    prevParams: Record<string, any>,
+    nextParams: Record<string, any>
+): ComponentInstance {
+    const nextInstance: ComponentInstance = {
+        ...snapshot,
+        componentId: 'form-field',
+        params: nextParams
+    };
+    if (shouldResetFormFieldChildren(prevParams, nextParams)) {
+        const { children: _unused, ...rest } = nextInstance;
+        return rest;
+    }
+    return nextInstance;
+}
+
 function mapFormRowAlignment(value: unknown): 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN' {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'center') return 'CENTER';
@@ -4816,6 +4883,82 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 showPrefixIcon: Boolean(params.showPrefixIcon ?? params.prefixIcon),
                 showSuffixIcon: Boolean(params.showSuffixIcon ?? params.suffixIcon),
                 language: params.language || 'CN',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'datepicker') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.datepicker',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'inputnumber') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.inputnumber',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'slider') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.slider',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'switch') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.switch'
+            }
+        };
+    }
+
+    if (controlType === 'textarea') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.textarea',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'timepicker') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.timepicker',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'upload') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.button',
                 width
             }
         };
@@ -7957,6 +8100,9 @@ function centerNodeInViewport(node: SceneNode): void {
 // callback. The callback will be passed the "pluginMessage" property of the
 // posted message.
 figma.ui.onmessage = async (msg) => {
+  // #region debug-point D:plugin-onmessage
+  fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"D",location:"code.ts:8036",msg:"[DEBUG] plugin onmessage",data:{type:msg?.type}})}).catch(()=>{});
+  // #endregion
   if (msg.type === 'cancel') {
     figma.closePlugin();
   }
@@ -7986,7 +8132,9 @@ figma.ui.onmessage = async (msg) => {
       }
       checkSelection();
     }
-
+    // #region debug-point C:apply-envelope-result
+    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"code.ts:8067",msg:"[DEBUG] apply-envelope result",data:{ok:Boolean(result?.ok),intent:result?.intent,hasRootNodeId:Boolean(result?.rootNodeId)}})}).catch(()=>{});
+    // #endregion
     figma.ui.postMessage({ type: 'apply-result', result });
   }
 
@@ -8163,7 +8311,9 @@ figma.ui.onmessage = async (msg) => {
           const instanceToRender =
             componentId === 'form' && snapshot
               ? patchFormInstanceSnapshot(snapshot, previousParams, params)
-              : baseInstance;
+              : componentId === 'form-field' && snapshot
+                ? patchFormFieldInstanceSnapshot(snapshot, previousParams, params)
+                : baseInstance;
           const replacement = await renderComponent(instanceToRender);
 
           if (replaceSceneNode(node, replacement)) {
