@@ -58,8 +58,7 @@
       margin-right: 8px;
     }
     
-    /* Hide accent bar for internal section titles */
-    .thresholds-container .section-title::before {
+    .section-title::before {
       display: none;
     }
 
@@ -229,24 +228,28 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      column-gap: 8px;
+      column-gap: 10px;
       border-radius: 4px;
-      box-shadow: 0px 0px 0px 1px #dde2e9, 0px 2px 1px 0px #00000014;
-      background: #ffffff;
-      padding: 3px 16px;
-      /* width: 59px; Optional: remove fixed width to allow text fit */
+      border: 1px solid var(--color-button-secondary-border, #d4d4d8);
+      background: var(--color-button-secondary-bg, #ffffff);
+      padding-right: 9px;
+      padding-left: 9px;
+      width: 44px;
       height: 28px;
       overflow: hidden;
       cursor: pointer;
-      border: none;
       
       /* Text Styles */
-      line-height: 22px;
-      letter-spacing: 0.04px;
-      color: #42464e;
+      line-height: 18px;
+      letter-spacing: 0;
+      color: var(--color-text-primary, #18181b);
       font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
+    }
+
+    .btn-reset:hover {
+      background: var(--ved-button-hover, #f4f4f5);
     }
 
     .btn-icon {
@@ -411,34 +414,44 @@
     /* Preview */
     .preview-tabs {
       display: inline-flex;
-      align-items: center;
-      background: #F2F3F5;
-      padding: 2px;
+      align-items: flex-start;
+      column-gap: 2px;
       border-radius: 4px;
+      background: var(--color-button-hover-bg, #f4f4f5);
+      padding: 3px;
       margin-bottom: 16px;
-      gap: 2px;
       height: 28px;
       box-sizing: border-box;
     }
     .preview-tab {
-      padding: 0 12px;
-      height: 100%;
-      display: flex;
+      display: inline-flex;
+      flex-shrink: 0;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
-      color: #4E5969;
-      cursor: pointer;
+      column-gap: 4px;
       border-radius: 4px;
+      background: transparent;
+      padding: 1px 12px;
+      overflow: hidden;
+      line-height: 20px;
+      letter-spacing: 0.04px;
+      color: var(--color-text-secondary, #71717a);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      cursor: pointer;
       border: none;
       margin-bottom: 0;
-      transition: all 0.2s;
+    }
+    .preview-tab:hover:not(.active) {
+      color: var(--color-text-primary, #18181b);
     }
     .preview-tab.active {
-      background: #FFFFFF;
-      color: #1664FF;
+      box-shadow: 0px 1px 2px 0px #00000012, 0px 1px 1px 0px #0000000d,
+        0px 0px 0px 1px var(--color-border-default, #e4e4e7);
+      background: var(--Background-color-bg-1, #ffffff);
+      color: var(--color-text-primary, #18181b);
       font-weight: 500;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
       border: none;
     }
 
@@ -621,22 +634,28 @@
     }
     .btn-primary {
       pointer-events: auto; /* Enable click on button */
-      background: #1664FF;
-      color: white;
-      border: none;
-      padding: 0 32px;
-      height: 32px;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
+      column-gap: 10px;
       border-radius: 4px;
-      font-size: 13px;
-      font-weight: 500;
+      background: var(--color-button-primary-bg, #18181b);
+      padding-right: 10px;
+      padding-left: 10px;
+      width: 68px;
+      height: 28px;
+      overflow: hidden;
       cursor: pointer;
-      box-shadow: 0 4px 10px rgba(22, 100, 255, 0.2); /* Optional: add shadow for floating feel */
+      border: none;
+      line-height: 18px;
+      letter-spacing: 0;
+      color: var(--color-button-primary-text, #ffffff);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+      font-size: 12px;
+      font-weight: 500;
     }
     .btn-primary:hover {
-      background: #40A9FF;
+      background: var(--color-button-primary-bg, #18181b);
     }
     /* Update main-card padding to avoid overlap */
     .main-card {
