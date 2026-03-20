@@ -3844,10 +3844,24 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "default": 240,
           "description": "控件宽度"
         },
+        "controlWidthMode": {
+          "type": "select",
+          "default": "fixed",
+          "description": "控件宽度模式",
+          "enumValues": [
+            "fixed",
+            "fill"
+          ]
+        },
         "showColon": {
           "type": "boolean",
           "default": false,
           "description": "显示标签冒号"
+        },
+        "showActionArea": {
+          "type": "boolean",
+          "default": true,
+          "description": "显示按钮区"
         },
         "requiredMark": {
           "type": "boolean",

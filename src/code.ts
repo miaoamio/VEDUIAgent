@@ -4166,6 +4166,35 @@ function findFormFieldContentContainer(root: SceneNode): (SceneNode & ChildrenMi
     return root as SceneNode & ChildrenMixin;
 }
 
+function normalizeFormFieldLabelText(value: string): string {
+    return value.replace(/[：:]\s*$/, '').trim();
+}
+
+function readFormFieldLabelTextFromNode(node: SceneNode): string | null {
+    const contentContainer = findFormFieldContentContainer(node);
+    if (!contentContainer) return null;
+    const labelInstance = contentContainer.children.find(isFormFieldLabelInstance);
+    if (labelInstance && 'findOne' in labelInstance) {
+        const labelTextNode =
+            labelInstance.findOne((child) => child.type === 'TEXT' && String(child.name || '').trim() === 'Lable') ||
+            labelInstance.findOne((child) => child.type === 'TEXT');
+        if (labelTextNode && labelTextNode.type === 'TEXT') {
+            return normalizeFormFieldLabelText(labelTextNode.characters || '');
+        }
+    }
+    if ('findAll' in node) {
+        const textNodes = node.findAll((child) => child.type === 'TEXT') as TextNode[];
+        const candidate =
+            textNodes.find((text) => String(text.name || '').trim() === 'Lable') ||
+            textNodes.find((text) => /[：:]\s*$/.test(text.characters || '')) ||
+            textNodes.find((text) => typeof text.fontSize === 'number' && text.fontSize >= 13);
+        if (candidate) {
+            return normalizeFormFieldLabelText(candidate.characters || '');
+        }
+    }
+    return null;
+}
+
 function setNodeClipsContent(node: SceneNode, enabled: boolean): void {
     if (!('clipsContent' in node)) return;
     try {
@@ -4238,6 +4267,25 @@ async function updateFormFieldMessageTemplate(root: SceneNode, params: Record<st
     }
 }
 
+function applyFormControlWidthModeToNode(node: SceneNode, params: Record<string, any>): void {
+    const mode = normalizeFormControlWidthMode(params.controlWidthMode);
+    if ('layoutSizingHorizontal' in node) {
+        try {
+            (node as any).layoutSizingHorizontal = mode === 'fill' ? 'FILL' : 'FIXED';
+        } catch {}
+    }
+    if ('layoutGrow' in node) {
+        try {
+            (node as any).layoutGrow = mode === 'fill' ? 1 : 0;
+        } catch {}
+    }
+    if ('layoutAlign' in node) {
+        try {
+            (node as any).layoutAlign = mode === 'fill' ? 'STRETCH' : 'MIN';
+        } catch {}
+    }
+}
+
 async function updateInputControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
     if (node.type !== 'INSTANCE') return false;
 
@@ -4269,10 +4317,12 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
         node.setProperties(nextProps);
     }
 
-    const width = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
+    const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
     if (width) {
         node.resize(width, node.height);
     }
+    applyFormControlWidthModeToNode(node, params);
 
     const textNodes = node.findAll((child) => child.type === 'TEXT') as TextNode[];
     const mainTextNode =
@@ -4325,10 +4375,12 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
         node.setProperties(nextProps);
     }
 
-    const width = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
+    const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
     if (width) {
         node.resize(width, node.height);
     }
+    applyFormControlWidthModeToNode(node, params);
 
     const displayTextNode = findSelectDisplayTextNode(node);
     if (displayTextNode) {
@@ -4441,8 +4493,9 @@ async function replaceFormFieldControlTemplate(
     if (!existingControlNode) return;
 
     const controlType = normalizeFormFieldControlType(params.controlType);
+    const controlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
     const nextControlWidth =
-        controlType === 'switch'
+        controlType === 'switch' || controlWidthMode === 'fill'
             ? undefined
             : toPositiveNumber(params.controlWidth) ??
               toPositiveNumber(params.width) ??
@@ -4458,6 +4511,9 @@ async function replaceFormFieldControlTemplate(
 
     const controlNode = await renderComponent(controlInstance, { isRoot: false });
     setNodeClipsContent(controlNode, false);
+    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea') {
+        applyFormControlWidthModeToNode(controlNode, params);
+    }
     replaceSceneNode(existingControlNode, controlNode);
 }
 
@@ -4609,6 +4665,12 @@ function normalizeFormLabelWidthPreset(value: unknown): 'fill' | 'default-80' | 
     if (normalized.includes('120') || normalized.includes('medium')) return 'medium-120';
     if (normalized.includes('80') || normalized.includes('default')) return 'default-80';
     return 'custom';
+}
+
+function normalizeFormControlWidthMode(value: unknown): 'fixed' | 'fill' {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized.includes('fill') || normalized.includes('充满')) return 'fill';
+    return 'fixed';
 }
 
 function resolveFormFieldLayout(params: Record<string, any>): 'horizontal' | 'vertical' {
@@ -4820,6 +4882,45 @@ function normalizeFormChildInstance(
     return child;
 }
 
+function syncFormItemLabelsFromNode(
+    instance: ComponentInstance,
+    node: SceneNode | null
+): ComponentInstance {
+    if (!node) return instance;
+    if (instance.componentId === 'form-field') {
+        const currentParams = instance.params || {};
+        const currentLabel = String(currentParams.label || '').trim();
+        if (currentLabel) return instance;
+        const labelFromNode = readFormFieldLabelTextFromNode(node);
+        if (!labelFromNode) return instance;
+        return {
+            ...instance,
+            params: {
+                ...currentParams,
+                label: labelFromNode
+            }
+        };
+    }
+    if (instance.componentId === 'form-row' && Array.isArray(instance.children) && 'children' in node) {
+        const fieldNodes = node.children.filter(
+            (child) => 'getPluginData' in child && child.getPluginData('component-id') === 'form-field'
+        );
+        return {
+            ...instance,
+            children: instance.children.map((child, index) =>
+                syncFormItemLabelsFromNode(child, (fieldNodes[index] as SceneNode) || null)
+            )
+        };
+    }
+    if (Array.isArray(instance.children)) {
+        return {
+            ...instance,
+            children: instance.children.map((child) => syncFormItemLabelsFromNode(child, null))
+        };
+    }
+    return instance;
+}
+
 async function resolveFormParamsForRender(
     formParams: Record<string, any>,
     instance: ComponentInstance
@@ -4859,9 +4960,9 @@ async function updateFormItemCount(
 ): Promise<boolean> {
     const targetCount = normalizeFormItemCount(nextParams.itemCount);
     if (targetCount === null) return false;
-    let snapshot = readComponentInstanceSnapshot(formFrame);
+    let snapshot = buildComponentInstanceFromNode(formFrame);
     if (!snapshot) {
-        snapshot = buildComponentInstanceFromNode(formFrame);
+        snapshot = readComponentInstanceSnapshot(formFrame);
     }
     if (!snapshot) return false;
     const normalizedParams: Record<string, any> = { ...nextParams, itemCount: targetCount };
@@ -4901,9 +5002,9 @@ async function updateFormLayoutParams(
     prevParams: Record<string, any>,
     nextParams: Record<string, any>
 ): Promise<boolean> {
-    let snapshot = readComponentInstanceSnapshot(formFrame);
+    let snapshot = buildComponentInstanceFromNode(formFrame);
     if (!snapshot) {
-        snapshot = buildComponentInstanceFromNode(formFrame);
+        snapshot = readComponentInstanceSnapshot(formFrame);
     }
     if (!snapshot) return false;
     const nextItemCount = normalizeFormItemCount(nextParams.itemCount);
@@ -4953,10 +5054,11 @@ async function updateFormLayoutParams(
     for (let index = 0; index < itemNodes.length; index += 1) {
         const itemNode = itemNodes[index];
         const itemInstance = nextItemInstances[index];
+        const syncedInstance = syncFormItemLabelsFromNode(itemInstance, itemNode);
         const childNode = await renderFormItemNode(
             formFrame,
             normalizedParams,
-            itemInstance,
+            syncedInstance,
             columnSpacing,
             resolvedFormParams
         );
@@ -5031,6 +5133,7 @@ function inheritFormFieldParams(
             labelWidthPreset: currentParams.labelWidthPreset || formParams.labelWidthPreset || 'custom',
             labelWidth: currentParams.labelWidth ?? formParams.labelWidth,
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
+            controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
             ...currentParams
         };
@@ -5071,6 +5174,7 @@ const FORM_INHERITED_PARAM_KEYS = [
     'labelWidthPreset',
     'labelWidth',
     'controlWidth',
+    'controlWidthMode',
     'showColon'
 ];
 const FORM_FIELD_DEFAULTS: Record<string, any> = {
@@ -5079,6 +5183,7 @@ const FORM_FIELD_DEFAULTS: Record<string, any> = {
     labelWidthPreset: 'custom',
     labelWidth: 96,
     controlWidth: 240,
+    controlWidthMode: 'fixed',
     showColon: false
 };
 
@@ -5199,7 +5304,8 @@ function mapFormRowAlignment(value: unknown): 'MIN' | 'CENTER' | 'MAX' | 'SPACE_
 
 function createControlInstanceFromFormFieldParams(params: Record<string, any>): ComponentInstance {
     const controlType = normalizeFormFieldControlType(params.controlType);
-    const controlWidth = Number(params.controlWidth);
+    const controlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const controlWidth = controlWidthMode === 'fill' ? NaN : Number(params.controlWidth);
     const width = Number.isFinite(controlWidth) && controlWidth > 0 ? controlWidth : undefined;
 
     if (controlType === 'select') {
@@ -6969,7 +7075,18 @@ async function renderComponent(
     }
 
     if (instance.children) {
+        const showActionArea = params.showActionArea !== false;
         for (const child of instance.children) {
+            const isActionAreaChild = child.componentId === 'button'
+                || (
+                    child.componentId === 'form-row'
+                    && Array.isArray(child.children)
+                    && child.children.length > 0
+                    && child.children.every((item) => item.componentId === 'button')
+                );
+            if (!showActionArea && isActionAreaChild) {
+                continue;
+            }
             let processedChild = child;
             if (child.componentId === 'form-row' && Array.isArray(child.children) && child.children.length === 1 && child.children[0].componentId === 'form-field') {
                 processedChild = child.children[0];

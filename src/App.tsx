@@ -1951,11 +1951,14 @@ function App() {
      @@table_stream {"event":"table_done"}
    - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。
 4. **标准表单/筛选表单创建优先走 draw_form(payload)**。
-   - 当目标是创建查询表单、筛选区或编辑表单时，**直接调用 draw_form**，**无需读取 spec**。
-   - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
-   - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
-   - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
-   - draw_form payload 使用紧凑结构，例如：
+  - 当目标是创建查询表单、筛选区或编辑表单时，**直接调用 draw_form**，**无需读取 spec**。
+  - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
+  - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
+  - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
+  - **当根据图片生成表单时，必须输出图片中所有字段**：不要只给一个代表性字段；若识别到多个标签/控件，一律完整列出并逐行放入 rows。
+  - **图片场景禁止只输出 fields**：必须输出 rows[][] 以保证多行字段被逐行渲染；除非用户明确要求多列，否则每行只放一个字段。
+  - **字段类型不确定时优先用 input**，有明确选项/状态时再用 select / checkbox-group / radio-group / switch。
+  - draw_form payload 使用紧凑结构，例如：
      {
        "align": "top",
        "labelWidthPreset": "fill",
@@ -2008,9 +2011,10 @@ function App() {
     - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
     - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
 13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
-    - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
-    - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
-    - 若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。
+   - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
+   - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
+   - 若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。
+   - 对图片表单，必须覆盖图片中全部字段与按钮；若字段数量较多，仍需逐行输出完整 rows。
 
 回复格式 (Response Format):
 只回复一个 JSON 对象，包含 "thought" 和 "action"。
@@ -7224,7 +7228,8 @@ StepD:
     align: '对齐',
     layout: '布局',
     rowSpacing: '行间距',
-    controlWidth: '控件宽度'
+    controlWidth: '控件宽度',
+    controlWidthMode: '控件宽度模式'
   };
 
 
@@ -7237,6 +7242,8 @@ StepD:
     FIXED: '固定',
     HUG: '适应',
     FILL: '充满',
+    fixed: '定宽',
+    fill: '充满',
     None: '无',
     none: '无',
     Filter: '筛选',
@@ -7540,7 +7547,7 @@ StepD:
             });
             const isForm = def.id === 'form';
             const orderedParamKeys = isForm
-              ? ['layout', 'title', 'showColon'].filter((key) => paramKeys.includes(key))
+              ? ['layout', 'title', 'controlWidthMode', 'showColon', 'showActionArea'].filter((key) => paramKeys.includes(key))
               : isFormField
                 ? [
                     ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
