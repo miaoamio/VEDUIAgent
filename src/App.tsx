@@ -1405,6 +1405,17 @@ function App() {
   const [componentInspectJson, setComponentInspectJson] = React.useState('');
   const [figmaComponentPropsCache, setFigmaComponentPropsCache] = React.useState<Record<string, any>>({});
   const figmaComponentPropsLoadingRef = React.useRef<Set<string>>(new Set());
+  const ADVANCED_PARAM_KEYS_BY_COMPONENT: Record<string, Set<string>> = {
+    form: new Set(['showColon']),
+    'form-field': new Set([
+      'showColon',
+      'size',
+      'showPrefix',
+      'showSuffix',
+      'prefixText',
+      'suffixText'
+    ])
+  };
 
   React.useEffect(() => {
     if (!mockSelectionEnabled) return;
@@ -1441,7 +1452,6 @@ function App() {
       // #region debug-point A:ui-onmessage
       fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"A",location:"App.tsx:1436",msg:"[DEBUG] ui onmessage",data:{type,message,hasData:typeof data !== 'undefined'}})}).catch(()=>{});
       // #endregion
-      
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
         setResponse((prev) => (prev ? prev + '\n\n' + `[System]: ${message}` : `[System]: ${message}`));
@@ -1474,6 +1484,7 @@ function App() {
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
+
     };
   }, [activeTab]);
 
@@ -1600,11 +1611,16 @@ function App() {
     };
   }, [attachmentMenuOpen]);
 
-  const updateParam = (key: string, value: any) => {
+  const updateParams = (next: Record<string, any>) => {
     if (!selectedComponent) return;
-    const newParams = { ...selectedComponent.params, [key]: value };
+    const newParams = { ...selectedComponent.params, ...next };
     setSelectedComponent({ ...selectedComponent, params: newParams });
     parent.postMessage({ pluginMessage: { type: 'update-component', params: newParams } }, '*');
+  };
+
+  const updateParam = (key: string, value: any) => {
+    if (!selectedComponent) return;
+    updateParams({ [key]: value });
   };
 
   const updateComponentType = (newType: string) => {
@@ -2117,7 +2133,7 @@ StepD:
           specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
         }
         if (id === 'form' || id.startsWith('form-')) {
-          specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], sections?: { title?: string; rows?: any[][]; fields?: any[]; groups?: any[] }[], groups?: any[], groupLabelMode?: "all"|"first", layout?: "horizontal"|"vertical"|"inline", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
+          specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], sections?: { title?: string; rows?: any[][]; fields?: any[]; groups?: any[] }[], groups?: any[], groupLabelMode?: "all"|"first", layout?: "horizontal"|"vertical", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
         }
         if (id === 'filter-group') {
           specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
@@ -3621,16 +3637,18 @@ StepD:
       const footer = isObject(formObj.footer) ? formObj.footer : {};
       const footerActions = Array.isArray(footer.actions) ? footer.actions : [];
       const footerRow = footerActions.length > 0
-        ? {
-          componentId: 'form-row',
-          params: {
-            spacing: 8,
-            align: String(footer.align || formObj.actionAlign || 'end')
-          },
-          children: footerActions.map((item: any, index: number) =>
-            toButtonFromItem(item, `操作${index + 1}`, 'secondary')
-          )
-        }
+        ? (footerActions.length === 1
+          ? toButtonFromItem(footerActions[0], '操作1', 'secondary')
+          : {
+            componentId: 'form-row',
+            params: {
+              spacing: 8,
+              align: String(footer.align || formObj.actionAlign || 'end')
+            },
+            children: footerActions.map((item: any, index: number) =>
+              toButtonFromItem(item, `操作${index + 1}`, 'secondary')
+            )
+          })
         : null;
 
       const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
@@ -3660,6 +3678,9 @@ StepD:
             componentId: 'figma-component',
             params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
           });
+        }
+        if (rowChildren.length === 1 && rowChildren[0]?.componentId === 'button') {
+          return rowChildren[0];
         }
         const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
         const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
@@ -4126,16 +4147,18 @@ StepD:
         ? source.actions
         : [];
     const footerRow = footerActions.length > 0
-      ? {
-        componentId: 'form-row',
-        params: {
-          spacing: 8,
-          align: String(footer.align || source.actionAlign || 'end')
-        },
-        children: footerActions.map((item: any, index: number) =>
-          toButtonFromItem(item, `操作${index + 1}`, 'secondary')
-        )
-      }
+      ? (footerActions.length === 1
+        ? toButtonFromItem(footerActions[0], '操作1', 'secondary')
+        : {
+          componentId: 'form-row',
+          params: {
+            spacing: 8,
+            align: String(footer.align || source.actionAlign || 'end')
+          },
+          children: footerActions.map((item: any, index: number) =>
+            toButtonFromItem(item, `操作${index + 1}`, 'secondary')
+          )
+        })
       : null;
 
     const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
@@ -4165,6 +4188,9 @@ StepD:
           componentId: 'figma-component',
           params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
         });
+      }
+      if (rowChildren.length === 1 && rowChildren[0]?.componentId === 'button') {
+        return rowChildren[0];
       }
       const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
       const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
@@ -6888,7 +6914,7 @@ StepD:
     if (key === 'labelAlign' || key === 'labelWidthPreset' || key === 'labelWidth' || key === 'controlWidth') {
       return false;
     }
-    if (key === 'size' || key === 'state' || key === 'filled' || key === 'error') {
+    if (key === 'size' || key === 'state') {
       return controlType === 'input' || controlType === 'select';
     }
     if (key === 'multiple' || key === 'selectType') {
@@ -6944,7 +6970,6 @@ StepD:
     }
     if (key === 'layout') {
       if (normalized.includes('vertical') || normalized.includes('纵向')) return '纵向';
-      if (normalized.includes('inline') || normalized.includes('内联')) return '内联';
       return '横向';
     }
     if (key === 'labelAlign') {
@@ -6977,6 +7002,8 @@ StepD:
     if (key === 'state') {
       if (normalized.includes('hover') || normalized.includes('悬浮')) return '悬浮';
       if (normalized.includes('active') || normalized.includes('激活')) return '激活';
+      if (normalized.includes('error') || normalized.includes('错误')) return '错误';
+      if (normalized.includes('disabled') || normalized.includes('禁用')) return '禁用';
       return '默认';
     }
     if (key === 'selectType') {
@@ -6998,6 +7025,10 @@ StepD:
   const normalizeTagTypeValue = (value: unknown) => String(value ?? '').trim().toLowerCase();
 
   const resolveTagFamily = (params: Record<string, any>): 'default' | 'other' | 'status' => {
+    const normalizedKind = normalizeTagTypeValue(params.tagKind ?? '');
+    if (normalizedKind) {
+      return normalizedKind.includes('status') || normalizedKind.includes('状态') ? 'status' : 'default';
+    }
     const normalizedType = normalizeTagTypeValue(params.tagType ?? params.otherTagType ?? params.type ?? '');
     const token = String(params.componentToken ?? '').trim().toLowerCase();
     const isStatusType = normalizedType.includes('status') || normalizedType.includes('状态');
@@ -7010,7 +7041,7 @@ StepD:
       return value !== undefined && value !== null && String(value).trim() !== '';
     });
 
-    if (isStatusType || isStatusToken || hasStatusProps) return 'status';
+    if (isStatusType || isStatusToken || (!normalizedType && hasStatusProps)) return 'status';
     if (isGroupType || isMarketingType || isOtherToken) return 'other';
     return 'default';
   };
@@ -7058,6 +7089,14 @@ StepD:
       return (otherType === 'group' ? TAG_PARAM_SETS.otherGroup : TAG_PARAM_SETS.otherMarketing).has(key);
     }
     return TAG_PARAM_SETS.default.has(key);
+  };
+
+  const shouldDisplayInputParam = (key: string, params: Record<string, any>): boolean => {
+    const showPrefix = !!params.showPrefix;
+    const showSuffix = !!params.showSuffix;
+    if (key === 'prefixText') return showPrefix;
+    if (key === 'suffixText') return showSuffix;
+    return true;
   };
 
   const buildEffectiveParams = (def: ComponentDefinition, params: Record<string, any>): Record<string, any> => {
@@ -7121,6 +7160,7 @@ StepD:
     rowSpacing: '行间距',
     controlWidth: '控件宽度'
   };
+
 
   const OPTION_LABEL_MAP: Record<string, string> = {
     left: '左对齐',
@@ -7399,12 +7439,15 @@ StepD:
           {(() => {
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             const isFormField = def.id === 'form-field';
+            const isInput = def.id === 'input';
             const formFieldControlType = isFormField ? normalizeFormControlType(effectiveParams.controlType) : '';
             const useMergedFormFieldText =
               isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select');
+            const formFieldCurrentValue = useMergedFormFieldText ? String(effectiveParams.value ?? '') : '';
+            const formFieldCachedValue = useMergedFormFieldText ? String(effectiveParams.cachedValue ?? '') : '';
             const formFieldTextValue = useMergedFormFieldText
               ? formFieldTextMode === 'value'
-                ? String(effectiveParams.value ?? '')
+                ? formFieldCurrentValue
                 : String(effectiveParams.placeholder ?? '')
               : '';
             const formFieldHiddenKeys = new Set([
@@ -7423,6 +7466,7 @@ StepD:
               const paramDef = def.params[key];
               if (!isParamEditable(def, key, paramDef)) return false;
               if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
+              if (isInput && !shouldDisplayInputParam(key, effectiveParams)) return false;
               if (isFormField && useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
               if (isFormField && formFieldHiddenKeys.has(key)) return false;
               if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
@@ -7441,16 +7485,42 @@ StepD:
                     ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
                   ]
                 : paramKeys;
-            const { mainRows, switchRows } = buildParamControlRows(def, orderedParamKeys, selectedComponent.params || {});
+            const advancedParamKeySet =
+              ADVANCED_PARAM_KEYS_BY_COMPONENT[def.id] || new Set<string>();
+            const commonParamKeys = orderedParamKeys.filter((key) => !advancedParamKeySet.has(key));
+            const advancedParamKeysList = orderedParamKeys.filter((key) => advancedParamKeySet.has(key));
+            const { mainRows: commonMainRows, switchRows: commonSwitchRows } = buildParamControlRows(
+              def,
+              commonParamKeys,
+              selectedComponent.params || {}
+            );
+            const { mainRows: advancedMainRows, switchRows: advancedSwitchRows } = buildParamControlRows(
+              def,
+              advancedParamKeysList,
+              selectedComponent.params || {}
+            );
             const primaryFormFieldKeyCount = isFormField
-              ? ['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)).length
+              ? ['controlType', 'state', 'size'].filter((key) => commonParamKeys.includes(key)).length
               : 0;
             const formFieldTextControl = useMergedFormFieldText ? (
               <FieldRow key="form-field-text" label="填写文字">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <SegmentedControl
                     value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
-                    onChange={(next) => setFormFieldTextMode(next === 'value' ? 'value' : 'placeholder')}
+                    onChange={(next) => {
+                      const nextMode = next === 'value' ? 'value' : 'placeholder';
+                      setFormFieldTextMode(nextMode);
+                      if (nextMode === 'placeholder') {
+                        const nextCachedValue = formFieldCurrentValue.trim().length > 0
+                          ? formFieldCurrentValue
+                          : formFieldCachedValue;
+                        updateParams({ value: '', filled: false, cachedValue: nextCachedValue });
+                        return;
+                      }
+                      if (!formFieldCurrentValue && formFieldCachedValue) {
+                        updateParams({ value: formFieldCachedValue, cachedValue: formFieldCachedValue });
+                      }
+                    }}
                     options={[
                       { value: 'value', label: '已填写' },
                       { value: 'placeholder', label: '占位文字' }
@@ -7460,9 +7530,9 @@ StepD:
                     value={formFieldTextValue}
                     onChange={(next) => {
                       if (formFieldTextMode === 'value') {
-                        updateParam('value', next);
+                        updateParams({ value: next, cachedValue: next });
                       } else {
-                        updateParam('placeholder', next);
+                        updateParams({ placeholder: next, value: '', filled: false });
                       }
                     }}
                   />
@@ -7471,15 +7541,79 @@ StepD:
             ) : null;
             const mainRowsWithFormFieldText = useMergedFormFieldText && formFieldTextControl
               ? [
-                  ...mainRows.slice(0, primaryFormFieldKeyCount),
+                  ...commonMainRows.slice(0, primaryFormFieldKeyCount),
                   formFieldTextControl,
-                  ...mainRows.slice(primaryFormFieldKeyCount)
+                  ...commonMainRows.slice(primaryFormFieldKeyCount)
                 ]
-              : mainRows;
+              : commonMainRows;
+            const normalizedFormLayout = String(effectiveParams.layout || '').trim().toLowerCase();
+            const showFormLabelAlign = isForm && (
+              normalizedFormLayout.includes('horizontal') ||
+              normalizedFormLayout.includes('横')
+            );
+            const normalizedFormAlign = String(effectiveParams.align || '').trim().toLowerCase();
+            const formLabelAlignValue = normalizedFormAlign.includes('right') || normalizedFormAlign.includes('右')
+              ? 'right'
+              : 'left';
+            const formLabelAlignControl = showFormLabelAlign ? (
+              <FieldRow key="form-label-align" label="标签对齐">
+                <SegmentedControl
+                  value={formLabelAlignValue}
+                  onChange={(value) => updateParam('align', value)}
+                  groupClassName="align-group"
+                  buttonClassName="align-button"
+                  options={[
+                    {
+                      value: 'left',
+                      icon: (
+                        <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.2761 4.5 15 4.5H5ZM5 8C4.72386 8 4.5 8.22386 4.5 8.5C4.5 8.77614 4.72386 9 5 9H11C11.2761 9 11.5 8.77614 11.5 8.5C11.5 8.22386 11.5 8 11 8H5ZM5 11.5C4.72386 11.5 4.5 11.7239 4.5 12C4.5 12.2761 4.72386 12.5 5 12.5H13C13.2761 12.5 13.5 12.2761 13.5 12C13.5 11.7239 13.5 11.5 13 11.5H5ZM5 15C4.72386 15 4.5 15.2239 4.5 15.5C4.5 15.7761 4.72386 16 5 16H10C10.2761 16 10.5 15.7761 10.5 15.5C10.5 15.2239 10.5 15 10 15H5Z"/>
+                        </svg>
+                      )
+                    },
+                    {
+                      value: 'right',
+                      icon: (
+                        <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M5 4.5C4.72386 4.5 4.5 4.72386 4.5 5C4.5 5.27614 4.72386 5.5 5 5.5H15C15.2761 5.5 15.5 5.27614 15.5 5C15.5 4.72386 15.5 4.5 15 4.5H5ZM9 8C8.72386 8 8.5 8.22386 8.5 8.5C8.5 8.77614 8.72386 9 9 9H15C15.2761 9 15.5 8.77614 15.5 8.5C15.5 8.22386 15.5 8 15 8H9ZM7 11.5C6.72386 11.5 6.5 11.7239 6.5 12C6.5 12.2761 6.72386 12.5 7 12.5H15C15.2761 12.5 15.5 12.2761 15.5 12C15.5 11.7239 15.5 11.5 15 11.5H7ZM10 15C9.72386 15 9.5 15.2239 9.5 15.5C9.5 15.7761 9.72386 16 10 16H15C15.2761 16 15.5 15.7761 15.5 15.5C15.5 15.2239 15.5 15 15 15H10Z"/>
+                        </svg>
+                      )
+                    }
+                  ]}
+                />
+              </FieldRow>
+            ) : null;
+            const mainRowsWithFormLabelAlign =
+              showFormLabelAlign && formLabelAlignControl
+                ? (() => {
+                    const layoutRowIndex = mainRowsWithFormFieldText.findIndex(
+                      (row) => React.isValidElement(row) && row.key === 'layout'
+                    );
+                    if (layoutRowIndex < 0) {
+                      return [formLabelAlignControl, ...mainRowsWithFormFieldText];
+                    }
+                    return [
+                      ...mainRowsWithFormFieldText.slice(0, layoutRowIndex + 1),
+                      formLabelAlignControl,
+                      ...mainRowsWithFormFieldText.slice(layoutRowIndex + 1)
+                    ];
+                  })()
+                : mainRowsWithFormFieldText;
+            const advancedSection =
+              advancedMainRows.length > 0 || advancedSwitchRows.length > 0 ? (
+                <div className="selection-advanced-section">
+                  <div className="selection-divider" />
+                  <div className="selection-advanced-body">
+                    {advancedMainRows}
+                    {advancedSwitchRows.length > 0 && <div style={{ marginTop: '12px' }}>{advancedSwitchRows}</div>}
+                  </div>
+                </div>
+              ) : null;
             return (
               <>
-                {mainRowsWithFormFieldText}
-                {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
+                {mainRowsWithFormLabelAlign}
+                {commonSwitchRows.length > 0 && <div style={{ marginTop: '12px' }}>{commonSwitchRows}</div>}
+                {advancedSection}
               </>
             );
           })()}
@@ -8579,7 +8713,7 @@ StepD:
           </div>
           <div className="selection-title">选中内容属性</div>
         </div>
-        <div className={`selection-scroll ${hasSelection ? '' : 'selection-scroll-empty'}`}>
+          <div className={`selection-scroll ${hasSelection ? '' : 'selection-scroll-empty'}`}>
           {hasSelection ? (
             <>
               <div className="selection-panel-group">

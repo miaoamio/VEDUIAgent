@@ -165,7 +165,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "clipsContent": {
           "type": "boolean",
           "default": false,
-          "description": "是否裁剪超出容器的内容，默认关闭以避免裁掉控件外描边/阴影"
+          "description": "裁剪超出容器的内容，默认关闭以避免裁掉控件外描边/阴影"
         },
         "width": {
           "type": "number",
@@ -505,7 +505,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusTheme": {
           "type": "select",
           "default": "Success 成功",
-          "description": "状态标签主题（颜色/语义）；仅 tagKind=status 时生效",
+          "description": "状态标签主题（颜色/语义）",
           "enumValues": [
             "Success 成功",
             "Warning 告警",
@@ -519,7 +519,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusType": {
           "type": "select",
           "default": "L2 二级标签",
-          "description": "状态标签层级；仅 tagKind=status 时生效（表格默认 L2）",
+          "description": "状态标签层级",
           "enumValues": [
             "L1 一级标签",
             "L2 二级标签",
@@ -529,7 +529,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusState": {
           "type": "select",
           "default": "Default 默认",
-          "description": "状态标签交互状态；仅 tagKind=status 时生效",
+          "description": "状态标签交互状态",
           "enumValues": [
             "Default 默认",
             "Hover 悬浮",
@@ -539,7 +539,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "tagType": {
           "type": "select",
           "default": "Solid 面型标签",
-          "description": "类型/分类标签样式；仅 tagKind=type 时生效",
+          "description": "类型/分类标签样式",
           "enumValues": [
             "Default 默认标签",
             "Solid 面型标签",
@@ -1714,12 +1714,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "fallbackName": {
           "type": "string",
           "default": "",
-          "description": "导入失败时的本地名称回退查找（可选）"
+          "description": "导入失败时的本地名称回退查找"
         },
         "variantCriteria": {
           "type": "string",
           "default": "",
-          "description": "变体条件：JSON 或 key=value（可选）"
+          "description": "变体条件：JSON 或 key=value"
         },
         "width": {
           "type": "number",
@@ -1940,7 +1940,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "groupTexts": {
           "type": "string",
           "default": "",
-          "description": "标签组文案，逗号/顿号/换行分隔；仅 TagGroup 生效"
+          "description": "标签组文案，逗号/顿号/换行分隔"
         },
         "componentToken": {
           "type": "string",
@@ -1964,7 +1964,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusTheme": {
           "type": "select",
           "default": "Success 成功",
-          "description": "状态标签主题；仅 StatusTag 生效",
+          "description": "状态标签主题",
           "enumValues": [
             "Success 成功",
             "Warning 告警",
@@ -1978,7 +1978,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusType": {
           "type": "select",
           "default": "L1 一级标签",
-          "description": "状态标签层级；仅 StatusTag 生效",
+          "description": "状态标签层级",
           "enumValues": [
             "L1 一级标签",
             "L2 二级标签",
@@ -1988,7 +1988,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "statusState": {
           "type": "select",
           "default": "Default 默认",
-          "description": "状态标签交互状态；仅 StatusTag 生效",
+          "description": "状态标签交互状态",
           "enumValues": [
             "Default 默认",
             "Hover 悬浮",
@@ -2030,27 +2030,27 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showIcon": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示左侧图标；默认标签/状态标签生效"
+          "description": "显示左侧图标；默认标签/状态标签生效"
         },
         "showDot": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示左侧圆点；仅默认标签生效"
+          "description": "显示左侧圆点"
         },
         "showDropdown": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示下拉箭头；默认标签/状态标签生效"
+          "description": "显示下拉箭头；默认标签/状态标签生效"
         },
         "closable": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示关闭按钮；仅默认标签生效"
+          "description": "显示关闭按钮"
         },
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用；默认标签/状态标签生效"
+          "description": "禁用；默认标签/状态标签生效"
         }
       },
       "capabilities": {
@@ -2338,7 +2338,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用；开启后会强制走 Disabled 变体"
+          "description": "禁用；开启后会强制走 Disabled 变体"
         },
         "iconOnly": {
           "type": "boolean",
@@ -2641,22 +2641,22 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "filled": {
           "type": "boolean",
           "default": false,
-          "description": "是否为已填状态；有 value 时也会自动视为已填"
+          "description": "已填状态；有 value 时也会自动视为已填"
         },
         "error": {
           "type": "boolean",
           "default": false,
-          "description": "是否切换到错误态"
+          "description": "错误态"
         },
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用"
+          "description": "禁用"
         },
         "showPrefix": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示前缀"
+          "description": "显示前缀"
         },
         "prefixText": {
           "type": "string",
@@ -2666,7 +2666,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showSuffix": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示后缀"
+          "description": "显示后缀"
         },
         "suffixText": {
           "type": "string",
@@ -2992,17 +2992,17 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "filled": {
           "type": "boolean",
           "default": false,
-          "description": "是否为已填状态；有 value 时也会自动视为已填"
+          "description": "已填状态；有 value 时也会自动视为已填"
         },
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用"
+          "description": "禁用"
         },
         "multiple": {
           "type": "boolean",
           "default": false,
-          "description": "是否切换到多选模式"
+          "description": "多选模式"
         },
         "selectType": {
           "type": "select",
@@ -3259,7 +3259,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用（透传给内部 select.disabled）"
+          "description": "禁用（透传给内部 select.disabled）"
         }
       },
       "capabilities": {
@@ -3301,27 +3301,27 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showLabel": {
           "type": "boolean",
           "default": true,
-          "description": "是否显示标签"
+          "description": "显示标签"
         },
         "checked": {
           "type": "boolean",
           "default": false,
-          "description": "是否选中"
+          "description": "选中"
         },
         "indeterminate": {
           "type": "boolean",
           "default": false,
-          "description": "是否半选"
+          "description": "半选"
         },
         "hover": {
           "type": "boolean",
           "default": false,
-          "description": "是否悬浮态"
+          "description": "悬浮态"
         },
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用"
+          "description": "禁用"
         }
       },
       "capabilities": {
@@ -3505,7 +3505,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用"
+          "description": "禁用"
         }
       },
       "capabilities": {
@@ -3641,7 +3641,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "disabled": {
           "type": "boolean",
           "default": false,
-          "description": "是否禁用"
+          "description": "禁用"
         }
       },
       "capabilities": {
@@ -3770,15 +3770,15 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "id": "form",
       "name": "表单",
       "category": "Form",
-      "description": "自定义表单容器，支持横向、纵向和 inline 布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
+      "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
       "isRebuilt": true,
       "schemaVersion": "2.0.0",
       "prompts": {
-        "description": "自定义表单容器，支持横向、纵向和 inline 布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
+        "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
         "usage": "当用户要创建筛选区、查询表单或编辑表单时使用。优先配合 form-row、form-field、checkbox-group、radio-group 组织结构；如果只是一次性生成，可直接使用 draw_form。",
         "examples": [
           "横向表单: { \"componentId\": \"form\", \"params\": { \"layout\": \"horizontal\", \"width\": 720, \"labelWidth\": 96 } }",
-          "内联筛选表单: { \"componentId\": \"form\", \"params\": { \"layout\": \"inline\", \"columnSpacing\": 12 } }",
+          "横向筛选表单: { \"componentId\": \"form\", \"params\": { \"layout\": \"horizontal\", \"columnSpacing\": 12 } }",
           "复刻 lib-data-input-form 的纵向样式: { \"componentId\": \"form\", \"params\": { \"align\": \"top\", \"labelWidthPreset\": \"fill\", \"width\": 266, \"rowSpacing\": 24, \"controlWidth\": 266 } }"
         ]
       },
@@ -3786,7 +3786,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "title": {
           "type": "string",
           "default": "",
-          "description": "表单标题（可选）"
+          "description": "表单标题"
         },
         "layout": {
           "type": "select",
@@ -3794,8 +3794,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "description": "表单布局方式",
           "enumValues": [
             "horizontal",
-            "vertical",
-            "inline"
+            "vertical"
           ]
         },
         "align": {
@@ -3838,7 +3837,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "labelWidth": {
           "type": "number",
           "default": 96,
-          "description": "标签宽度（横向/inline 生效）"
+          "description": "标签宽度"
         },
         "controlWidth": {
           "type": "number",
@@ -3848,12 +3847,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showColon": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示标签冒号"
+          "description": "显示标签冒号"
         },
         "requiredMark": {
           "type": "boolean",
           "default": true,
-          "description": "必填字段是否显示星号"
+          "description": "必填字段显示星号"
         }
       },
       "slots": {
@@ -4015,7 +4014,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "required": {
           "type": "boolean",
           "default": false,
-          "description": "是否必填"
+          "description": "必填"
         },
         "helpText": {
           "type": "string",
@@ -4038,8 +4037,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "description": "字段布局方式",
           "enumValues": [
             "horizontal",
-            "vertical",
-            "inline"
+            "vertical"
           ]
         },
         "labelAlign": {
@@ -4066,7 +4064,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "labelWidth": {
           "type": "number",
           "default": 96,
-          "description": "标签宽度（横向/inline 生效）"
+          "description": "标签宽度（横向生效）"
         },
         "controlWidth": {
           "type": "number",
@@ -4076,7 +4074,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showColon": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示标签冒号"
+          "description": "显示标签冒号"
         },
         "controlType": {
           "type": "select",
@@ -4109,7 +4107,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "size": {
           "type": "select",
           "default": "Default 32",
-          "description": "输入/选择框尺寸（controlType=input/select 时生效）",
+          "description": "输入/选择框尺寸",
           "enumValues": [
             "Mini 24",
             "Small 28",
@@ -4120,32 +4118,19 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "state": {
           "type": "select",
           "default": "Default 默认",
-          "description": "输入/选择框状态（controlType=input/select 时生效）",
+          "description": "状态",
           "enumValues": [
             "Default 默认",
             "Hover 悬浮",
-            "Active 激活"
+            "Active 激活",
+            "Error 错误",
+            "Disabled 禁用"
           ]
-        },
-        "filled": {
-          "type": "boolean",
-          "default": false,
-          "description": "是否强制走已填态（controlType=input/select 时生效）"
-        },
-        "error": {
-          "type": "boolean",
-          "default": false,
-          "description": "是否错误态（controlType=input/select 时生效）"
-        },
-        "disabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "是否禁用控件"
         },
         "showPrefix": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示输入框前缀"
+          "description": "显示输入框前缀"
         },
         "prefixText": {
           "type": "string",
@@ -4155,7 +4140,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "showSuffix": {
           "type": "boolean",
           "default": false,
-          "description": "是否显示输入框后缀"
+          "description": "显示输入框后缀"
         },
         "suffixText": {
           "type": "string",
@@ -4165,12 +4150,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "multiple": {
           "type": "boolean",
           "default": false,
-          "description": "是否切换为多选选择器（controlType=select 时生效）"
+          "description": "多选选择器"
         },
         "selectType": {
           "type": "select",
           "default": "Default 默认",
-          "description": "选择器类型（controlType=select 时生效）",
+          "description": "选择器类型",
           "enumValues": [
             "Default 默认",
             "Label 内置标签"
@@ -4184,7 +4169,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "language": {
           "type": "select",
           "default": "CN",
-          "description": "单选组语言变体（controlType=radio-group 时生效）",
+          "description": "单选组语言变体",
           "enumValues": [
             "CN",
             "EN"
@@ -4213,12 +4198,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "componentToken": {
           "type": "string",
           "default": "",
-          "description": "设计系统组件 token（controlType=figma-component 时使用）"
+          "description": "设计系统组件 token"
         },
         "componentKey": {
           "type": "string",
           "default": "",
-          "description": "设计系统组件 key（componentToken 为空时回退）"
+          "description": "设计系统组件 key"
         },
         "variantCriteria": {
           "type": "string",
@@ -4228,7 +4213,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "text": {
           "type": "string",
           "default": "",
-          "description": "纯文本内容（controlType=text 时使用）"
+          "description": "纯文本内容"
         }
       },
       "slots": {
@@ -4376,7 +4361,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "title": {
           "type": "string",
           "default": "",
-          "description": "卡片标题 (可选)"
+          "description": "卡片标题"
         }
       },
       "slots": {

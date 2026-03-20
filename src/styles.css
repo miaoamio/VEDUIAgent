@@ -943,6 +943,7 @@ h2 {
   min-width: 0;
 }
 
+
 .selection-current-label {
   flex-shrink: 0;
   font-size: 13px;
@@ -1640,6 +1641,33 @@ button:disabled {
   border: none;
   background: transparent;
   box-shadow: none;
+}
+
+.selection-advanced-section {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selection-divider {
+  height: 1px;
+  background: #E5E7EB;
+  width: calc(100% + 32px);
+  margin-left: -16px;
+}
+
+.selection-advanced-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ved-text-primary, #18181B);
+  letter-spacing: 0.01em;
+}
+
+.selection-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .selection-label {

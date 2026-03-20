@@ -1,6 +1,6 @@
 import type { LayoutSpec, SceneNode as ProtocolSceneNode, StyleSpec } from "../protocol/scene";
 import type { ComponentDefinition } from "../registry.types";
-import { createFigmaComponentInstance, parseVariantCriteria } from "../figmaComponent";
+import { createFigmaComponentInstance, findFigmaVariant, loadFigmaComponentByKey, parseVariantCriteria } from "../figmaComponent";
 import { createInspectDrivenTagFallbackNode } from "../tag.fallback";
 import { resolveComponentTokenProfile } from "../theme.component-tokens";
 import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
@@ -33,6 +33,125 @@ function isResizableSceneNode(node: SceneNode): node is ResizableSceneNode {
     typeof (node as ResizableSceneNode).width === "number" &&
     typeof (node as ResizableSceneNode).height === "number"
   );
+}
+
+function normalizeInputSize(value: unknown): "mini" | "small" | "default" | "large" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("24") || normalized.includes("mini")) return "mini";
+  if (normalized.includes("28") || normalized.includes("small")) return "small";
+  if (normalized.includes("36") || normalized.includes("large")) return "large";
+  return "default";
+}
+
+function resolveInputSizeVariantLabel(value: unknown): "Mini 24" | "Small 28" | "Default 32" | "Large 36" {
+  switch (normalizeInputSize(value)) {
+    case "mini":
+      return "Mini 24";
+    case "small":
+      return "Small 28";
+    case "large":
+      return "Large 36";
+    default:
+      return "Default 32";
+  }
+}
+
+function isDateTimePickerToken(value: unknown): boolean {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  const resolved = resolveComponentTokenProfile(normalized);
+  const baseToken = String(resolved?.baseToken || normalized).toLowerCase();
+  return baseToken.includes("datepicker") || baseToken.includes("timepicker") || baseToken.includes("datetimepicker");
+}
+
+function hasSizeVariantCriteria(criteria?: Record<string, string | boolean>): boolean {
+  if (!criteria) return false;
+  return Object.keys(criteria).some((key) => {
+    const normalized = key.trim().toLowerCase();
+    return normalized.includes("size") || normalized.includes("尺寸");
+  });
+}
+
+function hasStateVariantCriteria(criteria?: Record<string, string | boolean>): boolean {
+  if (!criteria) return false;
+  return Object.keys(criteria).some((key) => {
+    const normalized = key.trim().toLowerCase();
+    return normalized.includes("state") || normalized.includes("状态") || normalized.includes("status");
+  });
+}
+
+function collectVariantOptionMap(component: ComponentNode | ComponentSetNode): Record<string, Set<string>> {
+  const map: Record<string, Set<string>> = {};
+  if (component.type !== "COMPONENT_SET") return map;
+  for (const child of component.children) {
+    if (child.type !== "COMPONENT" || !child.variantProperties) continue;
+    Object.entries(child.variantProperties).forEach(([key, value]) => {
+      const name = String(key || "").trim();
+      if (!name) return;
+      if (!map[name]) map[name] = new Set<string>();
+      map[name].add(String(value || "").trim());
+    });
+  }
+  return map;
+}
+
+function findVariantPropertyNameFromMap(
+  optionMap: Record<string, Set<string>>,
+  candidates: string[]
+): string | null {
+  const lowered = candidates.map((candidate) => candidate.trim().toLowerCase()).filter(Boolean);
+  const keys = Object.keys(optionMap);
+  for (const key of keys) {
+    const normalized = key.trim().toLowerCase();
+    if (lowered.some((candidate) => normalized.includes(candidate))) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function pickVariantOption(options: string[], candidates: string[]): string | undefined {
+  for (const candidate of candidates) {
+    const normalizedCandidate = candidate.toLowerCase();
+    const matched = options.find((option) => option.toLowerCase().includes(normalizedCandidate));
+    if (matched) return matched;
+  }
+  return undefined;
+}
+
+function buildSizeCandidates(size: "mini" | "small" | "default" | "large"): string[] {
+  if (size === "mini") return ["mini", "24"];
+  if (size === "small") return ["small", "28"];
+  if (size === "large") return ["large", "36"];
+  return ["default 32", "default", "medium", "normal", "32"];
+}
+
+function buildDateTimePickerVariantCriteria(
+  component: ComponentNode | ComponentSetNode,
+  props: Record<string, unknown>,
+  baseCriteria: Record<string, string | boolean> | undefined,
+  tokenOrKey: string
+): Record<string, string | boolean> | undefined {
+  if (!isDateTimePickerToken(tokenOrKey)) return baseCriteria;
+  const optionMap = collectVariantOptionMap(component);
+  const next: Record<string, string | boolean> = { ...(baseCriteria || {}) };
+  if (!hasSizeVariantCriteria(baseCriteria)) {
+    const sizeKey = findVariantPropertyNameFromMap(optionMap, ["size", "尺寸"]);
+    if (sizeKey) {
+      const options = Array.from(optionMap[sizeKey] || []);
+      const sizeValue = pickVariantOption(options, buildSizeCandidates(normalizeInputSize(props.size)));
+      if (sizeValue) next[sizeKey] = sizeValue;
+    }
+  }
+  if (!hasStateVariantCriteria(baseCriteria)) {
+    const stateKey = findVariantPropertyNameFromMap(optionMap, ["state", "状态", "status"]);
+    if (stateKey) {
+      const options = Array.from(optionMap[stateKey] || []);
+      const stateValue = pickVariantOption(options, ["default", "默认", "normal"]);
+      if (stateValue) next[stateKey] = stateValue;
+    }
+  }
+  return Object.keys(next).length > 0 ? next : baseCriteria;
 }
 
 function parseHexChannel(channel: string): number {
@@ -782,7 +901,8 @@ async function createFigmaNode(
       typeof sceneNode.props.fallbackName === "string" && sceneNode.props.fallbackName.trim()
         ? sceneNode.props.fallbackName.trim()
         : definition.name;
-    const variantCriteria = parseVariantCriteria(sceneNode.props.variantCriteria);
+    const tokenOrKey = componentTokenFromProps || componentKeyFromProps;
+    const parsedCriteria = parseVariantCriteria(sceneNode.props.variantCriteria) as Record<string, string | boolean> | undefined;
 
     if (componentTokenFromProps && !resolvedFromToken) {
       ctx.warnings.push({
@@ -802,11 +922,25 @@ async function createFigmaNode(
     }
 
     try {
-      const instance = await createFigmaComponentInstance({
-        componentKey,
-        fallbackName,
-        variantCriteria
-      });
+      let instance: InstanceNode;
+      if (isDateTimePickerToken(tokenOrKey)) {
+        const loadedComponent = await loadFigmaComponentByKey({ componentKey, fallbackName });
+        const variantCriteria = buildDateTimePickerVariantCriteria(
+          loadedComponent,
+          sceneNode.props,
+          parsedCriteria,
+          tokenOrKey
+        );
+        const target = findFigmaVariant(loadedComponent, variantCriteria);
+        instance = target.createInstance();
+      } else {
+        const created = await createFigmaComponentInstance({
+          componentKey,
+          fallbackName,
+          variantCriteria: parsedCriteria
+        });
+        instance = created;
+      }
       const textOverride =
         typeof sceneNode.props.text === "string" && sceneNode.props.text.trim()
           ? sceneNode.props.text.trim()

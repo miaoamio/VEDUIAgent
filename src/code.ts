@@ -7,7 +7,9 @@ import { applyEnvelopeUnknown } from './engine/applyEnvelope';
 import {
   createFigmaComponentInstance,
   discoverFigmaComponentSchema,
+  findFigmaVariant,
   inspectFigmaComponentStructure,
+  loadFigmaComponentByKey,
   parseVariantCriteria,
   VariantCriteria
 } from './figmaComponent';
@@ -1428,6 +1430,7 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
     wrapper.clipsContent = false;
     wrapper.layoutAlign = tableFrame.layoutAlign;
     wrapper.resize(tableFrame.width, 1);
+    wrapper.cornerRadius = params.cornerRadius || 0;
     // Some Figma versions reset sizing modes when resize() is called.
     wrapper.primaryAxisSizingMode = 'AUTO';
     wrapper.counterAxisSizingMode = 'FIXED';
@@ -2219,9 +2222,9 @@ function mergeUnique(base: string[] | undefined, incoming: string[] | undefined)
     return merged.size > 0 ? Array.from(merged) : undefined;
 }
 
-function normalizeFormLayout(value: unknown): 'horizontal' | 'vertical' | 'inline' {
+function normalizeFormLayout(value: unknown): 'horizontal' | 'vertical' {
     const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'vertical' || normalized === 'inline') return normalized;
+    if (normalized === 'vertical') return normalized;
     return 'horizontal';
 }
 
@@ -2310,6 +2313,134 @@ function resolveInputSizeVariantLabel(value: unknown): 'Mini 24' | 'Small 28' | 
         default:
             return 'Default 32';
     }
+}
+
+function isDateTimePickerToken(value: unknown): boolean {
+    const normalized = String(value || '').trim();
+    if (!normalized) return false;
+    const resolved = resolveComponentTokenProfile(normalized);
+    const baseToken = String(resolved?.baseToken || normalized).toLowerCase();
+    return baseToken.includes('datepicker') || baseToken.includes('timepicker') || baseToken.includes('datetimepicker');
+}
+
+function hasSizeVariantCriteria(criteria?: VariantCriteria): boolean {
+    if (!criteria) return false;
+    return Object.keys(criteria).some((key) => {
+        const normalized = key.trim().toLowerCase();
+        return normalized.includes('size') || normalized.includes('尺寸');
+    });
+}
+
+function hasStateVariantCriteria(criteria?: VariantCriteria): boolean {
+    if (!criteria) return false;
+    return Object.keys(criteria).some((key) => {
+        const normalized = key.trim().toLowerCase();
+        return normalized.includes('state') || normalized.includes('状态') || normalized.includes('status');
+    });
+}
+
+function collectVariantOptionMap(component: ComponentNode | ComponentSetNode): Record<string, Set<string>> {
+    const map: Record<string, Set<string>> = {};
+    if (component.type !== 'COMPONENT_SET') return map;
+    for (const child of component.children) {
+        if (child.type !== 'COMPONENT' || !child.variantProperties) continue;
+        Object.entries(child.variantProperties).forEach(([key, value]) => {
+            const name = String(key || '').trim();
+            if (!name) return;
+            if (!map[name]) map[name] = new Set<string>();
+            map[name].add(String(value || '').trim());
+        });
+    }
+    return map;
+}
+
+function findVariantPropertyNameFromMap(
+    optionMap: Record<string, Set<string>>,
+    candidates: string[]
+): string | null {
+    const lowered = candidates.map((candidate) => candidate.trim().toLowerCase()).filter(Boolean);
+    const keys = Object.keys(optionMap);
+    for (const key of keys) {
+        const normalized = key.trim().toLowerCase();
+        if (lowered.some((candidate) => normalized.includes(candidate))) {
+            return key;
+        }
+    }
+    return null;
+}
+
+function pickVariantOption(options: string[], candidates: string[]): string | undefined {
+    for (const candidate of candidates) {
+        const normalizedCandidate = candidate.toLowerCase();
+        const matched = options.find((option) => option.toLowerCase().includes(normalizedCandidate));
+        if (matched) return matched;
+    }
+    return undefined;
+}
+
+function buildSizeCandidates(size: 'mini' | 'small' | 'default' | 'large'): string[] {
+    if (size === 'mini') return ['mini', '24'];
+    if (size === 'small') return ['small', '28'];
+    if (size === 'large') return ['large', '36'];
+    return ['default 32', 'default', 'medium', 'normal', '32'];
+}
+
+function buildDateTimePickerVariantCriteria(
+    component: ComponentNode | ComponentSetNode,
+    params: Record<string, any>,
+    baseCriteria: VariantCriteria | undefined,
+    tokenOrKey: string
+): VariantCriteria | undefined {
+    if (!isDateTimePickerToken(tokenOrKey)) return baseCriteria;
+    const optionMap = collectVariantOptionMap(component);
+    const next: VariantCriteria = { ...(baseCriteria || {}) };
+    if (!hasSizeVariantCriteria(baseCriteria)) {
+        const sizeKey = findVariantPropertyNameFromMap(optionMap, ['size', '尺寸']);
+        if (sizeKey) {
+            const options = Array.from(optionMap[sizeKey] || []);
+            const sizeValue = pickVariantOption(options, buildSizeCandidates(normalizeInputSize(params.size)));
+            if (sizeValue) next[sizeKey] = sizeValue;
+        }
+    }
+    if (!hasStateVariantCriteria(baseCriteria)) {
+        const stateKey = findVariantPropertyNameFromMap(optionMap, ['state', '状态', 'status']);
+        if (stateKey) {
+            const options = Array.from(optionMap[stateKey] || []);
+            const stateValue = pickVariantOption(options, ['default', '默认', 'normal']);
+            if (stateValue) next[stateKey] = stateValue;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : baseCriteria;
+}
+
+function normalizeTimepickerIconHitArea(root: SceneNode): void {
+    if (typeof (root as any).findAll !== 'function') return;
+    const targets = (root as any).findAll((node: SceneNode) => {
+        if (node.type !== 'RECTANGLE' && node.type !== 'SLICE') return false;
+        const width = 'width' in node ? (node as any).width : 0;
+        const height = 'height' in node ? (node as any).height : 0;
+        if (!(width > 24 || height > 24)) return false;
+        const fills = 'fills' in node ? (node as any).fills : [];
+        const strokes = 'strokes' in node ? (node as any).strokes : [];
+        const hasVisibleFill = Array.isArray(fills) && fills.some((fill) => fill?.visible !== false);
+        const hasVisibleStroke = Array.isArray(strokes) && strokes.some((stroke) => stroke?.visible !== false);
+        if (hasVisibleFill || hasVisibleStroke) return false;
+        return true;
+    });
+    targets.forEach((node: SceneNode) => {
+        const width = (node as any).width;
+        const height = (node as any).height;
+        const centerX = (node as any).x + width / 2;
+        const centerY = (node as any).y + height / 2;
+        if (typeof (node as any).resize === 'function') {
+            (node as any).resize(16, 16);
+        } else {
+            (node as any).width = 16;
+            (node as any).height = 16;
+        }
+        (node as any).x = centerX - 8;
+        (node as any).y = centerY - 8;
+    });
 }
 
 function resolveInputStateVariantLabel(value: unknown): 'Default 默认' | 'Hover 悬浮' | 'Active 激活' {
@@ -3101,6 +3232,49 @@ async function updateTextNodeCharacters(node: TextNode, value: string): Promise<
     }
 }
 
+function matchInputAffixName(value: string, kind: 'prefix' | 'suffix'): boolean {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (kind === 'prefix') return normalized.includes('prefix') || normalized.includes('前缀');
+    return normalized.includes('suffix') || normalized.includes('后缀');
+}
+
+function findInputAffixTextNodes(
+    textNodes: TextNode[],
+    mainTextNode?: TextNode | null
+): { prefixNode: TextNode | null; suffixNode: TextNode | null } {
+    const candidates = textNodes.filter((node) => node !== mainTextNode);
+    if (candidates.length === 0) return { prefixNode: null, suffixNode: null };
+
+    let prefixNode: TextNode | null = null;
+    let suffixNode: TextNode | null = null;
+    for (const node of candidates) {
+        const combined = `${String(node.name || '')} ${String(node.parent?.name || '')}`.toLowerCase();
+        if (!prefixNode && matchInputAffixName(combined, 'prefix')) {
+            prefixNode = node;
+        }
+        if (!suffixNode && matchInputAffixName(combined, 'suffix')) {
+            suffixNode = node;
+        }
+        if (prefixNode && suffixNode) break;
+    }
+
+    const sortedByX = [...candidates].sort((a, b) => {
+        const ax = a.absoluteBoundingBox?.x ?? 0;
+        const bx = b.absoluteBoundingBox?.x ?? 0;
+        return ax - bx;
+    });
+    const fallbackPrefix = sortedByX[0] ?? null;
+    const fallbackSuffix = sortedByX.length > 1 ? sortedByX[sortedByX.length - 1] : null;
+
+    const finalPrefix = prefixNode ?? fallbackPrefix;
+    let finalSuffix = suffixNode ?? fallbackSuffix;
+    if (finalPrefix && finalSuffix && finalPrefix.id === finalSuffix.id) {
+        finalSuffix = null;
+    }
+    return { prefixNode: finalPrefix, suffixNode: finalSuffix };
+}
+
 async function createButtonFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
@@ -3200,17 +3374,14 @@ async function createInputFromFigmaTemplate(
             await updateTextNodeCharacters(mainTextNode, nextValue);
         }
 
-        const sideTextNodes = textNodes.filter((node) => node !== mainTextNode);
+        const { prefixNode, suffixNode } = findInputAffixTextNodes(textNodes, mainTextNode);
         const prefixText = String(params.prefixText || '').trim();
         const suffixText = String(params.suffixText || '').trim();
-        if (showPrefix && prefixText && sideTextNodes[0]) {
-            await updateTextNodeCharacters(sideTextNodes[0], prefixText);
+        if (showPrefix && prefixText && prefixNode) {
+            await updateTextNodeCharacters(prefixNode, prefixText);
         }
-        if (showSuffix && suffixText) {
-            const suffixNode = sideTextNodes[sideTextNodes.length - 1];
-            if (suffixNode && suffixNode !== sideTextNodes[0]) {
-                await updateTextNodeCharacters(suffixNode, suffixText);
-            }
+        if (showSuffix && suffixText && suffixNode) {
+            await updateTextNodeCharacters(suffixNode, suffixText);
         }
 
         detached.name = def.name;
@@ -4019,7 +4190,7 @@ async function updateFormFieldLabelTemplate(root: SceneNode, params: Record<stri
     const layout = resolveFormFieldLayout(params);
     if (layout !== 'vertical' && 'itemSpacing' in contentContainer) {
         const explicitSpacing = Number(params.labelControlSpacing);
-        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 20;
+        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 12;
         try {
             (contentContainer as FrameNode | InstanceNode | ComponentNode).itemSpacing = nextSpacing;
         } catch {}
@@ -4070,12 +4241,15 @@ async function updateFormFieldMessageTemplate(root: SceneNode, params: Record<st
 async function updateInputControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
     if (node.type !== 'INSTANCE') return false;
 
-    const disabled = Boolean(params.disabled);
-    const error = Boolean(params.error);
+    const normalizedState = String(params.state || '').trim().toLowerCase();
+    const stateDisabled = normalizedState.includes('disabled') || normalizedState.includes('禁用');
+    const stateError = normalizedState.includes('error') || normalizedState.includes('错误');
+    const disabled = Boolean(params.disabled) || stateDisabled;
+    const error = Boolean(params.error) || stateError;
     const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
     const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
     const hasValue = String(params.value ?? '').length > 0;
-    const filled = Boolean(params.filled) || hasValue;
+    const filled = hasValue;
 
     const nextProps: Record<string, string | boolean> = {};
     const mappings: Array<[string, string | boolean]> = [
@@ -4109,17 +4283,14 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
         await updateTextNodeCharacters(mainTextNode, nextValue);
     }
 
-    const sideTextNodes = textNodes.filter((child) => child !== mainTextNode);
+    const { prefixNode, suffixNode } = findInputAffixTextNodes(textNodes, mainTextNode);
     const prefixText = String(params.prefixText || '').trim();
     const suffixText = String(params.suffixText || '').trim();
-    if (showPrefix && prefixText && sideTextNodes[0]) {
-        await updateTextNodeCharacters(sideTextNodes[0], prefixText);
+    if (showPrefix && prefixText && prefixNode) {
+        await updateTextNodeCharacters(prefixNode, prefixText);
     }
-    if (showSuffix && suffixText) {
-        const suffixNode = sideTextNodes[sideTextNodes.length - 1];
-        if (suffixNode && suffixNode !== sideTextNodes[0]) {
-            await updateTextNodeCharacters(suffixNode, suffixText);
-        }
+    if (showSuffix && suffixText && suffixNode) {
+        await updateTextNodeCharacters(suffixNode, suffixText);
     }
 
     return true;
@@ -4131,8 +4302,10 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
     const currentValue = String(params.value || '').trim();
     const placeholder = String(params.placeholder || '请选择');
     const hasValue = currentValue.length > 0;
-    const filled = Boolean(params.filled) || hasValue;
-    const disabled = Boolean(params.disabled);
+    const filled = hasValue;
+    const normalizedState = String(params.state || '').trim().toLowerCase();
+    const stateDisabled = normalizedState.includes('disabled') || normalizedState.includes('禁用');
+    const disabled = Boolean(params.disabled) || stateDisabled;
     const multiple = Boolean(params.multiple);
 
     const nextProps: Record<string, string | boolean> = {};
@@ -4438,7 +4611,7 @@ function normalizeFormLabelWidthPreset(value: unknown): 'fill' | 'default-80' | 
     return 'custom';
 }
 
-function resolveFormFieldLayout(params: Record<string, any>): 'horizontal' | 'vertical' | 'inline' {
+function resolveFormFieldLayout(params: Record<string, any>): 'horizontal' | 'vertical' {
     const explicitLayout = String(params.layout || '').trim();
     if (explicitLayout) {
         return normalizeFormLayout(explicitLayout);
@@ -4589,6 +4762,212 @@ function adjustFormItemChildren(
     return nextChildren;
 }
 
+function stripFormItemCount(params: Record<string, any>): Record<string, any> {
+    const { itemCount: _itemCount, ...rest } = params || {};
+    return rest;
+}
+
+function areFormParamsEquivalent(prevParams: Record<string, any>, nextParams: Record<string, any>): boolean {
+    const prev = stripFormItemCount(prevParams);
+    const next = stripFormItemCount(nextParams);
+    const prevKeys = Object.keys(prev);
+    const nextKeys = Object.keys(next);
+    if (prevKeys.length !== nextKeys.length) return false;
+    for (const key of prevKeys) {
+        if (prev[key] !== next[key]) return false;
+    }
+    return true;
+}
+
+function isFormItemNode(node: SceneNode): boolean {
+    if (!('getPluginData' in node)) return false;
+    const componentId = node.getPluginData('component-id');
+    if (componentId === 'form-field') return true;
+    if (componentId !== 'form-row') return false;
+    if (!('children' in node)) return false;
+    return node.children.some((child) => 'getPluginData' in child && child.getPluginData('component-id') === 'form-field');
+}
+
+function collectFormItemNodes(frame: FrameNode): SceneNode[] {
+    return frame.children.filter((child) => isFormItemNode(child));
+}
+
+function normalizeFormChildInstance(
+    child: ComponentInstance,
+    columnSpacing: number | null
+): ComponentInstance {
+    if (child.componentId === 'form-row' && Array.isArray(child.children) && child.children.length === 1 && child.children[0].componentId === 'form-field') {
+        const field = child.children[0];
+        return {
+            ...field,
+            params: {
+                ...(child.params || {}),
+                ...(field.params || {})
+            }
+        };
+    }
+    if (child.componentId === 'form-row' && columnSpacing !== null) {
+        const childParams = child.params || {};
+        const spacing = toPositiveNumber(childParams.spacing);
+        return {
+            ...child,
+            params: {
+                ...childParams,
+                spacing: spacing === null ? columnSpacing : childParams.spacing
+            }
+        };
+    }
+    return child;
+}
+
+async function resolveFormParamsForRender(
+    formParams: Record<string, any>,
+    instance: ComponentInstance
+): Promise<Record<string, any>> {
+    const formLayout = normalizeFormLayout(formParams.layout);
+    const shouldAutoLabelWidth = Boolean(formParams.labelWidthAuto) && formLayout !== 'vertical';
+    const resolvedFormParams = shouldAutoLabelWidth ? { ...formParams } : formParams;
+    if (shouldAutoLabelWidth) {
+        const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
+        if (maxLabelWidth > 0) {
+            resolvedFormParams.labelWidth = maxLabelWidth;
+            resolvedFormParams.labelWidthPreset = 'custom';
+        }
+    }
+    return resolvedFormParams;
+}
+
+async function renderFormItemNode(
+    formFrame: FrameNode,
+    formParams: Record<string, any>,
+    instance: ComponentInstance,
+    columnSpacing: number | null,
+    resolvedFormParams: Record<string, any>
+): Promise<SceneNode> {
+    const processedChild = normalizeFormChildInstance(instance, columnSpacing);
+    const node = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
+    if ((node.type === 'FRAME' || node.type === 'INSTANCE') && formFrame.counterAxisSizingMode === 'FIXED') {
+        node.layoutAlign = 'STRETCH';
+    }
+    return node;
+}
+
+async function updateFormItemCount(
+    formFrame: FrameNode,
+    prevParams: Record<string, any>,
+    nextParams: Record<string, any>
+): Promise<boolean> {
+    const targetCount = normalizeFormItemCount(nextParams.itemCount);
+    if (targetCount === null) return false;
+    let snapshot = readComponentInstanceSnapshot(formFrame);
+    if (!snapshot) {
+        snapshot = buildComponentInstanceFromNode(formFrame);
+    }
+    if (!snapshot) return false;
+    const normalizedParams: Record<string, any> = { ...nextParams, itemCount: targetCount };
+    const patchedInstance = patchFormInstanceSnapshot(snapshot, prevParams, normalizedParams);
+    const nextItemInstances = Array.isArray(patchedInstance.children)
+        ? patchedInstance.children.filter((child) => isFormItemInstance(child))
+        : [];
+    const itemNodes = collectFormItemNodes(formFrame);
+    const currentCount = itemNodes.length;
+    if (targetCount < currentCount) {
+        for (let i = currentCount - 1; i >= targetCount; i -= 1) {
+            itemNodes[i].remove();
+        }
+    } else if (targetCount > currentCount) {
+        const columnSpacing = toPositiveNumber(normalizedParams.columnSpacing);
+        const resolvedFormParams = await resolveFormParamsForRender(normalizedParams, patchedInstance);
+        const newInstances = nextItemInstances.slice(currentCount);
+        let insertIndex = formFrame.children.length;
+        if (currentCount > 0) {
+            const lastNode = itemNodes[currentCount - 1];
+            const lastIndex = formFrame.children.indexOf(lastNode);
+            insertIndex = lastIndex >= 0 ? lastIndex + 1 : formFrame.children.length;
+        }
+        for (const instance of newInstances) {
+            const childNode = await renderFormItemNode(formFrame, normalizedParams, instance, columnSpacing, resolvedFormParams);
+            formFrame.insertChild(insertIndex, childNode);
+            insertIndex += 1;
+        }
+    }
+    writeNodeParams(formFrame, normalizedParams);
+    writeComponentInstanceSnapshot(formFrame, patchedInstance);
+    return true;
+}
+
+async function updateFormLayoutParams(
+    formFrame: FrameNode,
+    prevParams: Record<string, any>,
+    nextParams: Record<string, any>
+): Promise<boolean> {
+    let snapshot = readComponentInstanceSnapshot(formFrame);
+    if (!snapshot) {
+        snapshot = buildComponentInstanceFromNode(formFrame);
+    }
+    if (!snapshot) return false;
+    const nextItemCount = normalizeFormItemCount(nextParams.itemCount);
+    const normalizedParams = nextItemCount !== null
+        ? { ...nextParams, itemCount: nextItemCount }
+        : nextParams;
+    const patchedInstance = patchFormInstanceSnapshot(snapshot, prevParams, normalizedParams);
+    const itemNodes = collectFormItemNodes(formFrame);
+    const nextItemInstances = Array.isArray(patchedInstance.children)
+        ? patchedInstance.children.filter((child) => isFormItemInstance(child))
+        : [];
+    if (itemNodes.length !== nextItemInstances.length) return false;
+
+    const rowSpacing = Number(normalizedParams.rowSpacing);
+    const resolvedRowSpacing =
+        Number.isFinite(rowSpacing) && rowSpacing > 0
+            ? rowSpacing
+            : (normalizeFormAlign(normalizedParams.align) === 'top' ? 24 : 12);
+    formFrame.itemSpacing = resolvedRowSpacing;
+
+    const title = String(normalizedParams.title || '').trim();
+    const existingTitleNode = formFrame.children.find((child) => child.type === 'TEXT') as TextNode | undefined;
+    if (title) {
+        if (existingTitleNode) {
+            existingTitleNode.characters = title;
+        } else {
+            const titleNode = figma.createText();
+            await applyTextStyleBinding(titleNode, 'card-title-text-style-key', { family: 'Inter', style: 'Bold', size: 16 });
+            titleNode.characters = title;
+            await applyColorVariable(titleNode, 'card-title', '#0C0D0E');
+            formFrame.insertChild(0, titleNode);
+        }
+    } else if (existingTitleNode) {
+        existingTitleNode.remove();
+    }
+
+    const nextWidth = toPositiveNumber(normalizedParams.width);
+    if (nextWidth !== null) {
+        applyNodeSize(formFrame, nextWidth, null);
+        formFrame.counterAxisSizingMode = 'FIXED';
+    } else {
+        formFrame.counterAxisSizingMode = 'AUTO';
+    }
+
+    const columnSpacing = toPositiveNumber(normalizedParams.columnSpacing);
+    const resolvedFormParams = await resolveFormParamsForRender(normalizedParams, patchedInstance);
+    for (let index = 0; index < itemNodes.length; index += 1) {
+        const itemNode = itemNodes[index];
+        const itemInstance = nextItemInstances[index];
+        const childNode = await renderFormItemNode(
+            formFrame,
+            normalizedParams,
+            itemInstance,
+            columnSpacing,
+            resolvedFormParams
+        );
+        replaceSceneNode(itemNode, childNode);
+    }
+
+    writeNodeParams(formFrame, normalizedParams);
+    writeComponentInstanceSnapshot(formFrame, patchedInstance);
+    return true;
+}
+
 async function resolveAutoFormLabelWidth(
     formParams: Record<string, any>,
     instance: ComponentInstance
@@ -4636,12 +5015,15 @@ function inheritFormFieldParams(
     if (instance.componentId === 'form-field') {
         const currentParams = instance.params || {};
         const inheritedAlign = normalizeFormAlign(formParams.align || currentParams.align);
+        const formLayoutRaw = String(formParams.layout || '').trim();
         const inferredLayout =
             String(currentParams.layout || '').trim()
                 ? currentParams.layout
-                : inheritedAlign === 'top'
-                    ? 'vertical'
-                    : normalizeFormLayout(formParams.layout || 'horizontal');
+                : formLayoutRaw
+                    ? normalizeFormLayout(formParams.layout)
+                    : inheritedAlign === 'top'
+                        ? 'vertical'
+                        : 'horizontal';
         const nextParams = {
             align: inheritedAlign,
             layout: inferredLayout,
@@ -6353,12 +6735,27 @@ async function renderComponent(
           ? params.fallbackName.trim()
           : undefined;
 
-      const variantCriteria = parseVariantCriteria(params.variantCriteria);
-      const importedInstance = await createFigmaComponentInstance({
-        componentKey,
-        fallbackName,
-        variantCriteria
-      });
+      const tokenOrKey = componentToken || componentKeyFromParam;
+      const parsedCriteria = parseVariantCriteria(params.variantCriteria);
+      let importedInstance: InstanceNode;
+      if (isDateTimePickerToken(tokenOrKey)) {
+        const loadedComponent = await loadFigmaComponentByKey({ componentKey, fallbackName });
+        const variantCriteria = buildDateTimePickerVariantCriteria(
+            loadedComponent,
+            params,
+            parsedCriteria,
+            tokenOrKey
+        );
+        const target = findFigmaVariant(loadedComponent, variantCriteria);
+        importedInstance = target.createInstance();
+      } else {
+        const imported = await createFigmaComponentInstance({
+            componentKey,
+            fallbackName,
+            variantCriteria: parsedCriteria
+        });
+        importedInstance = imported;
+      }
 
       const width = Number(params.width);
       const height = Number(params.height);
@@ -6369,8 +6766,17 @@ async function renderComponent(
       } else if (Number.isFinite(height) && height > 0) {
         importedInstance.resize(importedInstance.width, height);
       }
-
-      node = importedInstance;
+      let renderedNode: SceneNode = importedInstance;
+      if (isDateTimePickerToken(tokenOrKey)) {
+        try {
+          const detached = importedInstance.detachInstance();
+          normalizeTimepickerIconHitArea(detached);
+          renderedNode = detached;
+        } catch (error) {
+          renderedNode = importedInstance;
+        }
+      }
+      node = renderedNode;
     }
   }
   // --- PAGE ---
@@ -6637,7 +7043,7 @@ async function renderComponent(
     frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : 'CENTER';
     const explicitSpacing = Number(params.labelControlSpacing);
     const resolvedSpacing =
-        Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 20);
+        Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 12);
     frame.itemSpacing = resolvedSpacing;
     frame.fills = [];
     frame.clipsContent = false;
@@ -6736,63 +7142,166 @@ async function renderComponent(
       frame.resize(params.width || 1176, 100);
       frame.cornerRadius = params.cornerRadius || 0;
       frame.clipsContent = true;
-      if (!wantsPagination && params.borderWidth && params.borderWidth > 0) {
-          await applyStrokeColorVariable(frame, 'table-border-key', params.borderColor || '#EAEDF1');
-          frame.strokeWeight = params.borderWidth;
-      } else if (wantsPagination) {
-          clearNodeStrokes(frame);
+      const tableColumnInstances: ComponentInstance[] =
+          instance.children && instance.children.length > 0
+              ? instance.children
+              : Array.from({ length: params.columnCount || 3 }).map((_, i) => ({
+                    id: `col-${i}`,
+                    componentId: 'table-column',
+                    params: {
+                        headerText: `Header ${i + 1}`,
+                        rowCount: params.rowCount || 10,
+                        width: 150
+                    }
+                }));
+
+      const columnDef = COMPONENT_DEFS['table-column'];
+      const columnData = tableColumnInstances.map((colInstance) => {
+          const mergedParams: Record<string, any> = {
+              ...getDefaultParams('table-column'),
+              ...(colInstance.params || {}),
+              headerHeight: toPositiveNumber(colInstance.params?.headerHeight) ?? headerHeight,
+              bodyHeight: toPositiveNumber(colInstance.params?.bodyHeight) ?? bodyHeight
+          };
+          const columnWidth = toPositiveNumber(mergedParams.width) ?? 150;
+          const frameNode = figma.createFrame();
+          frameNode.layoutMode = 'VERTICAL';
+          frameNode.primaryAxisSizingMode = 'AUTO';
+          frameNode.counterAxisSizingMode = 'FIXED';
+          frameNode.layoutGrow = 1;
+          frameNode.resize(columnWidth, 100);
+          frameNode.fills = [];
+          frameNode.clipsContent = false;
+          if (columnDef) {
+              frameNode.name = columnDef.name;
+          }
+          frameNode.setPluginData('is-ai-component', 'true');
+          frameNode.setPluginData('component-id', 'table-column');
+          frameNode.setPluginData('params', JSON.stringify(mergedParams));
+          const normalizedInstance: ComponentInstance = {
+              ...colInstance,
+              componentId: 'table-column',
+              params: mergedParams
+          };
+          if (shouldStoreComponentInstance(normalizedInstance)) {
+              writeComponentInstanceSnapshot(frameNode, normalizedInstance);
+          }
+          frame.appendChild(frameNode);
+          return {
+              frameNode,
+              mergedParams,
+              columnWidth,
+              autoHeightMode:
+                  mergedParams.textDisplay === 'lineBreak' ||
+                  mergedParams.height === 0 ||
+                  mergedParams.height === 'auto' ||
+                  mergedParams.height === 'AUTO' ||
+                  mergedParams.rowHeight === 0 ||
+                  mergedParams.rowHeight === 'auto' ||
+                  mergedParams.rowHeight === 'AUTO' ||
+                  mergedParams.headerHeight === 0 ||
+                  mergedParams.headerHeight === 'auto' ||
+                  mergedParams.headerHeight === 'AUTO' ||
+                  mergedParams.bodyHeight === 0 ||
+                  mergedParams.bodyHeight === 'auto' ||
+                  mergedParams.bodyHeight === 'AUTO',
+              widthMode:
+                  typeof mergedParams.columnWidthMode === 'string'
+                      ? mergedParams.columnWidthMode
+                      : 'FILL',
+              headerChild:
+                  Array.isArray(colInstance.children)
+                      ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
+                      : undefined,
+              bodyChildren:
+                  Array.isArray(colInstance.children)
+                      ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
+                      : []
+          };
+      });
+
+      for (const col of columnData) {
+          await new Promise((r) => setTimeout(r, 20));
+          const headerChild = col.headerChild;
+          const headerWidthParam = (headerChild?.params as any)?.width;
+          const headerExplicitHugWidth = headerWidthParam === 0 || headerWidthParam === '0';
+          const headerNode = await renderComponent(
+              headerChild
+                  ? {
+                        ...headerChild,
+                        params: {
+                            ...(headerChild.params || {}),
+                            width: headerExplicitHugWidth ? 0 : (toPositiveNumber(headerWidthParam) ?? col.columnWidth),
+                            height: col.autoHeightMode ? 0 : (toPositiveNumber(headerChild.params?.height) ?? headerHeight),
+                            paddingTop: headerChild.params?.paddingTop ?? 0,
+                            paddingBottom: headerChild.params?.paddingBottom ?? 0
+                        }
+                    }
+                  : {
+                        id: 'header',
+                        componentId: 'table-header-cell',
+                        params: {
+                            text: col.mergedParams.headerText || 'Header',
+                            width: col.columnWidth,
+                            height: col.autoHeightMode ? 0 : headerHeight
+                        }
+                    },
+              { isRoot: false }
+          );
+          col.frameNode.appendChild(headerNode);
+          await new Promise((r) => setTimeout(r, 20));
+          await applyTableHeaderElementToHeaderCell(headerNode, col.mergedParams.headerType);
       }
-      if (instance.children && instance.children.length > 0) {
-          for (const child of instance.children) {
-              const childNode = await renderComponent({
-                ...child,
-                params: {
-                  ...(child.params || {}),
-                  headerHeight: toPositiveNumber(child.params?.headerHeight) ?? headerHeight,
-                  bodyHeight: toPositiveNumber(child.params?.bodyHeight) ?? bodyHeight
-                }
-              }, { isRoot: false });
-              frame.appendChild(childNode);
-              // Add delay to show step-by-step drawing
-              await new Promise(r => setTimeout(r, 50));
-              if (childNode.type === 'FRAME' && childNode.getPluginData('component-id') === 'table-column') {
-                  const colParams = readNodeParams(childNode);
-                  if (typeof colParams.columnWidthMode === 'string') {
-                      applyColumnWidthMode(
-                          childNode,
-                          colParams.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
-                          colParams.width
-                      );
-                  }
+
+      const maxRowCount = columnData.reduce((count, col) => {
+          const columnRowCount =
+              col.bodyChildren.length > 0 ? col.bodyChildren.length : (col.mergedParams.rowCount || 10);
+          return Math.max(count, columnRowCount);
+      }, 0);
+
+      for (let rowIndex = 0; rowIndex < maxRowCount; rowIndex++) {
+          for (const col of columnData) {
+              const hasCustomRows = col.bodyChildren.length > 0;
+              const bodyChild = col.bodyChildren[rowIndex];
+              if (hasCustomRows && !bodyChild) {
+                  continue;
               }
+              const widthParam = (bodyChild?.params as any)?.width;
+              const explicitHugWidth = widthParam === 0 || widthParam === '0';
+              const cellNode = await renderComponent(
+                  bodyChild
+                      ? {
+                            ...bodyChild,
+                            params: {
+                                ...(bodyChild.params || {}),
+                                width: explicitHugWidth ? 0 : (toPositiveNumber(widthParam) ?? col.columnWidth),
+                                height: col.autoHeightMode ? 0 : (toPositiveNumber(bodyChild.params?.height) ?? bodyHeight),
+                                paddingTop: bodyChild.params?.paddingTop ?? 0,
+                                paddingBottom: bodyChild.params?.paddingBottom ?? 0
+                            }
+                        }
+                      : {
+                            id: `cell-${rowIndex}`,
+                            componentId: 'table-cell',
+                            params: {
+                                text: `Cell ${rowIndex + 1}`,
+                                width: col.columnWidth,
+                                height: col.autoHeightMode ? 0 : bodyHeight
+                            }
+                        },
+                  { isRoot: false }
+              );
+              col.frameNode.appendChild(cellNode);
+              await new Promise((r) => setTimeout(r, 20));
           }
-      } else {
-          const colCount = params.columnCount || 3;
-          for (let i = 0; i < colCount; i++) {
-              const colInstance: ComponentInstance = {
-                  id: `col-${i}`,
-                  componentId: 'table-column',
-                      params: {
-                          headerText: `Header ${i+1}`,
-                      rowCount: params.rowCount || 10,
-                      width: 150,
-                      headerHeight,
-                      bodyHeight
-                  }
-              };
-              const colNode = await renderComponent(colInstance, { isRoot: false });
-              frame.appendChild(colNode);
-              if (colNode.type === 'FRAME' && colNode.getPluginData('component-id') === 'table-column') {
-                  const colParams = readNodeParams(colNode);
-                  if (typeof colParams.columnWidthMode === 'string') {
-                      applyColumnWidthMode(
-                          colNode,
-                          colParams.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
-                          colParams.width
-                      );
-                  }
-              }
-          }
+      }
+
+      for (const col of columnData) {
+          applyColumnWidthMode(
+              col.frameNode,
+              col.widthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
+              col.columnWidth
+          );
       }
       alignAllTableRows(frame);
       if (params.rowAction) {
@@ -6830,6 +7339,16 @@ async function renderComponent(
           }
           removePaginationRow(frame.parent as FrameNode);
           node = frame;
+      }
+      const borderWidth = Number(params.borderWidth ?? 0);
+      if (Number.isFinite(borderWidth) && borderWidth > 0) {
+          await applyStrokeColorVariable(frame, 'table-border-key', params.borderColor || '#EAEDF1');
+          frame.strokeWeight = borderWidth;
+      } else {
+          clearNodeStrokes(frame);
+      }
+      if (node !== frame) {
+          clearNodeStrokes(node as FrameNode);
       }
   }
   // --- TABLE COLUMN ---
@@ -8162,6 +8681,7 @@ figma.ui.onmessage = async (msg) => {
     checkSelection();
   }
 
+
   if (msg.type === 'inspect-figma-component-props') {
     const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
     const maxCountRaw = Number(payload.maxCount);
@@ -8298,6 +8818,24 @@ figma.ui.onmessage = async (msg) => {
         let shouldRefreshSelection = true;
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
           const previousParams = readNodeParams(node);
+          if (componentId === 'form' && node.type === 'FRAME' && areFormParamsEquivalent(previousParams, params)) {
+            const updated = await updateFormItemCount(node, previousParams, params);
+            if (updated) {
+              figma.currentPage.selection = [node];
+              checkSelection();
+              figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
+              return;
+            }
+          }
+          if (componentId === 'form' && node.type === 'FRAME') {
+            const updated = await updateFormLayoutParams(node, previousParams, params);
+            if (updated) {
+              figma.currentPage.selection = [node];
+              checkSelection();
+              figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
+              return;
+            }
+          }
           let snapshot = readComponentInstanceSnapshot(node);
           if (!snapshot) {
             snapshot = buildComponentInstanceFromNode(node);
@@ -8548,20 +9086,16 @@ figma.ui.onmessage = async (msg) => {
 	                await applyRowActionColumn(tableContent, String(params.rowAction || 'none'));
 	            }
 
-	            // Pagination rule: when pagination is enabled, the table should not render an outer border.
-	            // Also if we have a wrapper (content != root), the wrapper should not have a border.
-	            if (wantsPagination || tableContent !== tableRoot) {
-	                clearNodeStrokes(tableRoot);
-	            }
-
-	            // The table body should ALWAYS have a border if borderWidth > 0, regardless of pagination or filters.
-	            const borderWidth = Number(params.borderWidth ?? 0);
-	            if (Number.isFinite(borderWidth) && borderWidth > 0) {
-	                await applyStrokeColorVariable(tableContent, 'table-border-key', params.borderColor || '#EAEDF1');
-	                tableContent.strokeWeight = borderWidth;
-	            } else {
-	                clearNodeStrokes(tableContent);
-	            }
+            const borderWidth = Number(params.borderWidth ?? 0);
+            if (Number.isFinite(borderWidth) && borderWidth > 0) {
+                await applyStrokeColorVariable(tableContent, 'table-border-key', params.borderColor || '#EAEDF1');
+                tableContent.strokeWeight = borderWidth;
+            } else {
+                clearNodeStrokes(tableContent);
+            }
+            if (tableContent !== tableRoot) {
+                clearNodeStrokes(tableRoot);
+            }
 
 	            checkSelection();
             shouldRefreshSelection = false;
@@ -8632,6 +9166,9 @@ figma.ui.onmessage = async (msg) => {
       const node = selection[0];
       const column = isTableColumnNode(node) ? node : findTableColumnFromNode(node);
       if (column) {
+        const previousCellType = column.getPluginData('cellType');
+        const wasActionCell =
+          typeof previousCellType === 'string' && isTableActionCellComponentId(previousCellType);
         const columnParamPatch: Record<string, any> = {};
         const isActionCell = typeof componentId === 'string' && isTableActionCellComponentId(componentId);
         if (componentId && typeof componentId === 'string') {
@@ -8701,6 +9238,10 @@ figma.ui.onmessage = async (msg) => {
           applyColumnWidthMode(column, columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', width);
         } else if (isActionCell) {
           applyColumnWidthMode(column, 'HUG');
+        } else if (wasActionCell && !isActionCell) {
+          applyColumnWidthMode(column, 'FILL');
+          columnParamPatch.columnWidthMode = 'FILL';
+          columnParamPatch.width = undefined;
         }
 
         if (alignToApply) columnParamPatch.textAlign = alignToApply;
@@ -8742,6 +9283,9 @@ figma.ui.onmessage = async (msg) => {
       if (currentId) {
           // If it's a column, swap all its children (except header)
           if (currentId === 'table-column' && node.type === 'FRAME') {
+              const previousCellType = node.getPluginData('cellType');
+              const wasActionCell =
+                typeof previousCellType === 'string' && isTableActionCellComponentId(previousCellType);
               // Iterate over children
               const children = [...node.children];
               let swappedCount = 0;
@@ -8764,6 +9308,9 @@ figma.ui.onmessage = async (msg) => {
               if (typeof componentId === 'string' && isTableActionCellComponentId(componentId)) {
                   await ensureOperationColumnHeader(node);
                   applyColumnWidthMode(node, 'HUG');
+                  mergeNodeParams(node, { width: undefined });
+              } else if (wasActionCell && typeof componentId === 'string') {
+                  applyColumnWidthMode(node, 'FILL');
                   mergeNodeParams(node, { width: undefined });
               }
               checkSelection();
