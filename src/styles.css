@@ -17,6 +17,9 @@ body {
   --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
   --ved-button-primary-bg: #18181B;
   --ved-button-primary-text: #FFFFFF;
+  --ved-button-secondary-border: #D4D4D8;
+  --ved-button-hover: #F4F4F5;
+  --ved-input-focus: #181818;
 }
 
 body {
@@ -259,6 +262,8 @@ h2 {
 .composer-quick-chip:disabled {
   opacity: 1;
   cursor: not-allowed;
+  background: #FFFFFF;
+  border-color: #E4E4E7;
 }
 
 .composer-quick-chip:disabled,
@@ -900,7 +905,7 @@ h2 {
 .selection-layout {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -1011,6 +1016,10 @@ h2 {
   box-sizing: border-box;
 }
 
+.selection-scroll-empty {
+  padding: 16px;
+}
+
 .selection-empty {
   border: 1px dashed #E5E7EB;
   background: #F9FAFB;
@@ -1049,6 +1058,10 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   background: #FFFFFF;
   overflow: visible;
   position: relative;
+}
+
+.composer-box:focus-within {
+  border-color: var(--ved-button-secondary-border, #D4D4D8);
 }
 
 .composer-textarea-wrap {
@@ -1136,6 +1149,8 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   cursor: not-allowed;
   opacity: 1;
   color: var(--ved-text-disabled, #A1A1AA);
+  background: #FFFFFF;
+  border-color: #E4E4E7;
 }
 
 .composer-send {
@@ -1212,7 +1227,9 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 
 .composer-menu-item:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 1;
+  color: var(--ved-text-disabled, #A1A1AA);
+  background: #FFFFFF;
 }
 
 .composer-menu-icon {
@@ -1271,7 +1288,7 @@ button {
 }
 
 button:hover {
-  background-color: #0D8CE0;
+  background-color: var(--ved-button-hover, #0D8CE0);
 }
 
 button.secondary-button:hover {
@@ -1452,6 +1469,33 @@ button:disabled {
   width: auto;
 }
 
+.select-control {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.select-control .select-icon-wrapper {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--ved-icon-secondary, #71717A);
+}
+
+.select-control .select-icon-wrapper svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
 .field-row {
   display: flex;
   flex-direction: column;
@@ -1487,17 +1531,76 @@ button:disabled {
 
 .field-row select {
   padding-right: 32px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 14px;
 }
 
-.field-row select:focus,
-.field-row input[type="number"]:focus,
-.field-row input[type="text"]:focus {
-  border-color: #1664ff;
-  box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
+.selection-layout .field-row label,
+.selection-layout .selection-panel .section-title {
+  color: var(--ved-text-primary, var(--color-text-primary, #18181B));
+  font-family: var(--ved-font-family);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 16px;
+}
+
+.selection-layout .control-row label,
+.selection-layout .switch-item > label:not(.switch) {
+  font-size: 12px;
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-weight: 500;
+}
+
+.selection-layout .field-row select,
+.selection-layout .selection-panel select {
+  height: 28px;
+  border-radius: 4px;
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.selection-layout .field-row input[type="number"],
+.selection-layout .field-row input[type="text"],
+.selection-layout .selection-panel input[type="number"],
+.selection-layout .selection-panel input[type="text"] {
+  color: var(--ved-text-primary, #18181B);
+  font-family: var(--ved-font-family);
+  font-size: 13px;
+  font-weight: 400;
+  height: 28px;
+  border-radius: 4px;
+  line-height: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.selection-layout .field-row input[type="number"]:focus,
+.selection-layout .field-row input[type="text"]:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-layout .field-row input[type="number"]:focus,
+  .selection-layout .field-row input[type="text"]:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-layout .field-row select:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .selection-panel {
@@ -1526,6 +1629,13 @@ button:disabled {
 }
 
 .selection-panel-group .selection-panel {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.selection-panel-group .property-editor {
   padding: 0;
   border: none;
   background: transparent;
@@ -1580,17 +1690,118 @@ button:disabled {
 
 .selection-panel select {
   padding-right: 32px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 14px;
+}
+
+.selection-panel .select-control:not(:focus-within):hover,
+.selection-layout .field-row .select-control:not(:focus-within):hover {
+  border-radius: 4px;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel .select-control:not(:focus-within):hover select,
+.selection-layout .field-row .select-control:not(:focus-within):hover select {
+  border-color: transparent;
+}
+
+.selection-panel input[type="text"]:not(:focus):hover,
+.selection-layout .field-row input[type="text"]:not(:focus):hover,
+.selection-layout .field-row input[type="number"]:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel select:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-layout .field-row select:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel .select-control:focus-within,
+.selection-layout .field-row .select-control:focus-within {
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel .select-control:focus-within,
+  .selection-layout .field-row .select-control:focus-within {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-panel .select-control:focus-within select {
+  border-color: transparent;
+}
+
+.selection-layout .field-row .select-control:focus-within select {
+  border-color: transparent;
 }
 
 .selection-panel select:focus,
 .selection-panel input[type="number"]:focus,
 .selection-panel input[type="text"]:focus {
-  border-color: #1664FF;
-  box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
+  border-color: var(--ved-input-focus, #1664ff);
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.2);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel select:focus,
+  .selection-panel input[type="number"]:focus,
+  .selection-panel input[type="text"]:focus {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent);
+  }
+}
+
+.selection-panel input[type="text"]:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel input[type="text"]:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-panel select:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel select:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
 }
 
 .color-control {
@@ -1633,39 +1844,99 @@ button:disabled {
   box-shadow: 0 0 0 1px #e5e7eb;
 }
 
+.othertabs-group {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--color-button-hover-bg, #f4f4f5);
+  padding: 3px;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.othertabs-button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 12px;
+  line-height: 20px;
+  letter-spacing: 0.04px;
+  color: var(--color-text-secondary, #71717a);
+  font-family: var(--ved-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.othertabs-button:not(.active):hover {
+  background: transparent;
+  color: var(--color-text-primary, #18181b);
+}
+
+.othertabs-button.active {
+  background: var(--color-layout-bg, #ffffff);
+  box-shadow:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.0706),
+    0px 1px 1px 0px rgba(0, 0, 0, 0.051),
+    0px 0px 0px 1px var(--color-border-default, #e4e4e7);
+  color: var(--color-text-primary, #18181b);
+  font-weight: 500;
+}
+
 .align-group {
   display: inline-flex;
   width: 100%;
-  border-radius: 10px;
-  padding: 4px;
+  border-radius: 4px;
+  padding: 3px;
   box-sizing: border-box;
-  background: #f3f4f6;
-  gap: 4px;
+  background: var(--color-button-hover-bg, #f4f4f5);
+  gap: 2px;
 }
 
 .align-button {
   flex: 1;
-  height: 34px;
+  height: 22px;
   border: none;
   background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 .align-button svg path {
-  fill: #9ca3af;
+  fill: var(--color-icon-secondary, #71717a);
+}
+
+.align-button:not(.active):hover svg path {
+  fill: var(--color-icon-primary, #18181b);
+}
+
+.align-button:not(.active):hover {
+  background: transparent;
+  box-shadow: none;
 }
 
 .align-button.active {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px #e5e7eb;
+  background: var(--color-layout-bg, #ffffff);
+  box-shadow:
+    0px 1px 2px 0px rgba(0, 0, 0, 0.0706),
+    0px 1px 1px 0px rgba(0, 0, 0, 0.051),
+    0px 0px 0px 1px var(--color-border-default, #e4e4e7);
+  border-radius: 4px;
 }
 
 .align-button.active svg path {
-  fill: #1664FF;
+  fill: var(--color-icon-primary, #18181b);
 }
 
 .switch-item {
@@ -1673,7 +1944,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   height: 40px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #F4F4F5;
   gap: 8px;
   min-width: 0;
 }
@@ -1696,8 +1967,8 @@ button:disabled {
   position: relative;
   display: inline-block;
   flex: 0 0 auto;
-  width: 34px;
-  height: 18px;
+  width: 32px;
+  height: 16px;
 }
 
 .switch input {
@@ -1713,26 +1984,25 @@ button:disabled {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #e5e7eb;
+  background-color: var(--color-switch-off-bg, #e4e4e7);
   transition: .2s;
-  border-radius: 18px;
+  border-radius: 9999px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 14px;
-  width: 14px;
+  height: 12px;
+  width: 12px;
   left: 2px;
-  bottom: 2px;
-  background-color: white;
+  top: 2px;
+  background-color: var(--color-layout-bg, #ffffff);
   transition: .2s;
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
 }
 
 .switch input:checked + .slider {
-  background-color: #1664FF;
+  background-color: var(--color-switch-on-bg, #18181b);
 }
 
 .switch input:checked + .slider:before {
@@ -1783,9 +2053,9 @@ button:disabled {
   align-self: auto;
 }
 
-.tab-button:hover {
-  background: rgba(0,0,0,0.05);
-  color: #333;
+.tab-button:not(.active):hover {
+  background: transparent;
+  color: var(--color-text-primary, #18181b);
 }
 
 .tab-button.active {

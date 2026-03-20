@@ -10,6 +10,26 @@ interface CreateFigmaComponentInstanceOptions extends FigmaComponentLoadOptions 
   visible?: boolean;
 }
 
+const FIGMA_COMPONENT_KEY_ALIASES: Record<string, string> = {
+  pie: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  donut: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  piechart: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  'component/piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  'lib-data-display-component-piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  'library.data-display.component-piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  toplist: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
+  'lib-data-display-toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff',
+  'library.data-display.toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff'
+};
+
+function normalizeFigmaComponentKey(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return trimmed;
+  if (/^[0-9a-f]{40}$/i.test(trimmed)) return trimmed;
+  const normalized = trimmed.toLowerCase();
+  return FIGMA_COMPONENT_KEY_ALIASES[normalized] || trimmed;
+}
+
 export interface DiscoveredComponentProperty {
   propertyName: string;
   displayName: string;
@@ -732,7 +752,7 @@ export async function createFigmaComponentInstance(
   options: CreateFigmaComponentInstanceOptions
 ): Promise<InstanceNode> {
   const component = await loadFigmaComponentByKey({
-    componentKey: options.componentKey,
+    componentKey: normalizeFigmaComponentKey(options.componentKey),
     fallbackName: options.fallbackName
   });
 

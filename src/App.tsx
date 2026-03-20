@@ -5783,6 +5783,10 @@ StepD:
       { role: 'ai', content: '' }
     ]);
     setUserInput('');
+    setChartPromptMode(false);
+    setChartOverlayOpen(false);
+    setChartShortcutActive(null);
+    setChartMenuOpen(false);
     setUploadedImages([]);
     setUploadedTables([]);
     setAttachmentMenuOpen(false);
@@ -7689,6 +7693,8 @@ StepD:
             <SegmentedControl
               value={widthModeValue}
               onChange={(value) => updateParam('columnWidthMode', value)}
+              groupClassName="othertabs-group"
+              buttonClassName="othertabs-button"
               options={[
                 { value: 'FIXED', label: '固定' },
                 { value: 'HUG', label: '适应' },
@@ -8573,7 +8579,7 @@ StepD:
           </div>
           <div className="selection-title">选中内容属性</div>
         </div>
-        <div className="selection-scroll">
+        <div className={`selection-scroll ${hasSelection ? '' : 'selection-scroll-empty'}`}>
           {hasSelection ? (
             <>
               <div className="selection-panel-group">
@@ -8597,26 +8603,28 @@ StepD:
 
   return (
     <div className={`container ${activeTab === 'selection' ? 'container-selection' : ''}`}>
-      <div className="tabs" style={{ display: 'none' }}>
-        <button 
-          className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chat')}
-        >
-          对话 & 编辑
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'selection' ? 'active' : ''}`}
-          onClick={() => setActiveTab('selection')}
-        >
-          选中属性
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'docs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('docs')}
-        >
-          组件库
-        </button>
-      </div>
+      {activeTab !== 'selection' && (
+        <div className="tabs">
+          <button 
+            className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveTab('chat')}
+          >
+            对话 & 编辑
+          </button>
+          <button
+            className="tab-button"
+            onClick={() => setActiveTab('selection')}
+          >
+            选中属性
+          </button>
+          <button 
+            className={`tab-button ${activeTab === 'docs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('docs')}
+          >
+            组件库
+          </button>
+        </div>
+      )}
 
       {activeTab === 'chat' ? (
         <div className="chat-layout">
