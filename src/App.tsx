@@ -8681,7 +8681,11 @@ StepD:
 
 
   return (
-    <div className={`container ${activeTab === 'selection' ? 'container-selection' : ''}`}>
+    <div
+      className={`container ${activeTab === 'selection' ? 'container-selection' : ''} ${
+        activeTab === 'chat' ? 'container-chat' : ''
+      }`}
+    >
       {activeTab !== 'selection' && (
         <div className="tabs">
           <button 

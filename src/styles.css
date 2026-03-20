@@ -45,6 +45,10 @@ body {
   padding: 0;
 }
 
+.container-chat .tabs {
+  display: none;
+}
+
 h2 {
   font-size: 14px;
   margin: 0;
