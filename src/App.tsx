@@ -4331,6 +4331,14 @@ StepD:
     const normalized = String(hint || '').replace(/\s+/g, '').toLowerCase();
     if (!normalized) return fallbackToken;
     if (normalized.includes('面积图') || normalized.includes('area')) return 'lib-data-display-component-areachart';
+    if (
+      normalized.includes('折线图') ||
+      normalized.includes('linechart') ||
+      normalized.includes('line-chart') ||
+      normalized.includes('line')
+    ) {
+      return 'lib-data-display-component-linechart';
+    }
     if (normalized.includes('柱状图') || normalized.includes('barchart') || normalized.includes('bar-chart') || normalized === 'bar') {
       return 'lib-data-display-component-barchart';
     }
