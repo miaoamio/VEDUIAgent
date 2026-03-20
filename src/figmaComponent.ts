@@ -11,6 +11,18 @@ interface CreateFigmaComponentInstanceOptions extends FigmaComponentLoadOptions 
 }
 
 const FIGMA_COMPONENT_KEY_ALIASES: Record<string, string> = {
+  'area-chart': '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  areachart: '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  area: '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  'lib-data-display-component-areachart': '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  'library.data-display.component-areachart': '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  '面积图': '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+  'bar-chart': 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+  barchart: 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+  bar: 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+  'lib-data-display-component-barchart': 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+  'library.data-display.component-barchart': 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+  '柱状图': 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
   pie: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
   donut: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
   piechart: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',

@@ -4309,10 +4309,19 @@ StepD:
       const chartObj = isObject(chart) ? chart : {};
       const props = isObject(chartObj.props) ? chartObj.props : {};
       const heightRaw = Number(props.height ?? chartObj.height);
+      const tokenHint = String(props.type ?? chartObj.type ?? props.chartType ?? chartObj.chartType ?? '').trim();
+      const token = (() => {
+        const normalized = tokenHint.toLowerCase();
+        if (normalized.includes('area') || tokenHint.includes('面积')) return 'lib-data-display-component-areachart';
+        if (normalized.includes('bar') || tokenHint.includes('柱')) return 'lib-data-display-component-barchart';
+        if (normalized.includes('pie') || normalized.includes('donut') || tokenHint.includes('饼') || tokenHint.includes('环')) return 'lib-data-display-component-piechart';
+        if (normalized.includes('toplist') || tokenHint.includes('条')) return 'lib-data-display-toplist';
+        return 'lib-data-display-toplist';
+      })();
       chartNodes.push({
         componentId: 'figma-component',
         params: {
-          componentToken: 'lib-data-display-toplist',
+          componentToken: token,
           fallbackName: `图表 ${index + 1}`,
           height: Number.isFinite(heightRaw) && heightRaw > 0 ? heightRaw : 220
         }
@@ -5708,6 +5717,14 @@ StepD:
       : chartShortcutActive
         ? `生成一个${chartShortcutActive}`
         : userInput;
+    const chartTokenOverride = (() => {
+      const normalized = String(turnInput || '').replace(/\s+/g, '');
+      if (normalized.includes('柱状图')) return 'lib-data-display-component-barchart';
+      if (normalized.includes('面积图')) return 'lib-data-display-component-areachart';
+      if (normalized.includes('条形图')) return 'lib-data-display-toplist';
+      if (normalized.includes('饼图') || normalized.includes('环形图')) return 'lib-data-display-component-piechart';
+      return '';
+    })();
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
@@ -6423,6 +6440,37 @@ StepD:
 
                 const envelope = normalizeSceneEnvelopeForSend(rawEnvelope);
                 const mode = payload?.mode === 'best_effort' ? 'best_effort' : 'strict';
+                const patchChartNode = (node: any): any => {
+                  if (!chartTokenOverride || !isObject(node)) return node;
+                  const next: any = { ...node };
+                  if (next.componentId === 'figma-component') {
+                    const props = isObject(next.props) ? { ...next.props } : {};
+                    props.componentToken = chartTokenOverride;
+                    props.componentKey = '';
+                    props.fallbackName = '';
+                    next.props = props;
+                  }
+                  if (Array.isArray(next.children)) {
+                    next.children = next.children.map((child: any) => patchChartNode(child));
+                  }
+                  if (isObject(next.slots)) {
+                    const slots: any = {};
+                    Object.entries(next.slots).forEach(([slotKey, slotNodes]) => {
+                      slots[slotKey] = Array.isArray(slotNodes)
+                        ? slotNodes.map((child: any) => patchChartNode(child))
+                        : slotNodes;
+                    });
+                    next.slots = slots;
+                  }
+                  return next;
+                };
+                const patchedEnvelope = (() => {
+                  if (!chartTokenOverride || !envelope || typeof envelope !== 'object') return envelope;
+                  const scene = isObject((envelope as any).scene) ? (envelope as any).scene : null;
+                  const root = scene && isObject(scene.root) ? scene.root : null;
+                  if (!root) return envelope;
+                  return { ...(envelope as any), scene: { ...scene, root: patchChartNode(root) } };
+                })();
 
                 if (!envelope || typeof envelope !== 'object') {
                     const invalidMsg = `[System]: Invalid apply_scene payload.`;
@@ -6434,7 +6482,7 @@ StepD:
                     }
                 } else {
                     try {
-                        const result = await applySceneEnvelope(envelope, mode, resolvedParentId);
+                        const result = await applySceneEnvelope(patchedEnvelope, mode, resolvedParentId);
                         if (result?.ok) {
                             const summary = `[System]: Applied scene successfully (intent=${result.intent}, root=${result.rootNodeId || 'N/A'}, ops=${result.appliedOperations ?? 0}).`;
                             accumulatedLog += '\n\n' + summary;
@@ -6602,8 +6650,12 @@ StepD:
                 }
 
                 try {
+                    const nextParams =
+                      chartTokenOverride && componentId === 'figma-component' && isObject(params)
+                        ? { ...params, componentToken: chartTokenOverride, componentKey: '', fallbackName: '' }
+                        : params;
                     const rootNodeId = await createComponentNode(
-                      { componentId, params, children },
+                      { componentId, params: nextParams, children },
                       resolvedParentId
                     );
 
