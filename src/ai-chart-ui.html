@@ -38,8 +38,8 @@
       margin-bottom: 20px;
     }
     .section-title {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 12px;
+      font-weight: normal;
       color: #0C0D0E;
       margin-bottom: 8px; /* Changed from 16px */
       display: flex;
@@ -58,7 +58,8 @@
       margin-right: 8px;
     }
     
-    .section-title::before {
+    /* Hide accent bar for internal section titles */
+    .thresholds-container .section-title::before {
       display: none;
     }
 
@@ -228,28 +229,24 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      column-gap: 10px;
+      column-gap: 8px;
       border-radius: 4px;
-      border: 1px solid var(--color-button-secondary-border, #d4d4d8);
-      background: var(--color-button-secondary-bg, #ffffff);
-      padding-right: 9px;
-      padding-left: 9px;
-      width: 44px;
+      box-shadow: 0px 0px 0px 1px #dde2e9, 0px 2px 1px 0px #00000014;
+      background: #ffffff;
+      padding: 3px 16px;
+      /* width: 59px; Optional: remove fixed width to allow text fit */
       height: 28px;
       overflow: hidden;
       cursor: pointer;
+      border: none;
       
       /* Text Styles */
-      line-height: 18px;
-      letter-spacing: 0;
-      color: var(--color-text-primary, #18181b);
+      line-height: 22px;
+      letter-spacing: 0.04px;
+      color: #42464e;
       font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
-    }
-
-    .btn-reset:hover {
-      background: var(--ved-button-hover, #f4f4f5);
     }
 
     .btn-icon {
@@ -414,44 +411,68 @@
     /* Preview */
     .preview-tabs {
       display: inline-flex;
-      align-items: flex-start;
-      column-gap: 2px;
+      align-items: center;
+      background: #F2F3F5;
+      padding: 2px;
       border-radius: 4px;
-      background: var(--ved-button-hover, #f4f4f5);
-      padding: 3px;
       margin-bottom: 16px;
+      gap: 2px;
       height: 28px;
       box-sizing: border-box;
     }
     .preview-tab {
-      display: inline-flex;
-      flex-shrink: 0;
+      padding: 0 12px;
+      height: 100%;
+      display: flex;
       align-items: center;
       justify-content: center;
-      column-gap: 4px;
-      border-radius: 4px;
-      background: transparent;
-      padding: 1px 12px;
-      overflow: hidden;
-      line-height: 20px;
-      letter-spacing: 0.04px;
-      color: var(--color-text-secondary, #71717a);
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
       font-size: 12px;
-      font-weight: 400;
+      color: #4E5969;
       cursor: pointer;
+      border-radius: 4px;
       border: none;
       margin-bottom: 0;
-    }
-    .preview-tab:hover:not(.active) {
-      color: var(--color-text-primary, #18181b);
+      transition: all 0.2s;
     }
     .preview-tab.active {
-      box-shadow: 0px 1px 2px 0px #00000012, 0px 1px 1px 0px #0000000d,
-        0px 0px 0px 1px var(--color-border-default, #e4e4e7);
-      background: var(--Background-color-bg-1, #ffffff);
-      color: var(--color-text-primary, #18181b);
+      background: #FFFFFF;
+      color: #1664FF;
       font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      border: none;
+    }
+
+    .main-tabs {
+      display: inline-flex;
+      align-items: center;
+      background: #F2F3F5;
+      padding: 2px;
+      border-radius: 4px;
+      gap: 2px;
+      height: 32px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+    .main-tab {
+      padding: 0 16px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #4E5969;
+      cursor: pointer;
+      border-radius: 4px;
+      border: none;
+      margin-bottom: 0;
+      transition: all 0.2s;
+      font-weight: 400;
+    }
+    .main-tab.active {
+      background: #FFFFFF;
+      color: #1664FF;
+      font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
       border: none;
     }
 
@@ -634,28 +655,22 @@
     }
     .btn-primary {
       pointer-events: auto; /* Enable click on button */
-      display: inline-flex;
+      background: #1664FF;
+      color: white;
+      border: none;
+      padding: 0 32px;
+      height: 32px;
+      display: flex;
       align-items: center;
       justify-content: center;
-      column-gap: 10px;
       border-radius: 4px;
-      background: var(--color-button-primary-bg, #18181b);
-      padding-right: 10px;
-      padding-left: 10px;
-      width: 68px;
-      height: 28px;
-      overflow: hidden;
-      cursor: pointer;
-      border: none;
-      line-height: 18px;
-      letter-spacing: 0;
-      color: var(--color-button-primary-text, #ffffff);
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(22, 100, 255, 0.2); /* Optional: add shadow for floating feel */
     }
     .btn-primary:hover {
-      background: var(--color-button-primary-bg, #18181b);
+      background: #40A9FF;
     }
     /* Update main-card padding to avoid overlap */
     .main-card {
@@ -667,9 +682,15 @@
   <div class="main-card">
     <!-- <h2>AI Chart</h2> Removed -->
 
-    <div class="section">
-      <div class="section-title">趋势图</div>
-      <div class="chart-types">
+    <div class="section" id="trend-chart-types-section">
+      <div class="main-tabs">
+        <div class="main-tab active" onclick="switchMainTab(this, 'trend')">趋势图</div>
+        <div class="main-tab" onclick="switchMainTab(this, 'bar')">柱状图</div>
+      </div>
+      
+      <div class="section-title" id="bar-section-title" style="margin-top: 12px; display: none;">柱状图</div>
+      
+      <div class="chart-types" id="chart-types-container">
         <div class="chart-type-card active" onclick="selectChartType(this, 'comparison')">
           <svg class="chart-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 8C12 12 18 22 28 24" stroke="#F77234" stroke-width="2" stroke-linecap="round"/>
@@ -708,9 +729,37 @@
           <span>置信带</span>
         </div>
       </div>
+      
+      <div class="chart-types" id="bar-chart-types-container" style="display: none; margin-top: 8px;">
+        <div class="chart-type-card active" onclick="selectBarChartType(this, 'simple')">
+          <svg class="chart-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="16" width="6" height="12" fill="#1664FF" rx="1"/>
+            <rect x="13" y="10" width="6" height="18" fill="#1AC6FF" rx="1"/>
+            <rect x="20" y="6" width="6" height="22" fill="#3CC780" rx="1"/>
+          </svg>
+          <span>基础柱状图</span>
+        </div>
+        <div class="chart-type-card" onclick="selectBarChartType(this, 'grouped')">
+          <svg class="chart-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="12" width="5" height="16" fill="#1664FF" rx="1"/>
+            <rect x="10" y="8" width="5" height="20" fill="#1AC6FF" rx="1"/>
+            <rect x="17" y="14" width="5" height="14" fill="#3CC780" rx="1"/>
+            <rect x="23" y="6" width="5" height="22" fill="#7442D4" rx="1"/>
+          </svg>
+          <span>分组柱状</span>
+        </div>
+        <div class="chart-type-card" onclick="selectBarChartType(this, 'stacked')">
+          <svg class="chart-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="20" height="8" fill="#1664FF" rx="1"/>
+            <rect x="6" y="14" width="20" height="8" fill="#1AC6FF" rx="1"/>
+            <rect x="6" y="22" width="20" height="6" fill="#3CC780" rx="1"/>
+          </svg>
+          <span>堆叠柱状</span>
+        </div>
+      </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="trend-data-section">
       <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
          <div class="section-title" style="margin-bottom: 0;">数据</div>
          <button class="btn-reset" onclick="randomizeData()">重置</button>
@@ -724,7 +773,7 @@
         </div>
         
         <div class="controls">
-          <div class="control-group" id="rowsGroup">
+          <div class="control-group">
             <span class="control-label">行</span>
             <input type="number" id="rows" class="control-input" value="2" onchange="generateTable()">
           </div>
@@ -737,10 +786,9 @@
             <select id="xAxisType" class="control-input" onchange="generateTable()">
               <option value="time">时间 (HH:MM)</option>
               <option value="date">日期 (MM-DD)</option>
-              <option value="datetime">日期时间 (YYYY.MM.DD HH:MM:SS)</option>
               <option value="year">年份 (YYYY)</option>
               <option value="week">星期 (周一~周日)</option>
-              <option value="version">版本号 (1.0.x)</option>
+              <option value="version">版本号 (v1.0.x)</option>
               <option value="category">类别 (Category)</option>
             </select>
           </div>
@@ -769,7 +817,7 @@
           </div>
           <div class="control-group" id="confidenceGroup" style="display: none;">
             <span class="control-label">置信区间</span>
-            <input type="text" id="confidenceInterval" class="control-input" value="30%" oninput="drawPreview()">
+            <input type="text" id="confidenceInterval" class="control-input" value="15%" oninput="drawPreview()">
           </div>
         </div>
         
@@ -793,8 +841,50 @@
       </div>
     </div>
 
-    <div class="section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <div class="section" id="bar-data-section" style="display: none;">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+         <div class="section-title" style="margin-bottom: 0;">数据</div>
+         <button class="btn-reset" onclick="randomizeBarData()">重置</button>
+      </div>
+      
+      <div class="section-content-wrapper">
+        <div class="data-table-container">
+          <table id="barDataTable">
+            <!-- Table generated by JS -->
+          </table>
+        </div>
+        
+        <div class="controls">
+          <div class="control-group">
+            <span class="control-label">行</span>
+            <input type="number" id="barRows" class="control-input" value="1" onchange="generateBarTable()">
+          </div>
+          <div class="control-group">
+            <span class="control-label">列</span>
+            <input type="number" id="barCols" class="control-input" value="6" onchange="generateBarTable()">
+          </div>
+          <div class="control-group">
+            <span class="control-label">X轴</span>
+            <select id="barXAxisType" class="control-input" onchange="generateBarTable()">
+              <option value="month">月份</option>
+              <option value="quarter">季度</option>
+              <option value="category">类别</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <span class="control-label">min</span>
+            <input type="number" id="barMin" class="control-input" value="50" onchange="randomizeBarData()">
+          </div>
+          <div class="control-group">
+            <span class="control-label">Max</span>
+            <input type="number" id="barMax" class="control-input" value="300" onchange="randomizeBarData()">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="trend-config-section">
+      <div id="trend-config-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <div class="section-title" style="margin-bottom: 0;">图表配置</div>
         <div class="preview-tabs" style="margin-bottom: 0;">
           <div class="preview-tab active" onclick="switchTab('chart')">图表预览</div>
@@ -808,12 +898,32 @@
       
       <div style="margin-top: 0;">
         
-        <div class="preview-container">
+        <div class="preview-container" id="preview-container-wrapper">
            <div id="previewCanvas"></div>
            <div id="configDisplay"></div>
         </div>
-        <div style="margin-top: 24px; display: flex; justify-content: center;">
+        <div id="generate-btn-wrapper" style="margin-top: 24px; display: flex; justify-content: center;">
              <button class="btn-primary" id="generateBtn" style="width: 120px;">生成图表</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="bar-config-section" style="display: none;">
+      <div id="bar-config-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div class="section-title" style="margin-bottom: 0;">图表配置</div>
+        <div class="preview-tabs" style="margin-bottom: 0;">
+          <div class="preview-tab active" onclick="switchBarTab('chart')">图表预览</div>
+          <div class="preview-tab" onclick="switchBarTab('config')">配置代码</div>
+        </div>
+      </div>
+      
+      <div style="margin-top: 0;">
+        <div class="preview-container" id="bar-preview-container-wrapper">
+           <div id="barPreviewCanvas" style="display: block;"></div>
+           <div id="barConfigDisplay" style="display: none;"></div>
+        </div>
+        <div id="bar-generate-btn-wrapper" style="margin-top: 24px; display: flex; justify-content: center;">
+             <button class="btn-primary" id="barGenerateBtn" style="width: 120px;">生成图表</button>
         </div>
       </div>
     </div>
@@ -835,31 +945,18 @@
     </div>
   </div>
 
-  <script src="lib/echarts.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
   <script>
-    // #region debug-point
-    const DEBUG_API_URL = 'http://127.0.0.1:7777/event';
-    const sendDebugEvent = (event, payload) => {
-      try {
-        fetch(DEBUG_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event,
-            payload,
-            ts: new Date().toISOString(),
-            source: 'ai-chart-ui'
-          })
-        });
-      } catch {}
-    };
-    // #endregion debug-point
     // State
     let currentChartType = 'comparison';
+    let currentBarChartType = 'simple'; // 'simple', 'grouped', 'stacked'
     let currentPalette = 0;
     let myChart = null;
+    let myBarChart = null;
     let currentOption = null;
     let activeTab = 'chart';
+    let activeBarTab = 'chart';
+    let currentMainTab = 'trend'; // 'trend' or 'bar'
     let editingRowBtn = null; // Store reference to button triggering edit
     let drawPoints = []; // Store drawn points
     let thresholds = []; // Store threshold data: { value: 100, label: 'Avg', color: 'red' }
@@ -876,7 +973,6 @@
       let currentLineType = 'step'; // Default line type
       let currentXLabelCount = 0; // Default 0 means Auto
       let seriesStyles = []; // Store style data: { type: 'solid' }
-    let previewCalculatedCount = 0; // Store the label count calculated in preview
     
     const palettes = [
       ['#1664FF', '#1AC6FF', '#3CC780', '#7442D4', '#304D77', '#B48DEB', '#009488', '#FFC400', '#FF8A00', '#FF7DDA'],
@@ -886,21 +982,9 @@
 
     // Initialize
     window.onload = () => {
-      // #region debug-point
-      const echartsScript = document.querySelector('script[src*="echarts"]')?.getAttribute('src');
-      sendDebugEvent('ai_chart_ui_onload', {
-        echartsScript,
-        hasEcharts: typeof echarts !== 'undefined'
-      });
-      // #endregion debug-point
       if (typeof echarts === 'undefined') {
         document.getElementById('configDisplay').textContent = 'Error: ECharts library not loaded. Please check src/lib/echarts.min.js';
         document.getElementById('configDisplay').style.display = 'block';
-        // #region debug-point
-        sendDebugEvent('ai_chart_ui_missing_echarts', {
-          echartsScript
-        });
-        // #endregion debug-point
         return;
       }
       try {
@@ -936,6 +1020,372 @@
         myChart = echarts.init(chartDom);
       }
       drawPreview();
+    }
+
+    function switchMainTab(el, type) {
+      document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      currentMainTab = type;
+      
+      const chartTypesContainer = document.getElementById('chart-types-container');
+      const barChartTypesContainer = document.getElementById('bar-chart-types-container');
+      const trendDataSection = document.getElementById('trend-data-section');
+      const barDataSection = document.getElementById('bar-data-section');
+      const trendConfigSection = document.getElementById('trend-config-section');
+      const barConfigSection = document.getElementById('bar-config-section');
+      const barSectionTitle = document.getElementById('bar-section-title');
+      
+      if (type === 'bar') {
+        chartTypesContainer.style.display = 'none';
+        if (barChartTypesContainer) barChartTypesContainer.style.display = 'flex';
+        if (trendDataSection) trendDataSection.style.display = 'none';
+        if (trendConfigSection) trendConfigSection.style.display = 'none';
+        if (barDataSection) barDataSection.style.display = 'block';
+        if (barConfigSection) barConfigSection.style.display = 'block';
+        if (barSectionTitle) barSectionTitle.style.display = 'flex';
+        setTimeout(() => {
+          if (!myBarChart) initBarChart();
+          generateBarTable();
+          drawSimpleBarChart();
+          setTimeout(() => {
+            if (myBarChart) myBarChart.resize();
+          }, 100);
+        }, 300);
+      } else {
+        chartTypesContainer.style.display = 'flex';
+        if (barChartTypesContainer) barChartTypesContainer.style.display = 'none';
+        if (trendDataSection) trendDataSection.style.display = 'block';
+        if (trendConfigSection) trendConfigSection.style.display = 'block';
+        if (barDataSection) barDataSection.style.display = 'none';
+        if (barConfigSection) barConfigSection.style.display = 'none';
+        if (barSectionTitle) barSectionTitle.style.display = 'none';
+        drawPreview();
+      }
+    }
+
+    function selectBarChartType(el, type) {
+      document.querySelectorAll('#bar-chart-types-container .chart-type-card').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      currentBarChartType = type;
+      
+      const barRowsInput = document.getElementById('barRows');
+      
+      if (type === 'simple') {
+        barRowsInput.value = 1;
+        barRowsInput.disabled = false;
+      } else if (type === 'grouped' || type === 'stacked') {
+        barRowsInput.value = 2;
+        barRowsInput.disabled = false;
+      }
+      
+      generateBarTable();
+      drawSimpleBarChart();
+    }
+
+    function initBarChart() {
+      const chartDom = document.getElementById('barPreviewCanvas');
+      chartDom.style.width = '100%';
+      chartDom.style.height = '100%';
+      myBarChart = echarts.init(chartDom);
+      setTimeout(() => {
+        if (myBarChart) myBarChart.resize();
+      }, 100);
+    }
+
+    function switchBarTab(tab) {
+      activeBarTab = tab;
+      document.querySelectorAll('#bar-config-section .preview-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      const chartDiv = document.getElementById('barPreviewCanvas');
+      const configDiv = document.getElementById('barConfigDisplay');
+      
+      chartDiv.style.display = 'none';
+      configDiv.style.display = 'none';
+      
+      if (tab === 'chart') {
+        chartDiv.style.display = 'block';
+        if (myBarChart) myBarChart.resize();
+      } else {
+        configDiv.style.display = 'block';
+      }
+    }
+
+    function generateBarTable() {
+      const table = document.getElementById('barDataTable');
+      table.innerHTML = '';
+      
+      const cols = parseInt(document.getElementById('barCols').value) || 6;
+      const rows = parseInt(document.getElementById('barRows').value) || 1;
+      const minVal = parseInt(document.getElementById('barMin').value) || 50;
+      const maxVal = parseInt(document.getElementById('barMax').value) || 300;
+      
+      const xAxisType = document.getElementById('barXAxisType') ? document.getElementById('barXAxisType').value : 'month';
+      const labels = [];
+      
+      if (xAxisType === 'month') {
+          const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+          for (let i = 0; i < cols && i < 12; i++) {
+              labels.push(months[i]);
+          }
+      } else if (xAxisType === 'quarter') {
+          const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+          for (let i = 0; i < cols && i < 4; i++) {
+              labels.push(quarters[i]);
+          }
+      } else if (xAxisType === 'category') {
+          for (let i = 1; i <= cols; i++) {
+              labels.push(`类别${i}`);
+          }
+      }
+      
+      const trHead = document.createElement('tr');
+      trHead.innerHTML = `<th style="width: 80px;"></th><th style="width: 40px;"></th>${labels.map(l => `<th>${l}</th>`).join('')}<th style="width: 50px;">操作</th>`;
+      table.appendChild(trHead);
+
+      for(let i=0; i<rows; i++) {
+        const tr = document.createElement('tr');
+        let seriesName = `系列 ${i+1}`;
+        if (i === 0) seriesName = '销量';
+        
+        const colorIndex = i % palettes[currentPalette].length;
+        const defaultColor = palettes[currentPalette][colorIndex];
+        
+        let tds = `<td><input class="series-input" type="text" value="${seriesName}" oninput="drawSimpleBarChart()" style="width: 100%; border: none; background: transparent; outline: none; text-align: center;"></td>`;
+        tds += `<td><input type="color" class="series-color" value="${defaultColor}" oninput="drawSimpleBarChart()" style="width: 24px; height: 24px; border: none; padding: 0; background: none; cursor: pointer;"></td>`;
+        
+        for(let j=0; j<cols; j++) {
+           const val = Math.floor(Math.random() * (maxVal - minVal)) + minVal;
+           tds += `<td><input class="cell-input" type="number" value="${val}" oninput="drawSimpleBarChart()"></td>`;
+        }
+        tds += `<td><button class="btn-icon" onclick="batchEditRow(this)" title="批量调整">⚙️</button></td>`;
+        tr.innerHTML = tds;
+        table.appendChild(tr);
+      }
+      
+      drawSimpleBarChart();
+    }
+
+    function randomizeBarData() {
+      const min = parseInt(document.getElementById('barMin').value);
+      const max = parseInt(document.getElementById('barMax').value);
+      
+      const rows = document.querySelectorAll('#barDataTable tr');
+      for(let i=1; i<rows.length; i++) {
+         const inputs = rows[i].querySelectorAll('.cell-input');
+         inputs.forEach(input => {
+            const val = Math.floor(Math.random() * (max - min)) + min;
+            input.value = val;
+         });
+      }
+      
+      drawSimpleBarChart();
+    }
+
+    function getBarData() {
+      const table = document.getElementById('barDataTable');
+      const data = {
+        labels: [],
+        datasets: []
+      };
+      
+      const headers = table.querySelectorAll('th');
+      for(let i=2; i<headers.length-1; i++) {
+        data.labels.push(headers[i].innerText);
+      }
+
+      const rows = table.querySelectorAll('tr');
+      for(let i=1; i<rows.length; i++) {
+        const seriesInput = rows[i].querySelector('.series-input');
+        const colorInput = rows[i].querySelector('.series-color');
+        const inputs = rows[i].querySelectorAll('.cell-input');
+        const rowData = [];
+        inputs.forEach(inp => rowData.push(parseFloat(inp.value)));
+        
+        const colorIndex = (i - 1) % palettes[currentPalette].length;
+        const fallbackColor = palettes[currentPalette][colorIndex];
+        
+        data.datasets.push({
+          name: seriesInput ? seriesInput.value : `系列 ${i}`,
+          data: rowData,
+          color: colorInput ? colorInput.value : fallbackColor
+        });
+      }
+      return data;
+    }
+
+    function drawSimpleBarChart() {
+      if (!myBarChart) return;
+      
+      const data = getBarData();
+      const barWidth = data.labels.length > 10 ? 12 : '60%';
+      
+      let option = {
+        color: [
+          "#1664FF",
+          "#1AC6FF",
+          "#3CC780",
+          "#7442D4",
+          "#304D77",
+          "#B48DEB",
+          "#009488",
+          "#FFC400",
+          "#FF8A00",
+          "#FF7DDA"
+        ],
+        title: {
+          text: "销售统计",
+          left: "left",
+          top: 0,
+          textStyle: {
+            fontSize: 14,
+            fontWeight: 500,
+            color: "#0C0D0E",
+            fontFamily: "PingFang SC"
+          }
+        },
+        grid: {
+          left: 16,
+          right: 16,
+          top: 24,
+          bottom: 32
+        },
+        legend: {
+          show: true,
+          left: "left",
+          bottom: 0,
+          itemGap: 12,
+          itemWidth: 8,
+          itemHeight: 8,
+          icon: "rect",
+          textStyle: {
+            fontSize: 10,
+            color: "#737A87",
+            fontFamily: "Inter"
+          }
+        },
+        xAxis: {
+          type: "category",
+          name: "",
+          data: data.labels,
+          axisLine: {
+            lineStyle: {
+              color: "#E6E6E6",
+              width: 1
+            }
+          },
+          axisTick: {
+            alignWithLabel: true
+          },
+          axisLabel: {
+            fontSize: 10,
+            color: "#737A87",
+            fontFamily: "Inter",
+            interval: 0
+          }
+        },
+        yAxis: {
+          type: "value",
+          name: "",
+          axisLine: {
+            lineStyle: {
+              color: "#E6E6E6",
+              width: 1
+            }
+          },
+          axisLabel: {
+            fontSize: 10,
+            color: "#737A87",
+            fontFamily: "Inter"
+          },
+          splitLine: {
+            show: true,
+            lineStyle: {
+              type: "dashed",
+              color: "#E6E6E6",
+              width: 1
+            }
+          }
+        },
+        series: []
+      };
+      
+      if (currentBarChartType === 'simple') {
+        option.series = data.datasets.map((ds, i) => ({
+          type: "bar",
+          name: ds.name,
+          data: ds.data,
+          barWidth: barWidth
+        }));
+      } else if (currentBarChartType === 'grouped') {
+        option.series = data.datasets.map((ds, i) => ({
+          type: "bar",
+          name: ds.name,
+          data: ds.data,
+          barWidth: barWidth
+        }));
+      } else if (currentBarChartType === 'stacked') {
+        option.yAxis = {
+          type: "value",
+          name: "",
+          axisLine: {
+            lineStyle: {
+              color: "#E6E6E6",
+              width: 1
+            }
+          },
+          axisLabel: {
+            fontSize: 10,
+            color: "#737A87",
+            fontFamily: "Inter",
+            formatter: "{value}%"
+          },
+          splitLine: {
+            show: true,
+            lineStyle: {
+              type: "dashed",
+              color: "#E6E6E6",
+              width: 1
+            }
+          },
+          max: 100
+        };
+        
+        const numDataPoints = data.labels.length;
+        const normalizedData = data.datasets.map(ds => ({ ...ds }));
+        
+        for (let i = 0; i < numDataPoints; i++) {
+          let total = 0;
+          for (let j = 0; j < data.datasets.length; j++) {
+            total += data.datasets[j].data[i];
+          }
+          if (total > 0) {
+            for (let j = 0; j < data.datasets.length; j++) {
+              normalizedData[j].data[i] = parseFloat(((data.datasets[j].data[i] / total) * 100).toFixed(1));
+            }
+          }
+        }
+        
+        option.series = normalizedData.map((ds, i) => ({
+          type: "bar",
+          name: ds.name,
+          stack: "total",
+          data: ds.data,
+          barWidth: barWidth
+        }));
+      }
+      
+      myBarChart.setOption(option, true);
+      setTimeout(() => {
+        if (myBarChart) myBarChart.resize();
+      }, 100);
+      setTimeout(() => {
+        if (myBarChart) myBarChart.resize();
+      }, 300);
+      const configDisplay = document.getElementById('barConfigDisplay');
+      if (configDisplay) {
+        configDisplay.innerHTML = syntaxHighlight(option);
+      }
     }
 
     function switchTab(tab) {
@@ -1116,20 +1566,13 @@
       
       // Adjust table rows based on chart type
       const rowsInput = document.getElementById('rows');
-      const rowsGroup = document.getElementById('rowsGroup');
-      
       rowsInput.disabled = false; // Reset state
-      if (rowsGroup) rowsGroup.style.display = 'flex'; // Reset visibility
       
-      if (type === 'events') {
-         // Confidence Band usually needs just 1 base series
+      if (type === 'events' || type === 'abnormal') {
+         // Confidence Band / Abnormal usually needs just 1 base series
          rowsInput.value = 1;
          rowsInput.disabled = true; // Disable input
-         document.getElementById('unit').value = 's'; // Default unit for Events/Confidence Band?
-      } else if (type === 'abnormal') {
-         // Abnormal Interval usually needs 1 series
-         rowsInput.value = 1;
-         if (rowsGroup) rowsGroup.style.display = 'none'; // Hide input
+         document.getElementById('unit').value = 's'; // Default unit
       } else if (type === 'comparison') {
          rowsInput.value = 2;
          document.getElementById('unit').value = 'Tb/s';
@@ -1495,13 +1938,11 @@
           for (let i = 0; i < cols; i++) {
               const d = new Date(now);
               d.setHours(now.getHours() - ((cols - 1 - i) * intervalHours));
-              const y = d.getFullYear().toString();
               const m = (d.getMonth() + 1).toString().padStart(2, '0');
               const day = d.getDate().toString().padStart(2, '0');
               const h = d.getHours().toString().padStart(2, '0');
               const min = d.getMinutes().toString().padStart(2, '0');
-              const sec = d.getSeconds().toString().padStart(2, '0');
-              labels.push(`${y}.${m}.${day} ${h}:${min}:${sec}`);
+              labels.push(`${m}-${day} ${h}:${min}`);
           }
       } else if (xAxisType === 'year') {
           const currentYear = new Date().getFullYear();
@@ -1519,7 +1960,7 @@
           }
       } else if (xAxisType === 'version') {
           for (let i = 0; i < cols; i++) {
-              labels.push(`1.${i}.0`);
+              labels.push(`v1.${i}.0`);
           }
       } else if (xAxisType === 'commit') {
           for (let i = 0; i < cols; i++) {
@@ -2169,7 +2610,7 @@
               if (typeof currentXLabelCount !== 'undefined' && currentXLabelCount >= 2) {
                   targetCount = currentXLabelCount;
               } else {
-                  var targetIntervalWidth = 48; // Match backend (48px target)
+                  var targetIntervalWidth = 72;
                   targetCount = Math.max(2, Math.floor(drawW / targetIntervalWidth) + 1);
               }
               
@@ -2180,47 +2621,34 @@
                
                // Iterate step size 's'
                for (let s = 1; s < count; s++) {
-                   // REMOVED STRICT MODULO CHECK to match backend
-                   // if ((count - 1) % s !== 0) continue;
+                   if ((count - 1) % s !== 0) continue;
                    
                    var numLabels = Math.floor((count - 1) / s) + 1;
                    var currentStepX = stepX * s;
-                   var limitW = (currentStepX - minGap); 
+                   var limitW = (currentStepX - minGap) / 1.5;
                    
-                   if (limitW < 36) continue; // Match backend limit
-                   
-                   var isValidMax = currentStepX <= 60; // Max 60px preference
+                   if (limitW < 20) continue; 
                    
                    if (bestS === -1) {
                       bestS = s;
                       bestCount = numLabels;
                   } else {
-                      var bestStepX = stepX * bestS;
-                      var bestIsValidMax = bestStepX <= 60;
+                      var currentDiff = Math.abs(numLabels - targetCount);
+                      var bestDiff = Math.abs(bestCount - targetCount);
                       
-                      if (isValidMax && !bestIsValidMax) {
-                          bestS = s;
-                          bestCount = numLabels;
-                      } else if (!isValidMax && bestIsValidMax) {
-                          // Keep best
-                      } else {
-                          var currentDiff = Math.abs(numLabels - targetCount);
-                          var bestDiff = Math.abs(bestCount - targetCount);
-                          
-                          if (currentDiff < bestDiff) {
+                      if (currentDiff < bestDiff) {
+                           bestS = s;
+                           bestCount = numLabels;
+                      } else if (currentDiff === bestDiff) {
+                           if (numLabels < targetCount && bestCount > targetCount) {
+                               // Keep best (higher)
+                           } else if (numLabels > targetCount && bestCount < targetCount) {
                                bestS = s;
                                bestCount = numLabels;
-                          } else if (currentDiff === bestDiff) {
-                               if (numLabels < targetCount && bestCount > targetCount) {
-                                   // Keep best (higher)
-                               } else if (numLabels > targetCount && bestCount < targetCount) {
-                                   bestS = s;
-                                   bestCount = numLabels;
-                               } else {
-                                   bestS = s;
-                                   bestCount = numLabels;
-                               }
-                          }
+                           } else {
+                               bestS = s;
+                               bestCount = numLabels;
+                           }
                       }
                   }
               }
@@ -2230,19 +2658,7 @@
                   for (let i = 0; i < count; i += bestS) {
                       indices.push(i);
                   }
-                  
-                  // Same fallback as backend: ensure last index is correct
-                  /* REMOVED to match backend
-                  if (indices[indices.length - 1] !== count - 1) {
-                      indices[indices.length - 1] = count - 1;
-                  }
-                  */
-                  
                   finalIndices = indices;
-                  previewCalculatedCount = bestCount; 
-              } else {
-                  // Fallback
-                  previewCalculatedCount = 2;
               }
               
               visibleLabelIndices = new Set(finalIndices);
@@ -2427,7 +2843,7 @@
       const seriesName = data.datasets[0].name || 'Now';
       // Get percentage from input
       const inputVal = document.getElementById('confidenceInterval').value;
-      const percentage = parseFloat(inputVal) / 100 || 0.30; // Default 30%
+      const percentage = parseFloat(inputVal) / 100 || 0.15;
       
       const lineType = currentLineType;
       const isSmooth = lineType === 'smooth';
@@ -2805,7 +3221,25 @@
              thresholds: (currentChartType === 'threshold') ? thresholds : undefined,
              abnormalIntervals: (currentChartType === 'abnormal') ? abnormalIntervals : undefined,
              confidenceInterval: (currentChartType === 'events') ? parseFloat(document.getElementById('confidenceInterval').value)/100 : undefined,
-             xLabelCount: currentXLabelCount > 0 ? currentXLabelCount : previewCalculatedCount // Pass preview count if auto
+             xLabelCount: currentXLabelCount // Send raw value (0 = Auto)
+          }
+        } 
+      }, '*');
+    };
+
+    document.getElementById('barGenerateBtn').onclick = () => {
+      const data = getBarData();
+      
+      let title = '销售统计';
+      
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'generate-chart',
+          data: data,
+          options: {
+             type: 'bar',
+             barType: currentBarChartType,
+             title: title
           }
         } 
       }, '*');
