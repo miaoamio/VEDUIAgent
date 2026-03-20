@@ -5723,6 +5723,10 @@ StepD:
       { role: 'ai', content: '' }
     ]);
     setUserInput('');
+    setChartPromptMode(false);
+    setChartOverlayOpen(false);
+    setChartShortcutActive(null);
+    setChartMenuOpen(false);
     setUploadedImages([]);
     setUploadedTables([]);
     setAttachmentMenuOpen(false);
@@ -8472,7 +8476,7 @@ StepD:
           </div>
           <div className="selection-title">选中内容属性</div>
         </div>
-        <div className="selection-scroll">
+        <div className={`selection-scroll ${hasSelection ? '' : 'selection-scroll-empty'}`}>
           {hasSelection ? (
             <>
               <div className="selection-panel-group">

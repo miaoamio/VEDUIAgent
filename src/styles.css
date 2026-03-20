@@ -17,6 +17,7 @@ body {
   --ved-style-body: 400 var(--ved-font-size-body)/1.5 var(--ved-font-family);
   --ved-button-primary-bg: #18181B;
   --ved-button-primary-text: #FFFFFF;
+  --ved-button-secondary-border: #D4D4D8;
   --ved-button-hover: #F4F4F5;
   --ved-input-focus: #181818;
 }
@@ -1015,6 +1016,10 @@ h2 {
   box-sizing: border-box;
 }
 
+.selection-scroll-empty {
+  padding: 16px;
+}
+
 .selection-empty {
   border: 1px dashed #E5E7EB;
   background: #F9FAFB;
@@ -1053,6 +1058,10 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   background: #FFFFFF;
   overflow: visible;
   position: relative;
+}
+
+.composer-box:focus-within {
+  border-color: var(--ved-button-secondary-border, #D4D4D8);
 }
 
 .composer-textarea-wrap {
@@ -1570,11 +1579,28 @@ button:disabled {
   padding-bottom: 0;
 }
 
-.field-row select:focus,
-.field-row input[type="number"]:focus,
-.field-row input[type="text"]:focus {
-  border-color: var(--ved-input-focus, #1664ff);
-  box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
+.selection-layout .field-row input[type="number"]:focus,
+.selection-layout .field-row input[type="text"]:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-layout .field-row input[type="number"]:focus,
+  .selection-layout .field-row input[type="text"]:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-layout .field-row select:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .selection-panel {
@@ -1666,11 +1692,116 @@ button:disabled {
   padding-right: 32px;
 }
 
+.selection-panel .select-control:not(:focus-within):hover,
+.selection-layout .field-row .select-control:not(:focus-within):hover {
+  border-radius: 4px;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel .select-control:not(:focus-within):hover select,
+.selection-layout .field-row .select-control:not(:focus-within):hover select {
+  border-color: transparent;
+}
+
+.selection-panel input[type="text"]:not(:focus):hover,
+.selection-layout .field-row input[type="text"]:not(:focus):hover,
+.selection-layout .field-row input[type="number"]:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel select:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-layout .field-row select:not(:focus):hover {
+  border-color: transparent;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+.selection-panel .select-control:focus-within,
+.selection-layout .field-row .select-control:focus-within {
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel .select-control:focus-within,
+  .selection-layout .field-row .select-control:focus-within {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-panel .select-control:focus-within select {
+  border-color: transparent;
+}
+
+.selection-layout .field-row .select-control:focus-within select {
+  border-color: transparent;
+}
+
 .selection-panel select:focus,
 .selection-panel input[type="number"]:focus,
 .selection-panel input[type="text"]:focus {
   border-color: var(--ved-input-focus, #1664ff);
-  box-shadow: 0 0 0 1px rgba(22, 100, 255, 0.12);
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.2);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel select:focus,
+  .selection-panel input[type="number"]:focus,
+  .selection-panel input[type="text"]:focus {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent);
+  }
+}
+
+.selection-panel input[type="text"]:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel input[type="text"]:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
+}
+
+.selection-panel select:focus {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 3px rgba(24, 24, 27, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.05),
+    0 0 0 1px var(--ved-input-focus, #18181b);
+}
+
+@supports (color: color-mix(in srgb, #000 20%, transparent)) {
+  .selection-panel select:focus {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ved-input-focus, #181818) 20%, transparent),
+      0 1px 1px rgba(0, 0, 0, 0.05),
+      0 0 0 1px var(--ved-input-focus, #18181b);
+  }
 }
 
 .color-control {
