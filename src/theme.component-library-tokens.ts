@@ -545,6 +545,30 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '数据展示',
     aliases: ['figma-set:Component/PieChart']
   },
+  'lib-data-display-component-barchart': {
+    token: 'lib-data-display-component-barchart',
+    componentKey: 'a83efa5b5ba4efbdb96694268b50e43a61bee971',
+    source: 'Figma组件库词汇表_ComponentSets 图表.json',
+    displayName: 'BarChart 柱状图',
+    category: '数据展示',
+    aliases: ['figma-set:BarChart 柱状图']
+  },
+  'lib-data-display-component-areachart': {
+    token: 'lib-data-display-component-areachart',
+    componentKey: '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
+    source: 'Figma组件库词汇表_ComponentSets 图表.json',
+    displayName: 'AreaChart 面积图',
+    category: '数据展示',
+    aliases: ['figma-set:AreaChart 面积图']
+  },
+  'lib-data-display-component-linechart': {
+    token: 'lib-data-display-component-linechart',
+    componentKey: '62d6b59603766fdb416ff787eec5d21800264694',
+    source: 'Figma组件库词汇表_ComponentSets 图表.json',
+    displayName: 'LineChart 折线图',
+    category: '数据展示',
+    aliases: ['figma-set:折线图']
+  },
   'lib-data-display-piclist': {
     token: 'lib-data-display-piclist',
     componentKey: '4a94b3da5e1ce54430a22c627029d1c3a0df2b78',
@@ -830,6 +854,9 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.data-display.other-tag': { token: 'library.data-display.other-tag', baseToken: 'lib-data-display-other-tag' },
   'library.data-display.othertabs': { token: 'library.data-display.othertabs', baseToken: 'lib-data-display-othertabs' },
   'library.data-display.component-piechart': { token: 'library.data-display.component-piechart', baseToken: 'lib-data-display-component-piechart' },
+  'library.data-display.component-barchart': { token: 'library.data-display.component-barchart', baseToken: 'lib-data-display-component-barchart' },
+  'library.data-display.component-areachart': { token: 'library.data-display.component-areachart', baseToken: 'lib-data-display-component-areachart' },
+  'library.data-display.component-linechart': { token: 'library.data-display.component-linechart', baseToken: 'lib-data-display-component-linechart' },
   'library.data-display.piclist': { token: 'library.data-display.piclist', baseToken: 'lib-data-display-piclist' },
   'library.data-display.popover': { token: 'library.data-display.popover', baseToken: 'lib-data-display-popover' },
   'library.data-display.statistic': { token: 'library.data-display.statistic', baseToken: 'lib-data-display-statistic' },

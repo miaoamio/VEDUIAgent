@@ -58,7 +58,8 @@
       margin-right: 8px;
     }
     
-    .section-title::before {
+    /* Hide accent bar for internal section titles */
+    .thresholds-container .section-title::before {
       display: none;
     }
 
@@ -228,28 +229,24 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      column-gap: 10px;
+      column-gap: 8px;
       border-radius: 4px;
-      border: 1px solid var(--color-button-secondary-border, #d4d4d8);
-      background: var(--color-button-secondary-bg, #ffffff);
-      padding-right: 9px;
-      padding-left: 9px;
-      width: 44px;
+      box-shadow: 0px 0px 0px 1px #dde2e9, 0px 2px 1px 0px #00000014;
+      background: #ffffff;
+      padding: 3px 16px;
+      /* width: 59px; Optional: remove fixed width to allow text fit */
       height: 28px;
       overflow: hidden;
       cursor: pointer;
+      border: none;
       
       /* Text Styles */
-      line-height: 18px;
-      letter-spacing: 0;
-      color: var(--color-text-primary, #18181b);
+      line-height: 22px;
+      letter-spacing: 0.04px;
+      color: #42464e;
       font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
-    }
-
-    .btn-reset:hover {
-      background: var(--ved-button-hover, #f4f4f5);
     }
 
     .btn-icon {
@@ -414,44 +411,34 @@
     /* Preview */
     .preview-tabs {
       display: inline-flex;
-      align-items: flex-start;
-      column-gap: 2px;
+      align-items: center;
+      background: #F2F3F5;
+      padding: 2px;
       border-radius: 4px;
-      background: var(--ved-button-hover, #f4f4f5);
-      padding: 3px;
       margin-bottom: 16px;
+      gap: 2px;
       height: 28px;
       box-sizing: border-box;
     }
     .preview-tab {
-      display: inline-flex;
-      flex-shrink: 0;
+      padding: 0 12px;
+      height: 100%;
+      display: flex;
       align-items: center;
       justify-content: center;
-      column-gap: 4px;
-      border-radius: 4px;
-      background: transparent;
-      padding: 1px 12px;
-      overflow: hidden;
-      line-height: 20px;
-      letter-spacing: 0.04px;
-      color: var(--color-text-secondary, #71717a);
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
       font-size: 12px;
-      font-weight: 400;
+      color: #4E5969;
       cursor: pointer;
+      border-radius: 4px;
       border: none;
       margin-bottom: 0;
-    }
-    .preview-tab:hover:not(.active) {
-      color: var(--color-text-primary, #18181b);
+      transition: all 0.2s;
     }
     .preview-tab.active {
-      box-shadow: 0px 1px 2px 0px #00000012, 0px 1px 1px 0px #0000000d,
-        0px 0px 0px 1px var(--color-border-default, #e4e4e7);
-      background: var(--Background-color-bg-1, #ffffff);
-      color: var(--color-text-primary, #18181b);
+      background: #FFFFFF;
+      color: #1664FF;
       font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
       border: none;
     }
 
@@ -634,28 +621,22 @@
     }
     .btn-primary {
       pointer-events: auto; /* Enable click on button */
-      display: inline-flex;
+      background: #1664FF;
+      color: white;
+      border: none;
+      padding: 0 32px;
+      height: 32px;
+      display: flex;
       align-items: center;
       justify-content: center;
-      column-gap: 10px;
       border-radius: 4px;
-      background: var(--color-button-primary-bg, #18181b);
-      padding-right: 10px;
-      padding-left: 10px;
-      width: 68px;
-      height: 28px;
-      overflow: hidden;
-      cursor: pointer;
-      border: none;
-      line-height: 18px;
-      letter-spacing: 0;
-      color: var(--color-button-primary-text, #ffffff);
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(22, 100, 255, 0.2); /* Optional: add shadow for floating feel */
     }
     .btn-primary:hover {
-      background: var(--color-button-primary-bg, #18181b);
+      background: #40A9FF;
     }
     /* Update main-card padding to avoid overlap */
     .main-card {
@@ -724,7 +705,7 @@
         </div>
         
         <div class="controls">
-          <div class="control-group" id="rowsGroup">
+          <div class="control-group">
             <span class="control-label">行</span>
             <input type="number" id="rows" class="control-input" value="2" onchange="generateTable()">
           </div>
@@ -737,10 +718,9 @@
             <select id="xAxisType" class="control-input" onchange="generateTable()">
               <option value="time">时间 (HH:MM)</option>
               <option value="date">日期 (MM-DD)</option>
-              <option value="datetime">日期时间 (YYYY.MM.DD HH:MM:SS)</option>
               <option value="year">年份 (YYYY)</option>
               <option value="week">星期 (周一~周日)</option>
-              <option value="version">版本号 (1.0.x)</option>
+              <option value="version">版本号 (v1.0.x)</option>
               <option value="category">类别 (Category)</option>
             </select>
           </div>
@@ -769,7 +749,7 @@
           </div>
           <div class="control-group" id="confidenceGroup" style="display: none;">
             <span class="control-label">置信区间</span>
-            <input type="text" id="confidenceInterval" class="control-input" value="30%" oninput="drawPreview()">
+            <input type="text" id="confidenceInterval" class="control-input" value="15%" oninput="drawPreview()">
           </div>
         </div>
         
@@ -835,25 +815,8 @@
     </div>
   </div>
 
-  <script src="lib/echarts.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
   <script>
-    // #region debug-point
-    const DEBUG_API_URL = 'http://127.0.0.1:7777/event';
-    const sendDebugEvent = (event, payload) => {
-      try {
-        fetch(DEBUG_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event,
-            payload,
-            ts: new Date().toISOString(),
-            source: 'ai-chart-ui'
-          })
-        });
-      } catch {}
-    };
-    // #endregion debug-point
     // State
     let currentChartType = 'comparison';
     let currentPalette = 0;
@@ -876,7 +839,6 @@
       let currentLineType = 'step'; // Default line type
       let currentXLabelCount = 0; // Default 0 means Auto
       let seriesStyles = []; // Store style data: { type: 'solid' }
-    let previewCalculatedCount = 0; // Store the label count calculated in preview
     
     const palettes = [
       ['#1664FF', '#1AC6FF', '#3CC780', '#7442D4', '#304D77', '#B48DEB', '#009488', '#FFC400', '#FF8A00', '#FF7DDA'],
@@ -886,21 +848,9 @@
 
     // Initialize
     window.onload = () => {
-      // #region debug-point
-      const echartsScript = document.querySelector('script[src*="echarts"]')?.getAttribute('src');
-      sendDebugEvent('ai_chart_ui_onload', {
-        echartsScript,
-        hasEcharts: typeof echarts !== 'undefined'
-      });
-      // #endregion debug-point
       if (typeof echarts === 'undefined') {
         document.getElementById('configDisplay').textContent = 'Error: ECharts library not loaded. Please check src/lib/echarts.min.js';
         document.getElementById('configDisplay').style.display = 'block';
-        // #region debug-point
-        sendDebugEvent('ai_chart_ui_missing_echarts', {
-          echartsScript
-        });
-        // #endregion debug-point
         return;
       }
       try {
@@ -1116,20 +1066,13 @@
       
       // Adjust table rows based on chart type
       const rowsInput = document.getElementById('rows');
-      const rowsGroup = document.getElementById('rowsGroup');
-      
       rowsInput.disabled = false; // Reset state
-      if (rowsGroup) rowsGroup.style.display = 'flex'; // Reset visibility
       
       if (type === 'events') {
          // Confidence Band usually needs just 1 base series
          rowsInput.value = 1;
          rowsInput.disabled = true; // Disable input
          document.getElementById('unit').value = 's'; // Default unit for Events/Confidence Band?
-      } else if (type === 'abnormal') {
-         // Abnormal Interval usually needs 1 series
-         rowsInput.value = 1;
-         if (rowsGroup) rowsGroup.style.display = 'none'; // Hide input
       } else if (type === 'comparison') {
          rowsInput.value = 2;
          document.getElementById('unit').value = 'Tb/s';
@@ -1495,13 +1438,11 @@
           for (let i = 0; i < cols; i++) {
               const d = new Date(now);
               d.setHours(now.getHours() - ((cols - 1 - i) * intervalHours));
-              const y = d.getFullYear().toString();
               const m = (d.getMonth() + 1).toString().padStart(2, '0');
               const day = d.getDate().toString().padStart(2, '0');
               const h = d.getHours().toString().padStart(2, '0');
               const min = d.getMinutes().toString().padStart(2, '0');
-              const sec = d.getSeconds().toString().padStart(2, '0');
-              labels.push(`${y}.${m}.${day} ${h}:${min}:${sec}`);
+              labels.push(`${m}-${day} ${h}:${min}`);
           }
       } else if (xAxisType === 'year') {
           const currentYear = new Date().getFullYear();
@@ -1519,7 +1460,7 @@
           }
       } else if (xAxisType === 'version') {
           for (let i = 0; i < cols; i++) {
-              labels.push(`1.${i}.0`);
+              labels.push(`v1.${i}.0`);
           }
       } else if (xAxisType === 'commit') {
           for (let i = 0; i < cols; i++) {
@@ -2169,7 +2110,7 @@
               if (typeof currentXLabelCount !== 'undefined' && currentXLabelCount >= 2) {
                   targetCount = currentXLabelCount;
               } else {
-                  var targetIntervalWidth = 48; // Match backend (48px target)
+                  var targetIntervalWidth = 72;
                   targetCount = Math.max(2, Math.floor(drawW / targetIntervalWidth) + 1);
               }
               
@@ -2180,47 +2121,34 @@
                
                // Iterate step size 's'
                for (let s = 1; s < count; s++) {
-                   // REMOVED STRICT MODULO CHECK to match backend
-                   // if ((count - 1) % s !== 0) continue;
+                   if ((count - 1) % s !== 0) continue;
                    
                    var numLabels = Math.floor((count - 1) / s) + 1;
                    var currentStepX = stepX * s;
-                   var limitW = (currentStepX - minGap); 
+                   var limitW = (currentStepX - minGap) / 1.5;
                    
-                   if (limitW < 36) continue; // Match backend limit
-                   
-                   var isValidMax = currentStepX <= 60; // Max 60px preference
+                   if (limitW < 20) continue; 
                    
                    if (bestS === -1) {
                       bestS = s;
                       bestCount = numLabels;
                   } else {
-                      var bestStepX = stepX * bestS;
-                      var bestIsValidMax = bestStepX <= 60;
+                      var currentDiff = Math.abs(numLabels - targetCount);
+                      var bestDiff = Math.abs(bestCount - targetCount);
                       
-                      if (isValidMax && !bestIsValidMax) {
-                          bestS = s;
-                          bestCount = numLabels;
-                      } else if (!isValidMax && bestIsValidMax) {
-                          // Keep best
-                      } else {
-                          var currentDiff = Math.abs(numLabels - targetCount);
-                          var bestDiff = Math.abs(bestCount - targetCount);
-                          
-                          if (currentDiff < bestDiff) {
+                      if (currentDiff < bestDiff) {
+                           bestS = s;
+                           bestCount = numLabels;
+                      } else if (currentDiff === bestDiff) {
+                           if (numLabels < targetCount && bestCount > targetCount) {
+                               // Keep best (higher)
+                           } else if (numLabels > targetCount && bestCount < targetCount) {
                                bestS = s;
                                bestCount = numLabels;
-                          } else if (currentDiff === bestDiff) {
-                               if (numLabels < targetCount && bestCount > targetCount) {
-                                   // Keep best (higher)
-                               } else if (numLabels > targetCount && bestCount < targetCount) {
-                                   bestS = s;
-                                   bestCount = numLabels;
-                               } else {
-                                   bestS = s;
-                                   bestCount = numLabels;
-                               }
-                          }
+                           } else {
+                               bestS = s;
+                               bestCount = numLabels;
+                           }
                       }
                   }
               }
@@ -2230,19 +2158,7 @@
                   for (let i = 0; i < count; i += bestS) {
                       indices.push(i);
                   }
-                  
-                  // Same fallback as backend: ensure last index is correct
-                  /* REMOVED to match backend
-                  if (indices[indices.length - 1] !== count - 1) {
-                      indices[indices.length - 1] = count - 1;
-                  }
-                  */
-                  
                   finalIndices = indices;
-                  previewCalculatedCount = bestCount; 
-              } else {
-                  // Fallback
-                  previewCalculatedCount = 2;
               }
               
               visibleLabelIndices = new Set(finalIndices);
@@ -2427,7 +2343,7 @@
       const seriesName = data.datasets[0].name || 'Now';
       // Get percentage from input
       const inputVal = document.getElementById('confidenceInterval').value;
-      const percentage = parseFloat(inputVal) / 100 || 0.30; // Default 30%
+      const percentage = parseFloat(inputVal) / 100 || 0.15;
       
       const lineType = currentLineType;
       const isSmooth = lineType === 'smooth';
@@ -2805,7 +2721,7 @@
              thresholds: (currentChartType === 'threshold') ? thresholds : undefined,
              abnormalIntervals: (currentChartType === 'abnormal') ? abnormalIntervals : undefined,
              confidenceInterval: (currentChartType === 'events') ? parseFloat(document.getElementById('confidenceInterval').value)/100 : undefined,
-             xLabelCount: currentXLabelCount > 0 ? currentXLabelCount : previewCalculatedCount // Pass preview count if auto
+             xLabelCount: currentXLabelCount // Send raw value (0 = Auto)
           }
         } 
       }, '*');

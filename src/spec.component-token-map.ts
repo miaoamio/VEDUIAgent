@@ -33,6 +33,12 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'lib-data-display-avataricon': ['table-cell-avatar'],
   'library.data-display.avataricon': ['table-cell-avatar'],
   'lib-data-display-component-piechart': ['figma-component'],
+  'lib-data-display-component-linechart': ['figma-component'],
+  'library.data-display.component-linechart': ['figma-component'],
+  'lib-data-display-component-barchart': ['figma-component'],
+  'library.data-display.component-barchart': ['figma-component'],
+  'lib-data-display-component-areachart': ['figma-component'],
+  'library.data-display.component-areachart': ['figma-component'],
   'lib-data-display-toplist': ['figma-component'],
   'library.data-display.toplist': ['figma-component']
 };

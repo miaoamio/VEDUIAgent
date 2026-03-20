@@ -3,9 +3,9 @@
   "id": "1601139470788494310",
   "api": "1.0.0",
   "main": "dist/code.js",
-  "ui": "src/ui.html",
   "capabilities": [],
   "enableProposedApi": false,
+  "documentAccess": "dynamic-page",
   "editorType": [
     "figma"
   ],
