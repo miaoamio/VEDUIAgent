@@ -911,6 +911,8 @@ h2 {
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+  --manual-control-gap: 16px;
+  --manual-control-to-switch-gap: 12px;
 }
 
 .selection-header {
@@ -1504,8 +1506,26 @@ button:disabled {
   font-size: 12px;
 }
 
+.selection-layout .field-row {
+  margin-bottom: var(--manual-control-gap, 16px);
+}
+
 .field-row:last-child {
   margin-bottom: 0;
+}
+
+.manual-control-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--manual-control-gap, 16px);
+}
+
+.manual-control-stack .field-row {
+  margin-bottom: 0;
+}
+
+.manual-switch-group {
+  padding-top: var(--manual-control-to-switch-gap, 12px);
 }
 
 .field-row label {

@@ -4327,6 +4327,26 @@ StepD:
     };
   };
 
+  const getChartToken = (hint: string, fallbackToken = ''): string => {
+    const normalized = String(hint || '').replace(/\s+/g, '').toLowerCase();
+    if (!normalized) return fallbackToken;
+    if (normalized.includes('面积图') || normalized.includes('area')) return 'lib-data-display-component-areachart';
+    if (normalized.includes('柱状图') || normalized.includes('barchart') || normalized.includes('bar-chart') || normalized === 'bar') {
+      return 'lib-data-display-component-barchart';
+    }
+    if (normalized.includes('条形图') || normalized.includes('toplist')) return 'lib-data-display-toplist';
+    if (
+      normalized.includes('饼图') ||
+      normalized.includes('环形图') ||
+      normalized.includes('pie') ||
+      normalized.includes('donut') ||
+      normalized.includes('piechart')
+    ) {
+      return 'lib-data-display-component-piechart';
+    }
+    return fallbackToken;
+  };
+
   const buildChartBlockComponentFromPayload = (payload: any, fallbackTitle: string): any | null => {
     const source = getBlockSource(payload);
     if (!source) return null;
@@ -4358,14 +4378,7 @@ StepD:
       const props = isObject(chartObj.props) ? chartObj.props : {};
       const heightRaw = Number(props.height ?? chartObj.height);
       const tokenHint = String(props.type ?? chartObj.type ?? props.chartType ?? chartObj.chartType ?? '').trim();
-      const token = (() => {
-        const normalized = tokenHint.toLowerCase();
-        if (normalized.includes('area') || tokenHint.includes('面积')) return 'lib-data-display-component-areachart';
-        if (normalized.includes('bar') || tokenHint.includes('柱')) return 'lib-data-display-component-barchart';
-        if (normalized.includes('pie') || normalized.includes('donut') || tokenHint.includes('饼') || tokenHint.includes('环')) return 'lib-data-display-component-piechart';
-        if (normalized.includes('toplist') || tokenHint.includes('条')) return 'lib-data-display-toplist';
-        return 'lib-data-display-toplist';
-      })();
+      const token = getChartToken(tokenHint, 'lib-data-display-toplist');
       chartNodes.push({
         componentId: 'figma-component',
         params: {
@@ -5777,14 +5790,7 @@ StepD:
       : chartShortcutActive
         ? `生成一个${chartShortcutActive}`
         : userInput;
-    const chartTokenOverride = (() => {
-      const normalized = String(turnInput || '').replace(/\s+/g, '');
-      if (normalized.includes('柱状图')) return 'lib-data-display-component-barchart';
-      if (normalized.includes('面积图')) return 'lib-data-display-component-areachart';
-      if (normalized.includes('条形图')) return 'lib-data-display-toplist';
-      if (normalized.includes('饼图') || normalized.includes('环形图')) return 'lib-data-display-component-piechart';
-      return '';
-    })();
+    const chartTokenOverride = getChartToken(turnInput, '');
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
@@ -7202,10 +7208,19 @@ StepD:
 
   const normalizeLabelText = (value: string) => String(value || '').replace(/\s+/g, ' ').trim();
 
+  const maybeHideNonOptionalParenLabel = (value: string, enabled: boolean) => {
+    if (!enabled) return value;
+    const raw = String(value || '');
+    const next = raw
+      .replace(/\s*（([^）]*)）\s*/g, (_match, inner) => (String(inner).includes('可选') ? `（${inner}）` : ' '))
+      .replace(/\s*\(([^)]*)\)\s*/g, (_match, inner) => (String(inner).includes('可选') ? `(${inner})` : ' '));
+    return normalizeLabelText(next);
+  };
+
   const resolveParamLabel = (def: ComponentDefinition, key: string, paramDef: ParamDefinition): string => {
-    if (PARAM_LABEL_MAP[key]) return normalizeLabelText(PARAM_LABEL_MAP[key]);
-    if (paramDef.description) return normalizeLabelText(paramDef.description);
-    return normalizeLabelText(key);
+    const base = PARAM_LABEL_MAP[key] || paramDef.description || key;
+    const normalized = normalizeLabelText(base);
+    return maybeHideNonOptionalParenLabel(normalized, def.id === 'form-field');
   };
 
   const resolveOptionLabel = (def: ComponentDefinition, key: string, value: string): string => {
@@ -7364,7 +7379,7 @@ StepD:
 
           {showFigmaVariantProperties && (
             <div className="control-row" style={{ marginBottom: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="manual-control-stack">
                 {figmaVariantProperties.map((prop: any) => {
                   const propName = normalizeLabelText(prop.displayName || prop.propertyName || '');
                   const propKey = normalizeLabelText(prop.displayName || prop.propertyName || '');
@@ -7435,19 +7450,6 @@ StepD:
             </div>
           )}
 
-          {isFormComponent && (
-            <FieldRow label="表单项数量">
-              <SelectControl
-                value={String(formItemCountValue)}
-                onChange={(value) => updateParam('itemCount', Number(value))}
-              >
-                {formItemOptions.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </SelectControl>
-            </FieldRow>
-          )}
-
           {(() => {
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             const isFormField = def.id === 'form-field';
@@ -7503,6 +7505,8 @@ StepD:
                   <SegmentedControl
                     value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
                     onChange={(next) => setFormFieldTextMode(next === 'value' ? 'value' : 'placeholder')}
+                    groupClassName="othertabs-group"
+                    buttonClassName="othertabs-button"
                     options={[
                       { value: 'value', label: '已填写' },
                       { value: 'placeholder', label: '占位文字' }
@@ -7528,10 +7532,25 @@ StepD:
                   ...mainRows.slice(primaryFormFieldKeyCount)
                 ]
               : mainRows;
+            const mainRowsWithFormItemCount = isForm
+              ? [
+                  <FieldRow key="form-item-count" label="表单项数量">
+                    <SelectControl
+                      value={String(formItemCountValue)}
+                      onChange={(value) => updateParam('itemCount', Number(value))}
+                    >
+                      {formItemOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </SelectControl>
+                  </FieldRow>,
+                  ...mainRowsWithFormFieldText
+                ]
+              : mainRowsWithFormFieldText;
             return (
               <>
-                {mainRowsWithFormFieldText}
-                {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
+                <div className="manual-control-stack">{mainRowsWithFormItemCount}</div>
+                {switchRows.length > 0 && <div className="manual-switch-group">{switchRows}</div>}
               </>
             );
           })()}
@@ -7778,8 +7797,8 @@ StepD:
               );
               return (
                 <>
-                  {mainRows}
-                  {switchRows.length > 0 && <div style={{ marginTop: '12px' }}>{switchRows}</div>}
+                  <div className="manual-control-stack">{mainRows}</div>
+                  {switchRows.length > 0 && <div className="manual-switch-group">{switchRows}</div>}
                 </>
               );
             })()}
