@@ -497,6 +497,14 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '数据展示',
     aliases: ['figma-set:Digital Tag 数字标签']
   },
+  'lib-data-display-toplist': {
+    token: 'lib-data-display-toplist',
+    componentKey: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
+    source: 'Figma组件库词汇表_ComponentSets 图表.json',
+    displayName: 'Toplist 条形图',
+    category: '数据展示',
+    aliases: ['figma-set:Toplist 条形图']
+  },
   'lib-data-display-list': {
     token: 'lib-data-display-list',
     componentKey: '3f790aed52a836b6210de70949f8594a2ef653ba',
@@ -528,6 +536,14 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     displayName: 'Othertabs 其他选项卡样式',
     category: '数据展示',
     aliases: ['figma-set:Othertabs 其他选项卡样式']
+  },
+  'lib-data-display-component-piechart': {
+    token: 'lib-data-display-component-piechart',
+    componentKey: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+    source: 'Figma组件库词汇表_ComponentSets 图表.json',
+    displayName: 'PieChart 饼图',
+    category: '数据展示',
+    aliases: ['figma-set:Component/PieChart']
   },
   'lib-data-display-piclist': {
     token: 'lib-data-display-piclist',
@@ -808,10 +824,12 @@ export const SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, SemanticLibra
   'library.data-display.collapse': { token: 'library.data-display.collapse', baseToken: 'lib-data-display-collapse' },
   'library.data-display.descriptions': { token: 'library.data-display.descriptions', baseToken: 'lib-data-display-descriptions' },
   'library.data-display.digital-tag': { token: 'library.data-display.digital-tag', baseToken: 'lib-data-display-digital-tag' },
+  'library.data-display.toplist': { token: 'library.data-display.toplist', baseToken: 'lib-data-display-toplist' },
   'library.data-display.list': { token: 'library.data-display.list', baseToken: 'lib-data-display-list' },
   'library.data-display.multicolor-tag': { token: 'library.data-display.multicolor-tag', baseToken: 'lib-data-display-multicolor-tag' },
   'library.data-display.other-tag': { token: 'library.data-display.other-tag', baseToken: 'lib-data-display-other-tag' },
   'library.data-display.othertabs': { token: 'library.data-display.othertabs', baseToken: 'lib-data-display-othertabs' },
+  'library.data-display.component-piechart': { token: 'library.data-display.component-piechart', baseToken: 'lib-data-display-component-piechart' },
   'library.data-display.piclist': { token: 'library.data-display.piclist', baseToken: 'lib-data-display-piclist' },
   'library.data-display.popover': { token: 'library.data-display.popover', baseToken: 'lib-data-display-popover' },
   'library.data-display.statistic': { token: 'library.data-display.statistic', baseToken: 'lib-data-display-statistic' },
