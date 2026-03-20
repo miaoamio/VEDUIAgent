@@ -9007,28 +9007,154 @@ async function drawAiChart(data: any, options: any) {
     });
   }
 
-  // Draw Lines
-  data.datasets.forEach((ds: any) => {
-    const pathData = ds.data.map((val: number, i: number) => {
-      const x = i * stepX;
-      const normalizedY = (val - niceMin) / (range || 1);
-      const y = plotH - normalizedY * plotH;
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-    }).join(' ');
+  // Draw Chart Data (Lines or Bars)
+  const isBarChart = options.type === 'bar';
+  const barType = options.barType || 'simple';
+  
+  if (isBarChart) {
+    // 绘制柱状图
+    const numCategories = data.labels.length;
+    const numSeries = data.datasets.length;
+    
+    // 柱状图配置
+    const barCategoryGap = 0.3;
+    const barGap = barType === 'grouped' ? 0.2 : 0;
+    const barWidth = numCategories > 10 ? 0.4 : 0.6;
+    
+    // 计算每个类别的总宽度
+    const categoryWidth = drawW / numCategories;
+    const usableCategoryWidth = categoryWidth * (1 - barCategoryGap);
+    
+    if (barType === 'simple') {
+      // 基础柱状图
+      data.datasets.forEach((ds: any, seriesIndex: number) => {
+        ds.data.forEach((val: number, i: number) => {
+          const normalizedY = (val - niceMin) / (range || 1);
+          const barHeight = normalizedY * plotH;
+          const barY = plotH - barHeight;
+          
+          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth * barWidth) / 2;
+          const barW = usableCategoryWidth * barWidth;
+          
+          const rect = figma.createRectangle();
+          rect.resize(barW, barHeight);
+          rect.x = barX;
+          rect.y = barY;
+          rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
+          rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+          dataFrame.appendChild(rect);
+        });
+      });
+    } else if (barType === 'grouped') {
+      // 分组柱状图
+      data.datasets.forEach((ds: any, seriesIndex: number) => {
+        ds.data.forEach((val: number, i: number) => {
+          const normalizedY = (val - niceMin) / (range || 1);
+          const barHeight = normalizedY * plotH;
+          const barY = plotH - barHeight;
+          
+          const groupWidth = usableCategoryWidth;
+          const singleBarWidth = (groupWidth - (numSeries - 1) * groupWidth * barGap) / numSeries;
+          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth) / 2 + 
+                     seriesIndex * (singleBarWidth + groupWidth * barGap);
+          
+          const rect = figma.createRectangle();
+          rect.resize(singleBarWidth, barHeight);
+          rect.x = barX;
+          rect.y = barY;
+          rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
+          rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+          dataFrame.appendChild(rect);
+        });
+      });
+    } else if (barType === 'stacked') {
+      // 堆叠柱状图
+      // 先计算每个位置的累积值
+      const stackedValues: number[][] = [];
+      for (let i = 0; i < numCategories; i++) {
+        stackedValues[i] = [];
+        let cumulative = 0;
+        for (let j = 0; j < numSeries; j++) {
+          stackedValues[i][j] = cumulative;
+          cumulative += data.datasets[j].data[i];
+        }
+      }
+      
+      // 找到所有数据的最大值和最小值来正确缩放
+      let allMin = Infinity;
+      let allMax = -Infinity;
+      data.datasets.forEach((ds: any) => {
+        ds.data.forEach((v: number) => {
+          if (v < allMin) allMin = v;
+          if (v > allMax) allMax = v;
+        });
+      });
+      
+      // 计算每个位置的总累积值
+      const totalStacked: number[] = [];
+      for (let i = 0; i < numCategories; i++) {
+        let total = 0;
+        for (let j = 0; j < numSeries; j++) {
+          total += data.datasets[j].data[i];
+        }
+        totalStacked[i] = total;
+        if (total > allMax) allMax = total;
+      }
+      
+      if (allMin === Infinity) allMin = 0;
+      if (allMax === -Infinity) allMax = 100;
+      if (allMin >= 0) allMin = 0;
+      
+      const stackedRange = allMax - allMin || 1;
+      
+      data.datasets.forEach((ds: any, seriesIndex: number) => {
+        ds.data.forEach((val: number, i: number) => {
+          const baseValue = stackedValues[i][seriesIndex];
+          const normalizedBase = (baseValue - allMin) / stackedRange;
+          const normalizedTop = (baseValue + val - allMin) / stackedRange;
+          
+          const barHeight = (normalizedTop - normalizedBase) * plotH;
+          const barY = plotH - normalizedTop * plotH;
+          
+          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth * barWidth) / 2;
+          const barW = usableCategoryWidth * barWidth;
+          
+          if (barHeight > 0.1) {
+            const rect = figma.createRectangle();
+            rect.resize(barW, barHeight);
+            rect.x = barX;
+            rect.y = barY;
+            rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
+            rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+            dataFrame.appendChild(rect);
+          }
+        });
+      });
+    }
+  } else {
+    // 绘制折线图（保持原有逻辑）
+    data.datasets.forEach((ds: any) => {
+      const pathData = ds.data.map((val: number, i: number) => {
+        const x = i * stepX;
+        const normalizedY = (val - niceMin) / (range || 1);
+        const y = plotH - normalizedY * plotH;
+        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+      }).join(' ');
 
-    const vector = figma.createVector();
-    vector.vectorPaths = [{
-      windingRule: "NONZERO",
-      data: pathData
-    }];
-    const rgb = hexToRgb(ds.color);
-    vector.strokes = [{ type: 'SOLID', color: rgb }];
-    vector.strokeWeight = 2;
-    vector.strokeJoin = "ROUND";
-    vector.strokeCap = "ROUND";
-    vector.constraints = { horizontal: "SCALE", vertical: "SCALE" };
-    dataFrame.appendChild(vector);
-  });
+      const vector = figma.createVector();
+      vector.vectorPaths = [{
+        windingRule: "NONZERO",
+        data: pathData
+      }];
+      const rgb = hexToRgb(ds.color);
+      vector.strokes = [{ type: 'SOLID', color: rgb }];
+      vector.strokeWeight = 2;
+      vector.strokeJoin = "ROUND";
+      vector.strokeCap = "ROUND";
+      vector.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+      dataFrame.appendChild(vector);
+    });
+  }
 
   // Legend Area
   if (showLegend) {

@@ -4,6 +4,7 @@
   "description": "A Figma plugin built with React and Vite",
   "main": "dist/code.js",
   "scripts": {
+    "dev": "vite",
     "build": "npm run build:ui && npm run build:main",
     "build:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
     "build:ui": "vite build",

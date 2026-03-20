@@ -1218,7 +1218,6 @@
       if (!myBarChart) return;
       
       const data = getBarData();
-      const barWidth = data.labels.length > 10 ? 12 : '60%';
       
       let option = {
         color: [
@@ -1257,7 +1256,7 @@
           itemGap: 12,
           itemWidth: 8,
           itemHeight: 8,
-          icon: "rect",
+          icon: "path://M2,0 h4 a2,2 0 0 1 2,2 v4 a2,2 0 0 1 -2,2 h-4 a2,2 0 0 1 -2,-2 v-4 a2,2 0 0 1 2,-2 z",
           textStyle: {
             fontSize: 10,
             color: "#737A87",
@@ -1268,6 +1267,7 @@
           type: "category",
           name: "",
           data: data.labels,
+          boundaryGap: true,
           axisLine: {
             lineStyle: {
               color: "#E6E6E6",
@@ -1311,6 +1311,9 @@
       };
       
       if (currentBarChartType === 'simple') {
+        const barWidth = data.labels.length > 10 ? '50%' : '70%';
+        option.barCategoryGap = "30%";
+        option.barGap = "0%";
         option.series = data.datasets.map((ds, i) => ({
           type: "bar",
           name: ds.name,
@@ -1318,6 +1321,9 @@
           barWidth: barWidth
         }));
       } else if (currentBarChartType === 'grouped') {
+        const barWidth = data.labels.length > 10 ? '40%' : '50%';
+        option.barCategoryGap = "40%";
+        option.barGap = "30%";
         option.series = data.datasets.map((ds, i) => ({
           type: "bar",
           name: ds.name,
@@ -1325,48 +1331,10 @@
           barWidth: barWidth
         }));
       } else if (currentBarChartType === 'stacked') {
-        option.yAxis = {
-          type: "value",
-          name: "",
-          axisLine: {
-            lineStyle: {
-              color: "#E6E6E6",
-              width: 1
-            }
-          },
-          axisLabel: {
-            fontSize: 10,
-            color: "#737A87",
-            fontFamily: "Inter",
-            formatter: "{value}%"
-          },
-          splitLine: {
-            show: true,
-            lineStyle: {
-              type: "dashed",
-              color: "#E6E6E6",
-              width: 1
-            }
-          },
-          max: 100
-        };
-        
-        const numDataPoints = data.labels.length;
-        const normalizedData = data.datasets.map(ds => ({ ...ds }));
-        
-        for (let i = 0; i < numDataPoints; i++) {
-          let total = 0;
-          for (let j = 0; j < data.datasets.length; j++) {
-            total += data.datasets[j].data[i];
-          }
-          if (total > 0) {
-            for (let j = 0; j < data.datasets.length; j++) {
-              normalizedData[j].data[i] = parseFloat(((data.datasets[j].data[i] / total) * 100).toFixed(1));
-            }
-          }
-        }
-        
-        option.series = normalizedData.map((ds, i) => ({
+        const barWidth = data.labels.length > 10 ? '50%' : '70%';
+        option.barCategoryGap = "30%";
+        option.barGap = "0%";
+        option.series = data.datasets.map((ds, i) => ({
           type: "bar",
           name: ds.name,
           stack: "total",
