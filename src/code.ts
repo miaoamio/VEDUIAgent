@@ -337,10 +337,14 @@ function checkSelection() {
         }
 
         const parsedParams = JSON.parse(params);
+        const liveInstance = buildComponentInstanceFromNode(targetNode);
+        const liveParams = liveInstance?.params && typeof liveInstance.params === 'object'
+          ? liveInstance.params
+          : parsedParams;
         const normalizedParams =
           componentId === 'tag'
-            ? normalizeUnifiedTagParams(parsedParams)
-            : parsedParams;
+            ? normalizeUnifiedTagParams(liveParams)
+            : liveParams;
 
         if (isTableCellComponentId(componentId)) {
           const column = findTableColumnFromNode(targetNode);
@@ -362,8 +366,13 @@ function checkSelection() {
           }
         }
 
-        if (componentId.startsWith('table')) {
+        if (componentId === 'table' && targetNode.type === 'FRAME') {
           scheduleTableCellPrewarm();
+          const actualState = detectTableActualState(targetNode as FrameNode);
+          normalizedParams.hasButtonGroup = actualState.hasButtonGroup;
+          normalizedParams.hasFilter = actualState.hasFilter;
+          normalizedParams.hasTabs = actualState.hasTabs;
+          normalizedParams.hasPagination = actualState.hasPagination;
         }
 
         figma.ui.postMessage({ 
@@ -1063,6 +1072,36 @@ function ensureTableContentStack(tableRoot: FrameNode, tableContent: FrameNode):
     }
 
     return stack;
+}
+
+function detectTableActualState(tableRoot: FrameNode): {
+    hasButtonGroup: boolean;
+    hasFilter: boolean;
+    hasTabs: boolean;
+    hasPagination: boolean;
+} {
+    const result = {
+        hasButtonGroup: false,
+        hasFilter: false,
+        hasTabs: false,
+        hasPagination: false
+    };
+
+    const contentStack = findTableContentStack(tableRoot);
+    if (contentStack) {
+        const toolbar = contentStack.children.find(
+            (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
+        ) as FrameNode | undefined;
+        if (toolbar) {
+            result.hasButtonGroup = toolbar.children.some(c => c.getPluginData('table-role') === 'button-group');
+            result.hasFilter = toolbar.children.some(c => c.getPluginData('table-role') === 'filter-group');
+            result.hasTabs = toolbar.children.some(c => c.getPluginData('table-role') === 'tabs');
+        }
+    }
+
+    result.hasPagination = !!findPaginationRow(tableRoot);
+
+    return result;
 }
 
 function findManagedTableFilterGroup(contentStack: FrameNode): FrameNode | null {
@@ -3344,8 +3383,10 @@ async function createInputFromFigmaTemplate(
     const error = Boolean(params.error);
     const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
     const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
-    const hasValue = String(params.value ?? '').length > 0;
-    const filled = Boolean(params.filled) || hasValue;
+    const rawValue = String(params.value ?? '');
+    const hasValue = rawValue.length > 0;
+    const filled = Boolean(params.filled);
+    const effectiveFilled = filled || hasValue;
 
     try {
         const importedInstance = await createFigmaComponentInstance({
@@ -3354,7 +3395,7 @@ async function createInputFromFigmaTemplate(
             variantCriteria: {
                 'Disable 禁用': toVariantBoolean(disabled),
                 'Error 错误': toVariantBoolean(error),
-                'Filled 已填': toVariantBoolean(filled),
+                'Filled 已填': toVariantBoolean(effectiveFilled),
                 'Prefix 前缀': toVariantBoolean(showPrefix),
                 'Size 尺寸': resolveInputSizeVariantLabel(params.size),
                 'State 状态': resolveInputStateVariantLabel(params.state),
@@ -3369,7 +3410,8 @@ async function createInputFromFigmaTemplate(
         const mainTextNode =
             textNodes.find((node) => String(node.name || '').trim().toLowerCase() === 'text') ||
             textNodes[textNodes.length - 1];
-        const nextValue = hasValue ? String(params.value) : String(params.placeholder || '请输入');
+        const placeholder = String(params.placeholder || '请输入');
+        const nextValue = effectiveFilled && hasValue ? rawValue : placeholder;
         if (mainTextNode) {
             await updateTextNodeCharacters(mainTextNode, nextValue);
         }
@@ -3493,7 +3535,7 @@ async function createSelectFromFigmaTemplate(
     const currentValue = String(params.value || '').trim();
     const placeholder = String(params.placeholder || '请选择');
     const hasValue = currentValue.length > 0;
-    const filled = Boolean(params.filled) || hasValue;
+    const filled = Boolean(params.filled);
     const disabled = Boolean(params.disabled);
     const multiple = Boolean(params.multiple);
 
@@ -3515,7 +3557,7 @@ async function createSelectFromFigmaTemplate(
         const detached = importedInstance.detachInstance();
         const displayTextNode = findSelectDisplayTextNode(detached);
         if (displayTextNode) {
-            await updateTextNodeCharacters(displayTextNode, hasValue ? currentValue : placeholder);
+            await updateTextNodeCharacters(displayTextNode, filled && hasValue ? currentValue : placeholder);
         }
         await applySelectDropdownOptions(detached, params.optionsText);
 
@@ -4065,6 +4107,7 @@ function normalizeFormFieldControlType(controlType: unknown): string {
     if (normalized.includes('switch') || normalized.includes('开关')) return 'switch';
     if (normalized.includes('textarea') || normalized.includes('多行')) return 'textarea';
     if (normalized.includes('timepicker') || normalized.includes('时间')) return 'timepicker';
+    if (normalized.includes('segmented') || normalized.includes('分段')) return 'segmented-picker';
     if (normalized.includes('select') || normalized.includes('选择')) return 'select';
     if (normalized.includes('upload') || normalized.includes('上传')) return 'upload';
     if (normalized.includes('button') || normalized.includes('按钮')) return 'button';
@@ -4093,6 +4136,8 @@ function resolveFormFieldTemplateTypeLabel(controlType: unknown): string {
             return 'Textarea 多行文本';
         case 'timepicker':
             return 'TimePicker 时间选择';
+        case 'segmented-picker':
+            return 'Segmented Picker 分段选择器';
         case 'upload':
             return 'Upload 上传';
         default:
@@ -4193,6 +4238,289 @@ function readFormFieldLabelTextFromNode(node: SceneNode): string | null {
         }
     }
     return null;
+}
+
+function readFirstMeaningfulTextFromNode(node: SceneNode): string | null {
+    if (!('findAll' in node)) return null;
+    const textNodes = node.findAll((child) => child.type === 'TEXT') as TextNode[];
+    const preferred = textNodes.find((text) => {
+        const value = String(text.characters || '').trim();
+        return Boolean(value) && value !== '✓' && value !== '−';
+    });
+    if (preferred) return String(preferred.characters || '').trim();
+    const fallback = textNodes.find((text) => String(text.characters || '').trim().length > 0);
+    return fallback ? String(fallback.characters || '').trim() : null;
+}
+
+function readInputMainTextNode(root: SceneNode): TextNode | null {
+    if (!('findAll' in root)) return null;
+    const textNodes = root.findAll((child) => child.type === 'TEXT') as TextNode[];
+    return (
+        textNodes.find((child) => String(child.name || '').trim().toLowerCase() === 'text') ||
+        textNodes[textNodes.length - 1] ||
+        null
+    );
+}
+
+function readInstanceBooleanProperty(instance: InstanceNode, displayNames: string[]): boolean | null {
+    for (const displayName of displayNames) {
+        const key = findInstanceComponentPropertyName(instance, displayName);
+        if (!key) continue;
+        const prop = instance.componentProperties?.[key];
+        if (!prop) continue;
+        if (prop.type === 'BOOLEAN' && typeof prop.value === 'boolean') {
+            return prop.value;
+        }
+        const raw = String(prop.value ?? '').trim().toLowerCase();
+        if (!raw) continue;
+        if (raw === 'true' || raw === 'yes' || raw === 'on' || raw === 'checked' || raw === 'selected') {
+            return true;
+        }
+        if (raw === 'false' || raw === 'no' || raw === 'off' || raw === 'unchecked' || raw === 'unselected') {
+            return false;
+        }
+    }
+    return null;
+}
+
+function readSelectDropdownOptionTexts(root: SceneNode): string[] {
+    if (!('findOne' in root)) return [];
+    const dropdownRoot = root.findOne((node) => String(node.name || '').includes('Dropdown 下拉菜单'));
+    if (!dropdownRoot || !('children' in dropdownRoot)) return [];
+
+    const optionTexts: string[] = [];
+    const optionNodes = dropdownRoot.children.filter(isSelectDropdownItemNode);
+    for (const optionNode of optionNodes) {
+        if (!('findOne' in optionNode)) continue;
+        const labelNode =
+            optionNode.findOne(
+                (child) =>
+                    child.type === 'TEXT' &&
+                    String(child.name || '').trim() === 'Row Label'
+            ) ||
+            optionNode.findOne((child) => child.type === 'TEXT');
+        if (!labelNode || labelNode.type !== 'TEXT') continue;
+        const text = String(labelNode.characters || '').trim();
+        if (text) optionTexts.push(text);
+    }
+    return optionTexts;
+}
+
+function collectCheckboxGroupItemNodes(root: SceneNode): SceneNode[] {
+    if ('children' in root) {
+        const directChildren = root.children.filter(isCheckboxGroupItemNode);
+        if (directChildren.length > 0) return directChildren;
+    }
+    if (!('findAll' in root)) return [];
+    return root.findAll(isCheckboxGroupItemNode) as SceneNode[];
+}
+
+function collectRadioGroupItemNodes(root: SceneNode): SceneNode[] {
+    if ('children' in root) {
+        const directChildren = root.children.filter(isRadioGroupItemNode);
+        if (directChildren.length > 0) return directChildren;
+    }
+    if (!('findAll' in root)) return [];
+    return root.findAll(isRadioGroupItemNode) as SceneNode[];
+}
+
+function readCheckboxLikeItemLabel(node: SceneNode): string | null {
+    if (node.type === 'TEXT') {
+        const direct = String(node.characters || '').trim();
+        return direct && direct !== '✓' && direct !== '−' ? direct : null;
+    }
+    return readFirstMeaningfulTextFromNode(node);
+}
+
+function readCheckboxLikeItemChecked(node: SceneNode): boolean | null {
+    if (node.type === 'INSTANCE') {
+        const fromProp = readInstanceBooleanProperty(node, ['Checked 已选', 'Checked']);
+        if (fromProp !== null) return fromProp;
+    }
+    if ('children' in node) {
+        const firstChild = node.children[0];
+        if (firstChild && 'children' in firstChild) {
+            return firstChild.children.length > 0;
+        }
+    }
+    if (!('findOne' in node)) return null;
+    return Boolean(
+        node.findOne(
+            (child) =>
+                child.type === 'TEXT' &&
+                (String(child.characters || '').trim() === '✓' || String(child.characters || '').trim() === '−')
+        )
+    );
+}
+
+function readRadioLikeItemSelected(node: SceneNode): boolean | null {
+    if (node.type === 'INSTANCE') {
+        const fromProp = readInstanceBooleanProperty(node, ['Checked 已选', 'Checked']);
+        if (fromProp !== null) return fromProp;
+    }
+    if ('children' in node) {
+        const firstChild = node.children[0];
+        if (firstChild && 'children' in firstChild) {
+            return firstChild.children.some((child) => child.type === 'ELLIPSE');
+        }
+    }
+    return null;
+}
+
+function syncInputParamsFromNode(currentParams: Record<string, any>, node: SceneNode): Record<string, any> {
+    const mainTextNode = readInputMainTextNode(node);
+    if (!mainTextNode) return currentParams;
+
+    const nextParams = { ...currentParams };
+    const displayText = String(mainTextNode.characters || '');
+    const placeholder = String(currentParams.placeholder || '请输入');
+    if (!displayText || displayText === placeholder) {
+        nextParams.value = '';
+        nextParams.filled = false;
+    } else {
+        nextParams.value = displayText;
+        nextParams.cachedValue = displayText;
+        nextParams.filled = true;
+    }
+
+    if ('findAll' in node) {
+        const textNodes = node.findAll((child) => child.type === 'TEXT') as TextNode[];
+        const { prefixNode, suffixNode } = findInputAffixTextNodes(textNodes, mainTextNode);
+        if (prefixNode && prefixNode.id !== mainTextNode.id) {
+            nextParams.prefixText = String(prefixNode.characters || '').trim();
+        }
+        if (suffixNode && suffixNode.id !== mainTextNode.id) {
+            nextParams.suffixText = String(suffixNode.characters || '').trim();
+        }
+    }
+
+    return nextParams;
+}
+
+function syncSelectParamsFromNode(currentParams: Record<string, any>, node: SceneNode): Record<string, any> {
+    const nextParams = { ...currentParams };
+    const displayTextNode = findSelectDisplayTextNode(node);
+    const placeholder = String(currentParams.placeholder || '请选择');
+    if (displayTextNode) {
+        const displayText = String(displayTextNode.characters || '').trim();
+        if (!displayText || displayText === placeholder) {
+            nextParams.value = '';
+            nextParams.filled = false;
+        } else {
+            nextParams.value = displayText;
+            nextParams.filled = true;
+        }
+    }
+
+    const options = readSelectDropdownOptionTexts(node);
+    if (options.length > 0) {
+        nextParams.optionsText = options.join(',');
+    }
+    return nextParams;
+}
+
+function syncCheckboxGroupParamsFromNode(currentParams: Record<string, any>, node: SceneNode): Record<string, any> {
+    const nextParams = { ...currentParams };
+    const itemNodes = collectCheckboxGroupItemNodes(node);
+    if (itemNodes.length === 0) return nextParams;
+
+    const options: string[] = [];
+    const checkedValues: string[] = [];
+    for (const itemNode of itemNodes) {
+        const label = readCheckboxLikeItemLabel(itemNode);
+        if (!label) continue;
+        options.push(label);
+        if (readCheckboxLikeItemChecked(itemNode)) {
+            checkedValues.push(label);
+        }
+    }
+
+    if (options.length > 0) nextParams.optionsText = options.join(',');
+    nextParams.checkedValues = checkedValues.join(',');
+    return nextParams;
+}
+
+function syncRadioGroupParamsFromNode(currentParams: Record<string, any>, node: SceneNode): Record<string, any> {
+    const nextParams = { ...currentParams };
+    const itemNodes = collectRadioGroupItemNodes(node);
+    if (itemNodes.length === 0) return nextParams;
+
+    const options: string[] = [];
+    let selectedValue = '';
+    for (const itemNode of itemNodes) {
+        const label = readCheckboxLikeItemLabel(itemNode);
+        if (!label) continue;
+        options.push(label);
+        if (!selectedValue && readRadioLikeItemSelected(itemNode)) {
+            selectedValue = label;
+        }
+    }
+
+    if (options.length > 0) nextParams.optionsText = options.join(',');
+    if (selectedValue) nextParams.value = selectedValue;
+    return nextParams;
+}
+
+function syncStandaloneComponentParamsFromNode(
+    componentId: string,
+    currentParams: Record<string, any>,
+    node: SceneNode
+): Record<string, any> {
+    if (componentId === 'input') {
+        return syncInputParamsFromNode(currentParams, node);
+    }
+    if (componentId === 'select') {
+        return syncSelectParamsFromNode(currentParams, node);
+    }
+    if (componentId === 'checkbox-group') {
+        return syncCheckboxGroupParamsFromNode(currentParams, node);
+    }
+    if (componentId === 'radio-group') {
+        return syncRadioGroupParamsFromNode(currentParams, node);
+    }
+    return currentParams;
+}
+
+function syncFormFieldParamsFromNode(currentParams: Record<string, any>, node: SceneNode): Record<string, any> {
+    const nextParams = { ...currentParams };
+    const labelFromNode = readFormFieldLabelTextFromNode(node);
+    if (labelFromNode) {
+        nextParams.label = labelFromNode;
+    }
+
+    const contentContainer = findFormFieldContentContainer(node);
+    if (!contentContainer) return nextParams;
+    const controlNode =
+        contentContainer.children.find(
+            (child) => !isFormFieldLabelInstance(child) && !isFormFieldDescriptionInstance(child)
+        ) || contentContainer.children.find(isLikelyFormFieldControlNode);
+    if (!controlNode) return nextParams;
+
+    const controlType = normalizeFormFieldControlType(currentParams.controlType);
+    if (controlType === 'input') {
+        return syncInputParamsFromNode(nextParams, controlNode);
+    }
+    if (controlType === 'select') {
+        return syncSelectParamsFromNode(nextParams, controlNode);
+    }
+    if (controlType === 'checkbox-group') {
+        return syncCheckboxGroupParamsFromNode(nextParams, controlNode);
+    }
+    if (controlType === 'radio-group') {
+        return syncRadioGroupParamsFromNode(nextParams, controlNode);
+    }
+    return nextParams;
+}
+
+function syncComponentParamsFromNode(
+    componentId: string,
+    currentParams: Record<string, any>,
+    node: SceneNode
+): Record<string, any> {
+    if (componentId === 'form-field') {
+        return syncFormFieldParamsFromNode(currentParams, node);
+    }
+    return syncStandaloneComponentParamsFromNode(componentId, currentParams, node);
 }
 
 function setNodeClipsContent(node: SceneNode, enabled: boolean): void {
@@ -4296,14 +4624,16 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
     const error = Boolean(params.error) || stateError;
     const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
     const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
-    const hasValue = String(params.value ?? '').length > 0;
-    const filled = hasValue;
+    const rawValue = String(params.value ?? '');
+    const hasValue = rawValue.length > 0;
+    const filled = Boolean(params.filled);
+    const effectiveFilled = filled || hasValue;
 
     const nextProps: Record<string, string | boolean> = {};
     const mappings: Array<[string, string | boolean]> = [
         ['Disable 禁用', toVariantBoolean(disabled)],
         ['Error 错误', toVariantBoolean(error)],
-        ['Filled 已填', toVariantBoolean(filled)],
+        ['Filled 已填', toVariantBoolean(effectiveFilled)],
         ['Prefix 前缀', toVariantBoolean(showPrefix)],
         ['Size 尺寸', resolveInputSizeVariantLabel(params.size)],
         ['State 状态', resolveInputStateVariantLabel(params.state)],
@@ -4328,7 +4658,8 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
     const mainTextNode =
         textNodes.find((child) => String(child.name || '').trim().toLowerCase() === 'text') ||
         textNodes[textNodes.length - 1];
-    const nextValue = hasValue ? String(params.value) : String(params.placeholder || '请输入');
+    const placeholder = String(params.placeholder || '请输入');
+    const nextValue = effectiveFilled && hasValue ? rawValue : placeholder;
     if (mainTextNode) {
         await updateTextNodeCharacters(mainTextNode, nextValue);
     }
@@ -4352,7 +4683,7 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
     const currentValue = String(params.value || '').trim();
     const placeholder = String(params.placeholder || '请选择');
     const hasValue = currentValue.length > 0;
-    const filled = hasValue;
+    const filled = Boolean(params.filled);
     const normalizedState = String(params.state || '').trim().toLowerCase();
     const stateDisabled = normalizedState.includes('disabled') || normalizedState.includes('禁用');
     const disabled = Boolean(params.disabled) || stateDisabled;
@@ -4384,7 +4715,7 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
 
     const displayTextNode = findSelectDisplayTextNode(node);
     if (displayTextNode) {
-        await updateTextNodeCharacters(displayTextNode, hasValue ? currentValue : placeholder);
+        await updateTextNodeCharacters(displayTextNode, filled && hasValue ? currentValue : placeholder);
     }
     await applySelectDropdownOptions(node, params.optionsText);
     return true;
@@ -4428,6 +4759,20 @@ async function updateRadioGroupControlTemplateInPlace(node: SceneNode, params: R
     return true;
 }
 
+async function updateSwitchControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
+    if (node.type !== 'INSTANCE') return false;
+    const statusProperty = findInstanceComponentPropertyName(node, 'Status 状态');
+    const disabledProperty = findInstanceComponentPropertyName(node, 'Disabled 禁用');
+    const nextProps: Record<string, string | boolean> = {};
+    if (statusProperty) nextProps[statusProperty] = toVariantBoolean(Boolean(params.checked));
+    if (disabledProperty) nextProps[disabledProperty] = toVariantBoolean(Boolean(params.disabled));
+    if (Object.keys(nextProps).length > 0) {
+        node.setProperties(nextProps);
+        return true;
+    }
+    return false;
+}
+
 async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Record<string, any>): Promise<boolean> {
     const contentContainer = findFormFieldContentContainer(root);
     if (!contentContainer) return false;
@@ -4451,6 +4796,9 @@ async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Re
     }
     if (controlType === 'radio-group') {
         return await updateRadioGroupControlTemplateInPlace(existingControlNode, params);
+    }
+    if (controlType === 'switch') {
+        return await updateSwitchControlTemplateInPlace(existingControlNode, params);
     }
     return false;
 }
@@ -5002,6 +5350,7 @@ async function updateFormLayoutParams(
     prevParams: Record<string, any>,
     nextParams: Record<string, any>
 ): Promise<boolean> {
+    if (prevParams.showActionArea !== nextParams.showActionArea) return false;
     let snapshot = buildComponentInstanceFromNode(formFrame);
     if (!snapshot) {
         snapshot = readComponentInstanceSnapshot(formFrame);
@@ -5414,7 +5763,11 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.switch'
+                componentToken: 'library.data-input.switch',
+                variantCriteria: JSON.stringify({
+                    'Status 状态': toVariantBoolean(Boolean(params.checked)),
+                    'Disabled 禁用': toVariantBoolean(Boolean(params.disabled))
+                })
             }
         };
     }
@@ -5436,6 +5789,20 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             componentId: 'figma-component',
             params: {
                 componentToken: 'library.data-input.timepicker',
+                width
+            }
+        };
+    }
+
+    if (controlType === 'segmented-picker') {
+        return {
+            id: 'form-field-control',
+            componentId: 'figma-component',
+            params: {
+                componentToken: 'library.data-input.segmented-picker',
+                componentKey: '94125fa758354931512313d1bb6ce37aae02b8c7',
+                optionsText: params.optionsText || '选项一,选项二',
+                value: params.value || '选项一',
                 width
             }
         };
@@ -5475,16 +5842,20 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
         };
     }
 
+    const rawValue = String(params.value ?? '');
+    const hasValue = rawValue.length > 0;
+    const filled = Boolean(params.filled) || hasValue;
+
     return {
         id: 'form-field-control',
         componentId: 'input',
         params: {
-            placeholder: params.placeholder || '请输入',
-            value: params.value || '',
+            placeholder: params.placeholder ?? '请输入',
+            value: rawValue,
             width,
             size: params.size || 'Default 32',
             state: params.state || 'Default 默认',
-            filled: Boolean(params.filled),
+            filled,
             error: Boolean(params.error),
             disabled: Boolean(params.disabled),
             showPrefix: Boolean(params.showPrefix ?? params.prefix),
@@ -5522,6 +5893,22 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
     const oldVisible = oldNode.visible;
     const oldLocked = oldNode.locked;
     const oldName = oldNode.name;
+    const oldLayoutSizingHorizontal =
+        'layoutSizingHorizontal' in oldNode ? (oldNode as any).layoutSizingHorizontal : undefined;
+    const oldLayoutSizingVertical =
+        'layoutSizingVertical' in oldNode ? (oldNode as any).layoutSizingVertical : undefined;
+    const oldWidthSizingMode =
+        'layoutMode' in oldNode && oldNode.layoutMode !== 'NONE'
+            ? (oldNode.layoutMode === 'HORIZONTAL'
+                ? ('primaryAxisSizingMode' in oldNode ? oldNode.primaryAxisSizingMode : undefined)
+                : ('counterAxisSizingMode' in oldNode ? oldNode.counterAxisSizingMode : undefined))
+            : undefined;
+    const oldHeightSizingMode =
+        'layoutMode' in oldNode && oldNode.layoutMode !== 'NONE'
+            ? (oldNode.layoutMode === 'HORIZONTAL'
+                ? ('counterAxisSizingMode' in oldNode ? oldNode.counterAxisSizingMode : undefined)
+                : ('primaryAxisSizingMode' in oldNode ? oldNode.primaryAxisSizingMode : undefined))
+            : undefined;
 
     if ('layoutGrow' in oldNode && 'layoutGrow' in newNode) {
         newNode.layoutGrow = oldNode.layoutGrow;
@@ -5534,6 +5921,37 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
     }
     if ('constraints' in oldNode && 'constraints' in newNode) {
         newNode.constraints = oldNode.constraints;
+    }
+    if (oldLayoutSizingHorizontal !== undefined && 'layoutSizingHorizontal' in newNode) {
+        try {
+            (newNode as any).layoutSizingHorizontal = oldLayoutSizingHorizontal;
+        } catch {
+            // ignore unsupported sizing transitions
+        }
+    }
+    if (oldLayoutSizingVertical !== undefined && 'layoutSizingVertical' in newNode) {
+        try {
+            (newNode as any).layoutSizingVertical = oldLayoutSizingVertical;
+        } catch {
+            // ignore unsupported sizing transitions
+        }
+    }
+    if (
+        ('layoutSizingHorizontal' in newNode) === false &&
+        'layoutMode' in newNode &&
+        newNode.layoutMode !== 'NONE'
+    ) {
+        if (oldWidthSizingMode && newNode.layoutMode === 'HORIZONTAL' && 'primaryAxisSizingMode' in newNode) {
+            newNode.primaryAxisSizingMode = oldWidthSizingMode;
+        } else if (oldWidthSizingMode && newNode.layoutMode !== 'HORIZONTAL' && 'counterAxisSizingMode' in newNode) {
+            newNode.counterAxisSizingMode = oldWidthSizingMode;
+        }
+
+        if (oldHeightSizingMode && newNode.layoutMode === 'HORIZONTAL' && 'counterAxisSizingMode' in newNode) {
+            newNode.counterAxisSizingMode = oldHeightSizingMode;
+        } else if (oldHeightSizingMode && newNode.layoutMode !== 'HORIZONTAL' && 'primaryAxisSizingMode' in newNode) {
+            newNode.primaryAxisSizingMode = oldHeightSizingMode;
+        }
     }
 
     newNode.visible = false;
@@ -6463,7 +6881,7 @@ function buildComponentInstanceFromNode(node: SceneNode): ComponentInstance | nu
   if (!('getPluginData' in node)) return null;
   const componentId = node.getPluginData('component-id');
   if (!componentId) return null;
-  const params = readNodeParams(node);
+  const params = syncComponentParamsFromNode(componentId, readNodeParams(node), node);
   const instance: ComponentInstance = {
     id: node.id,
     componentId,
@@ -9438,6 +9856,19 @@ figma.ui.onmessage = async (msg) => {
         let shouldRefreshSelection = true;
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
           const previousParams = readNodeParams(node);
+          if (componentId === 'form-field') {
+            const controlType = normalizeFormFieldControlType(params.controlType);
+            if (controlType === 'switch') {
+              const updated = await updateFormFieldControlTemplateInPlace(node, params);
+              if (updated) {
+                node.setPluginData('params', JSON.stringify(params));
+                figma.currentPage.selection = [node];
+                checkSelection();
+                figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
+                return;
+              }
+            }
+          }
           if (componentId === 'form' && node.type === 'FRAME' && areFormParamsEquivalent(previousParams, params)) {
             const updated = await updateFormItemCount(node, previousParams, params);
             if (updated) {
@@ -9456,12 +9887,12 @@ figma.ui.onmessage = async (msg) => {
               return;
             }
           }
-          let snapshot = readComponentInstanceSnapshot(node);
+          let snapshot = buildComponentInstanceFromNode(node);
           if (!snapshot) {
-            snapshot = buildComponentInstanceFromNode(node);
-            if (snapshot) {
-              writeComponentInstanceSnapshot(node, snapshot);
-            }
+            snapshot = readComponentInstanceSnapshot(node);
+          }
+          if (snapshot) {
+            writeComponentInstanceSnapshot(node, snapshot);
           }
           const baseInstance: ComponentInstance = snapshot
             ? { ...snapshot, componentId, params }

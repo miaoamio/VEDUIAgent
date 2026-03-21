@@ -10,6 +10,7 @@ export type ParamType =
   | "boolean"
   | "color"
   | "select"
+  | "segmented"
   | "enum"
   | "object"
   | "array";

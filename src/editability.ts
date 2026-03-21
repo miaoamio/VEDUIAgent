@@ -40,6 +40,10 @@ export const COMPONENT_EDITABLE_PARAM_KEYS: Record<string, string[]> = {
   'form-row': ['align']
 };
 
+export const COMPONENT_HIDDEN_PARAM_KEYS: Record<string, Set<string>> = {
+  'form-row': new Set(['paddingBottom', 'align'])
+};
+
 export const GENERATION_ONLY_PARAM_KEYS = new Set([
   'width',
   'cornerRadius',

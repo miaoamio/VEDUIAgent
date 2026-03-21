@@ -42,6 +42,7 @@ function isDefaultTypeCompatible(param: ParamDefinition): boolean {
     case "color":
     case "enum":
     case "select":
+    case "segmented":
       return typeof param.default === "string";
     case "number":
       return typeof param.default === "number" && Number.isFinite(param.default);

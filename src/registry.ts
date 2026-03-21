@@ -2609,7 +2609,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "value": {
           "type": "string",
-          "default": "",
+          "default": "示例文字",
           "description": "当前值"
         },
         "width": {
@@ -2641,7 +2641,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "filled": {
           "type": "boolean",
           "default": false,
-          "description": "已填状态；有 value 时也会自动视为已填"
+          "description": "已填状态"
         },
         "error": {
           "type": "boolean",
@@ -2960,7 +2960,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "value": {
           "type": "string",
-          "default": "",
+          "default": "示例文字",
           "description": "当前选中值；为空时显示 placeholder"
         },
         "width": {
@@ -2992,7 +2992,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "filled": {
           "type": "boolean",
           "default": false,
-          "description": "已填状态；有 value 时也会自动视为已填"
+          "description": "已填状态"
         },
         "disabled": {
           "type": "boolean",
@@ -3002,16 +3002,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "multiple": {
           "type": "boolean",
           "default": false,
-          "description": "多选模式"
+          "description": "多选"
         },
         "selectType": {
-          "type": "select",
-          "default": "Default 默认",
-          "description": "选择器类型",
-          "enumValues": [
-            "Default 默认",
-            "Label 内置标签"
-          ]
+          "type": "boolean",
+          "default": false,
+          "description": "内置标签"
         },
         "optionsText": {
           "type": "string",
@@ -3860,7 +3856,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "showActionArea": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "显示按钮区"
         },
         "requiredMark": {
@@ -4101,6 +4097,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             "DatePicker 日期选择",
             "Inputnumber 数字输入",
             "Radio 单选",
+            "Segmented Picker 分段选择器",
             "Slider 滑动",
             "Switch 开关",
             "Textarea 多行文本",
@@ -4115,7 +4112,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "value": {
           "type": "string",
-          "default": "",
+          "default": "示例文字",
           "description": "当前值/选中值"
         },
         "size": {
@@ -4149,7 +4146,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "prefixText": {
           "type": "string",
           "default": "",
-          "description": "输入框前缀文本；为空时显示占位图标块"
+          "description": "输入框前缀文本"
         },
         "showSuffix": {
           "type": "boolean",
@@ -4159,21 +4156,17 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "suffixText": {
           "type": "string",
           "default": "",
-          "description": "输入框后缀文本；为空时显示占位图标块"
+          "description": "输入框后缀文本"
         },
         "multiple": {
           "type": "boolean",
           "default": false,
-          "description": "多选选择器"
+          "description": "多选"
         },
         "selectType": {
-          "type": "select",
-          "default": "Default 默认",
-          "description": "选择器类型",
-          "enumValues": [
-            "Default 默认",
-            "Label 内置标签"
-          ]
+          "type": "boolean",
+          "default": false,
+          "description": "内置标签"
         },
         "optionsText": {
           "type": "string",
@@ -4193,6 +4186,16 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "type": "string",
           "default": "选项一",
           "description": "复选组默认勾选值，支持逗号分隔多个值"
+        },
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "description": "开关控件是否开启（仅 controlType=switch 时生效）"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否禁用（适用于 input/select/checkbox-group/radio-group/button/switch）"
         },
         "buttonLabel": {
           "type": "string",

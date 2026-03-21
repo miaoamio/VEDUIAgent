@@ -10,7 +10,8 @@ import {
   FULL_RERENDER_COMPONENT_IDS,
   GENERIC_EDITABLE_PARAM_KEYS,
   COMPONENT_EDITABLE_PARAM_KEYS,
-  GENERATION_ONLY_PARAM_KEYS
+  GENERATION_ONLY_PARAM_KEYS,
+  COMPONENT_HIDDEN_PARAM_KEYS
 } from './editability';
 import {
   ColorControl,
@@ -3290,6 +3291,220 @@ StepD:
     suffixText: String(props.suffixText || itemObj.suffixText || '')
   });
 
+  type NormalizedFormFieldControlType =
+    | 'input'
+    | 'select'
+    | 'checkbox-group'
+    | 'radio-group'
+    | 'switch'
+    | 'datepicker'
+    | 'inputnumber'
+    | 'slider'
+    | 'textarea'
+    | 'timepicker'
+    | 'upload'
+    | 'segmented-picker'
+    | 'figma-component'
+    | 'button'
+    | 'text';
+
+  const FORM_LIBRARY_CONTROL_RULES: Array<{
+    keywords: string[];
+    token: string;
+    fieldControlType: NormalizedFormFieldControlType;
+    inlineComponentId: 'input' | 'select' | 'checkbox-group' | 'radio-group' | 'figma-component';
+  }> = [
+    {
+      keywords: ['timepicker-menu'],
+      token: 'library.data-input.timepicker-menu',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['checkbox-group'],
+      token: 'library.data-input.checkbox-group',
+      fieldControlType: 'checkbox-group',
+      inlineComponentId: 'checkbox-group'
+    },
+    {
+      keywords: ['radio-group'],
+      token: 'library.data-input.radio-group',
+      fieldControlType: 'radio-group',
+      inlineComponentId: 'radio-group'
+    },
+    {
+      keywords: ['tree-select', 'treeselect'],
+      token: 'library.data-input.treeselect',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['input-number', 'inputnumber'],
+      token: 'library.data-input.inputnumber',
+      fieldControlType: 'inputnumber',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['datetime'],
+      token: 'library.data-input.datetimepicker-segemented',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['datepicker', 'datepick', '日期'],
+      token: 'library.data-input.datepicker',
+      fieldControlType: 'datepicker',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['autocomplete'],
+      token: 'library.data-input.autocomplete',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['cascader'],
+      token: 'library.data-input.cascader',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['checkbox', '多选'],
+      token: 'library.data-input.checkbox',
+      fieldControlType: 'checkbox-group',
+      inlineComponentId: 'checkbox-group'
+    },
+    {
+      keywords: ['drag'],
+      token: 'library.data-input.drag',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['image'],
+      token: 'library.data-input.image',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['radio', '单选'],
+      token: 'library.data-input.radio',
+      fieldControlType: 'radio-group',
+      inlineComponentId: 'radio-group'
+    },
+    {
+      keywords: ['search'],
+      token: 'library.data-input.search',
+      fieldControlType: 'input',
+      inlineComponentId: 'input'
+    },
+    {
+      keywords: ['segmented'],
+      token: 'library.data-input.segmented-picker',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['slider', '滑动'],
+      token: 'library.data-input.slider',
+      fieldControlType: 'slider',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['switch', '开关'],
+      token: 'library.data-input.switch',
+      fieldControlType: 'switch',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['textarea', '多行'],
+      token: 'library.data-input.textarea',
+      fieldControlType: 'textarea',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['timepicker', '时间'],
+      token: 'library.data-input.timepicker',
+      fieldControlType: 'timepicker',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['transfer'],
+      token: 'library.data-input.transfer',
+      fieldControlType: 'figma-component',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['upload', '上传'],
+      token: 'library.data-input.button',
+      fieldControlType: 'upload',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['select', 'dropdown', '选择'],
+      token: 'library.data-input.select',
+      fieldControlType: 'select',
+      inlineComponentId: 'select'
+    },
+    {
+      keywords: ['input', '搜索'],
+      token: 'library.data-input.input',
+      fieldControlType: 'input',
+      inlineComponentId: 'input'
+    }
+  ];
+
+  const COLLAPSIBLE_TOKEN_DRIVEN_FORM_FIELD_TYPES = new Set<NormalizedFormFieldControlType>([
+    'input',
+    'select',
+    'switch',
+    'datepicker',
+    'inputnumber',
+    'slider',
+    'textarea',
+    'timepicker',
+    'upload',
+    'segmented-picker'
+  ]);
+
+  const normalizeFormControlLookupValue = (value: unknown): string =>
+    String(value || '').trim().toLowerCase().replace(/_/g, '-');
+
+  const resolveFormLibraryControlRule = (value: unknown) => {
+    const normalized = normalizeFormControlLookupValue(value);
+    if (!normalized) return null;
+    return FORM_LIBRARY_CONTROL_RULES.find((rule) =>
+      rule.keywords.some((keyword) => normalized.includes(keyword))
+    ) || null;
+  };
+
+  const canonicalizeLooseFormComponentToken = (value: unknown): string => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const normalized = normalizeFormControlLookupValue(raw);
+    if (SEMANTIC_COMPONENT_TOKEN_PACK[normalized]) return normalized;
+    if (BASE_COMPONENT_TOKEN_PACK[normalized]) {
+      const semanticToken = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK).find(
+        ([, semantic]) => semantic.baseToken === normalized
+      )?.[0];
+      return semanticToken || normalized;
+    }
+    return resolveFormLibraryControlRule(normalized)?.token || raw;
+  };
+
+  const normalizeFormFieldControlTypeHint = (
+    value: unknown
+  ): NormalizedFormFieldControlType | '' => {
+    const normalized = normalizeFormControlLookupValue(value);
+    if (!normalized) return '';
+    const matchedRule = resolveFormLibraryControlRule(normalized);
+    if (matchedRule) return matchedRule.fieldControlType;
+    if (normalized.includes('button') || normalized.includes('btn') || normalized.includes('按钮')) return 'button';
+    if (normalized === 'text' || normalized.includes('文本')) return 'text';
+    if (normalized.includes('figma')) return 'figma-component';
+    return '';
+  };
+
   const extractExplicitItemTopLevelParams = (itemObj: Record<string, any>): Record<string, any> => {
     const topLevelParams = { ...itemObj };
     delete topLevelParams.componentId;
@@ -3303,11 +3518,16 @@ StepD:
     const props = isObject(itemObj.props) ? itemObj.props as Record<string, any> : {};
     const nestedParams = isObject(itemObj.params) ? itemObj.params as Record<string, any> : {};
     const topLevelParams = extractExplicitItemTopLevelParams(itemObj);
-    return {
+    const mergedParams = {
       ...props,
       ...nestedParams,
       ...topLevelParams
     };
+    const canonicalToken = canonicalizeLooseFormComponentToken(mergedParams.componentToken ?? mergedParams.token);
+    if (canonicalToken) {
+      mergedParams.componentToken = canonicalToken;
+    }
+    return mergedParams;
   };
 
   const buildExplicitFormFieldParams = (
@@ -3335,6 +3555,32 @@ StepD:
       itemObj.name ??
       `字段${index + 1}`
     );
+
+    const canonicalToken = canonicalizeLooseFormComponentToken(mergedParams.componentToken ?? mergedParams.token);
+    if (canonicalToken) {
+      mergedParams.componentToken = canonicalToken;
+    }
+
+    const explicitControlType = normalizeFormFieldControlTypeHint(mergedParams.controlType);
+    const tokenControlType = canonicalToken ? normalizeFormFieldControlTypeHint(canonicalToken) : '';
+    const canCollapseTokenDrivenControl =
+      tokenControlType !== '' &&
+      tokenControlType !== 'figma-component' &&
+      COLLAPSIBLE_TOKEN_DRIVEN_FORM_FIELD_TYPES.has(tokenControlType as NormalizedFormFieldControlType);
+
+    if (explicitControlType && explicitControlType !== 'figma-component') {
+      mergedParams.controlType = explicitControlType;
+      delete mergedParams.componentToken;
+      delete mergedParams.componentKey;
+      delete mergedParams.variantCriteria;
+    } else if ((explicitControlType === 'figma-component' || !explicitControlType) && canCollapseTokenDrivenControl) {
+      mergedParams.controlType = tokenControlType;
+      delete mergedParams.componentToken;
+      delete mergedParams.componentKey;
+      delete mergedParams.variantCriteria;
+    } else if (explicitControlType) {
+      mergedParams.controlType = explicitControlType;
+    }
 
     const controlType = String(mergedParams.controlType || '').trim().toLowerCase();
     if (controlType === 'button') {
@@ -3365,538 +3611,11 @@ StepD:
     };
   };
 
-  const buildFormBlockComponentFromPayload = (payload: any, fallbackTitle: string): any | null => {
-    const resolveLibraryFormControlToken = (rawType: string): string | null => {
-      const normalized = String(rawType || '').trim().toLowerCase();
-      if (!normalized) return null;
-
-      const rules: Array<[string, string]> = [
-        ['timepicker-menu', 'library.data-input.timepicker-menu'],
-        ['checkbox-group', 'library.data-input.checkbox-group'],
-        ['radio-group', 'library.data-input.radio-group'],
-        ['tree-select', 'library.data-input.treeselect'],
-        ['treeselect', 'library.data-input.treeselect'],
-        ['input-number', 'library.data-input.inputnumber'],
-        ['inputnumber', 'library.data-input.inputnumber'],
-        ['datetime', 'library.data-input.datetimepicker-segemented'],
-        ['datepicker', 'library.data-input.datepicker'],
-        ['datepick', 'library.data-input.datepicker'],
-        ['autocomplete', 'library.data-input.autocomplete'],
-        ['cascader', 'library.data-input.cascader'],
-        ['checkbox', 'library.data-input.checkbox'],
-        ['drag', 'library.data-input.drag'],
-        ['image', 'library.data-input.image'],
-        ['radio', 'library.data-input.radio'],
-        ['search', 'library.data-input.search'],
-        ['segmented', 'library.data-input.segmented-picker'],
-        ['slider', 'library.data-input.slider'],
-        ['switch', 'library.data-input.switch'],
-        ['textarea', 'library.data-input.textarea'],
-        ['timepicker', 'library.data-input.timepicker'],
-        ['transfer', 'library.data-input.transfer']
-      ];
-
-      const matched = rules.find(([keyword]) => normalized.includes(keyword));
-      return matched ? matched[1] : null;
-    };
-
-    const isSegmentedPickerItem = (item: any): boolean => {
-      const itemObj = isObject(item) ? item : {};
-      const props = isObject(itemObj.props) ? itemObj.props : {};
-      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
-      if (rawType.includes('segmented')) return true;
-      const componentKey = String(props.componentKey || itemObj.componentKey || '');
-      const componentToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '');
-      return componentKey === SEGMENTED_PICKER_COMPONENT_KEY || componentToken.includes('segmented');
-    };
-
-    const buildControlComponentFromItem = (item: any, index: number): any | null => {
-      const itemObj = isObject(item) ? item : { componentId: 'input', props: { value: String(item ?? '') } };
-      const explicitComponentId = String(itemObj.componentId || '').trim();
-      if (explicitComponentId) {
-        if (explicitComponentId === 'figma-component') {
-          return { componentId: 'figma-component', params: buildExplicitComponentParams(itemObj) };
-        }
-        if (explicitComponentId === 'button' || explicitComponentId === 'text' || explicitComponentId === 'input' || explicitComponentId === 'select' || explicitComponentId === 'checkbox-group' || explicitComponentId === 'radio-group') {
-          return { componentId: explicitComponentId, params: buildExplicitComponentParams(itemObj) };
-        }
-      }
-      const props = isObject(itemObj.props) ? itemObj.props : {};
-      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
-      if (rawType.includes('segmented')) {
-        return {
-          componentId: 'figma-component',
-          params: {
-            ...buildExplicitComponentParams(itemObj),
-            componentToken: 'library.data-input.segmented-picker',
-            componentKey: String(props.componentKey || itemObj.componentKey || SEGMENTED_PICKER_COMPONENT_KEY)
-          }
-        };
-      }
-      if (rawType.includes('select')) {
-        return { componentId: 'select', params: buildExplicitComponentParams(itemObj) };
-      }
-      if (rawType.includes('checkbox')) {
-        return { componentId: 'checkbox-group', params: buildExplicitComponentParams(itemObj) };
-      }
-      if (rawType.includes('radio')) {
-        return { componentId: 'radio-group', params: buildExplicitComponentParams(itemObj) };
-      }
-      if (rawType.includes('button') || rawType.includes('btn')) {
-        return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
-      }
-      return { componentId: 'input', params: buildExplicitComponentParams(itemObj) };
-    };
-
-    const buildFormComponentFromSource = (formSource: any): any | null => {
-      const formObj = isObject(formSource) ? formSource : {};
-      const body = getBlockBody(formObj);
-      const align = normalizeFormAlignValue(body.align ?? formObj.align ?? body.layout ?? formObj.layout ?? 'top');
-      const labelWidthPreset = normalizeFormLabelWidthPresetValue(body.labelWidthPreset ?? formObj.labelWidthPreset);
-      const layout = String(body.layout || formObj.layout || (align === 'top' ? 'vertical' : 'horizontal'));
-      const rowSpacingRaw = Number(body.rowSpacing ?? formObj.rowSpacing);
-      const columnSpacingRaw = Number(body.columnSpacing ?? body.spacing ?? formObj.columnSpacing ?? formObj.spacing);
-      const labelWidthRaw = resolveFormLabelWidthValue(labelWidthPreset, body.labelWidth ?? formObj.labelWidth, 96);
-      const controlWidthRaw = Number(body.controlWidth ?? formObj.controlWidth);
-      const showColon = body.showColon ?? formObj.showColon ?? false;
-
-      const sharedFieldParams = {
-        align,
-        layout,
-        labelAlign: align === 'right' ? 'right' : 'left',
-        labelWidthPreset,
-        labelWidth: align === 'top' ? 0 : labelWidthRaw,
-        controlWidth: Number.isFinite(controlWidthRaw) && controlWidthRaw > 0 ? controlWidthRaw : 240,
-        showColon: Boolean(showColon)
-      };
-
-      const rows = Array.isArray(body.rows)
-        ? body.rows
-        : Array.isArray(body.fields)
-          ? [body.fields]
-          : isObject(body.filters) && Array.isArray((body.filters as any).items)
-            ? [(body.filters as any).items]
-            : Array.isArray(formObj.rows)
-              ? formObj.rows
-              : Array.isArray(formObj.fields)
-                ? [formObj.fields]
-                : isObject(formObj.filters) && Array.isArray((formObj.filters as any).items)
-                  ? [(formObj.filters as any).items]
-                  : [];
-
-      const buildRowChildFromItem = (item: any, index: number): any | null => {
-        const itemObj = isObject(item) ? item : { label: String(item || '') };
-        const props = isObject(itemObj.props) ? itemObj.props : {};
-        const explicitComponentId = String(itemObj.componentId || '').trim();
-        if (explicitComponentId === 'form-field') {
-          return {
-            componentId: 'form-field',
-            params: buildExplicitFormFieldParams(itemObj, index, sharedFieldParams)
-          };
-        }
-        if (explicitComponentId === 'button' || explicitComponentId === 'text') {
-          return {
-            componentId: explicitComponentId,
-            params: buildExplicitComponentParams(itemObj)
-          };
-        }
-
-        const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
-        if (rawType.includes('button') || rawType.includes('btn')) {
-          return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
-        }
-
-        if (rawType === 'text') {
-          return {
-            componentId: 'text',
-            params: {
-              text: String(props.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
-            }
-          };
-        }
-
-        const label = String(
-          props.label ||
-          itemObj.label ||
-          itemObj.title ||
-          itemObj.name ||
-          `字段${index + 1}`
-        );
-        const fieldBaseParams = {
-          ...sharedFieldParams,
-          label,
-          required: Boolean(props.required ?? itemObj.required),
-          helpText: String(props.helpText || itemObj.helpText || ''),
-          descriptionText: typeof (props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description) === 'string'
-            ? String(props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description)
-            : '',
-          errorText: typeof (props.errorText ?? itemObj.errorText) === 'string'
-            ? String(props.errorText ?? itemObj.errorText)
-            : ''
-        };
-
-        const optionsText = buildOptionsTextFromValue(
-          props.optionsText ?? props.options ?? itemObj.optionsText ?? itemObj.options
-        );
-
-        const inputs = Array.isArray(props.inputs ?? itemObj.inputs)
-          ? (props.inputs ?? itemObj.inputs)
-          : [];
-        const inputChildren = inputs.map((inputItem: any, inputIndex: number) =>
-          buildControlComponentFromItem(inputItem, inputIndex)
-        ).filter(Boolean);
-        const inputLayout = inputChildren.length > 0
-          ? {
-            componentId: 'layout',
-            params: { direction: 'horizontal', spacing: 12 },
-            children: inputChildren
-          }
-          : null;
-
-        if (rawType.includes('checkbox')) {
-          return {
-            componentId: 'form-field',
-            params: {
-              ...fieldBaseParams,
-              controlType: 'checkbox-group',
-              optionsText,
-              checkedValues: String(props.checkedValues || itemObj.checkedValues || props.value || itemObj.value || '选项一'),
-              direction: String(props.direction || itemObj.direction || 'horizontal')
-            },
-            children: inputLayout ? [inputLayout] : undefined
-          };
-        }
-
-        if (rawType.includes('radio')) {
-          return {
-            componentId: 'form-field',
-            params: {
-              ...fieldBaseParams,
-              controlType: 'radio-group',
-              optionsText,
-              value: String(props.value || itemObj.value || '选项一'),
-              direction: String(props.direction || itemObj.direction || 'horizontal')
-            },
-            children: inputLayout ? [inputLayout] : undefined
-          };
-        }
-
-        if (rawType.includes('select') || rawType.includes('dropdown')) {
-          return {
-            componentId: 'form-field',
-            params: {
-              ...fieldBaseParams,
-              controlType: 'select',
-              value: String(props.value || itemObj.value || '请选择')
-            },
-            children: inputLayout ? [inputLayout] : undefined
-          };
-        }
-
-        if (rawType.includes('input') || rawType.includes('search')) {
-          return {
-            componentId: 'form-field',
-            params: {
-              ...fieldBaseParams,
-              controlType: 'input',
-              ...buildInputParamsFromSource(props, itemObj)
-            },
-            children: inputLayout ? [inputLayout] : undefined
-          };
-        }
-
-        const explicitToken = String(
-          props.componentToken ||
-          itemObj.componentToken ||
-          itemObj.token ||
-          ''
-        ).trim();
-        const componentToken = explicitToken || resolveLibraryFormControlToken(rawType);
-        if (componentToken) {
-          const segmentedKey = rawType.includes('segmented') ? SEGMENTED_PICKER_COMPONENT_KEY : '';
-          return {
-            componentId: 'form-field',
-            params: {
-              ...fieldBaseParams,
-              controlType: 'figma-component',
-              componentToken,
-              componentKey: String(props.componentKey || itemObj.componentKey || segmentedKey),
-              variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
-            },
-            children: inputLayout ? [inputLayout] : undefined
-          };
-        }
-
-        return {
-          componentId: 'form-field',
-          params: {
-            ...fieldBaseParams,
-            controlType: 'input',
-            placeholder: String(props.placeholder || itemObj.placeholder || '请输入'),
-            value: String(props.value || itemObj.value || '')
-          },
-          children: inputLayout ? [inputLayout] : undefined
-        };
-      };
-      const footer = isObject(formObj.footer) ? formObj.footer : {};
-      const footerActions = Array.isArray(footer.actions) ? footer.actions : [];
-      const footerRow = footerActions.length > 0
-        ? (footerActions.length === 1
-          ? toButtonFromItem(footerActions[0], '操作1', 'secondary')
-          : {
-            componentId: 'form-row',
-            params: {
-              spacing: 8,
-              align: String(footer.align || formObj.actionAlign || 'end')
-            },
-            children: footerActions.map((item: any, index: number) =>
-              toButtonFromItem(item, `操作${index + 1}`, 'secondary')
-            )
-          })
-        : null;
-
-      const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
-      const baseColumnSpacing = Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16;
-      const groupLabelMode = resolveGroupLabelMode(body.groupLabelMode ?? body.showGroupLabel ?? formObj.groupLabelMode ?? formObj.showGroupLabel);
-
-      const buildFormRowFromItems = (
-        row: any[],
-        options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
-      ): any | null => {
-        if (!Array.isArray(row)) return null;
-        const rowChildren = row.map((item: any, index: number) => buildRowChildFromItem(item, index)).filter(Boolean);
-        if (rowChildren.length === 0) return null;
-        rowChildren.forEach((child: any) => {
-          if (child?.componentId !== 'form-field' || !child.params) return;
-          if (options?.forceVertical) {
-            child.params.layout = 'vertical';
-            child.params.align = 'top';
-            child.params.labelWidth = 0;
-          }
-          if (options?.hideLabels) {
-            child.params.label = '';
-          }
-        });
-        if (options?.showDelete) {
-          rowChildren.push({
-            componentId: 'figma-component',
-            params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
-          });
-        }
-        if (rowChildren.length === 1 && rowChildren[0]?.componentId === 'button') {
-          return rowChildren[0];
-        }
-        const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
-        const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
-        const spacing = Number.isFinite(options?.spacing)
-          ? Number(options?.spacing)
-          : (isSegmentedRow ? 8 : baseColumnSpacing);
-        return {
-          componentId: 'form-row',
-          params: {
-            spacing,
-            align: 'start'
-          },
-          children: rowChildren
-        };
-      };
-
-      const buildRowsFromArray = (rowsArray: any[], options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }): any[] => {
-        const result: any[] = [];
-        rowsArray.forEach((row: any) => {
-          const rowNode = buildFormRowFromItems(row, options);
-          if (rowNode) result.push(rowNode);
-        });
-        return result;
-      };
-
-      const buildGroupLayoutFromGroups = (groups: any[]): any | null => {
-        const groupRows = groups.map((group: any, groupIndex: number) => {
-          const groupObj = isObject(group) ? group : {};
-          const groupFields = Array.isArray(group)
-            ? group
-            : Array.isArray(groupObj.fields)
-              ? groupObj.fields
-              : Array.isArray(groupObj.items)
-                ? groupObj.items
-                : [];
-          if (!Array.isArray(groupFields) || groupFields.length === 0) return null;
-          const showDelete = Boolean(groupObj.deletable ?? groupObj.allowDelete ?? groupObj.canDelete ?? groupObj.showDelete);
-          const hideLabels = groupLabelMode === 'first' && groupIndex > 0;
-          return buildFormRowFromItems(groupFields, {
-            spacing: 12,
-            forceVertical: true,
-            hideLabels,
-            showDelete
-          });
-        }).filter(Boolean);
-        if (groupRows.length === 0) return null;
-        return {
-          componentId: 'layout',
-          params: { direction: 'vertical', spacing: 12 },
-          children: groupRows
-        };
-      };
-
-      const sections = Array.isArray(body.sections)
-        ? body.sections
-        : Array.isArray(formObj.sections)
-          ? formObj.sections
-          : [];
-      const groupSource = Array.isArray(body.groups)
-        ? body.groups
-        : Array.isArray(body.fieldGroups)
-          ? body.fieldGroups
-          : Array.isArray(formObj.groups)
-            ? formObj.groups
-            : Array.isArray(formObj.fieldGroups)
-              ? formObj.fieldGroups
-              : [];
-
-      const children: any[] = [];
-      if (sections.length > 0) {
-        sections.forEach((section: any) => {
-          const sectionObj = isObject(section) ? section : { title: String(section ?? '') };
-          const sectionTitle = String(sectionObj.title || '').trim();
-          const sectionRows = Array.isArray(sectionObj.rows)
-            ? sectionObj.rows
-            : Array.isArray(sectionObj.fields)
-              ? [sectionObj.fields]
-              : [];
-          const sectionGroups = Array.isArray(sectionObj.groups)
-            ? sectionObj.groups
-            : Array.isArray(sectionObj.fieldGroups)
-              ? sectionObj.fieldGroups
-              : [];
-          const groupLayout = sectionGroups.length > 0 ? buildGroupLayoutFromGroups(sectionGroups) : null;
-          const sectionContent = groupLayout ? [groupLayout] : buildRowsFromArray(sectionRows);
-          if (sectionContent.length === 0) return;
-          const sectionBody = sectionContent.length === 1
-            ? sectionContent[0]
-            : {
-              componentId: 'layout',
-              params: { direction: 'vertical', spacing: baseRowSpacing },
-              children: sectionContent
-            };
-          const sectionChildren: any[] = [];
-          if (sectionTitle) {
-            sectionChildren.push({
-              componentId: 'figma-component',
-              params: {
-                componentKey: SECTION_TITLE_COMPONENT_KEY,
-                text: sectionTitle,
-                fallbackName: 'Section Title'
-              }
-            });
-          }
-          sectionChildren.push(sectionBody);
-          children.push({
-            componentId: 'layout',
-            params: {
-              direction: 'vertical',
-              spacing: sectionTitle ? (layout === 'vertical' ? 12 : 24) : baseRowSpacing
-            },
-            children: sectionChildren
-          });
-        });
-      } else if (groupSource.length > 0) {
-        const groupLayout = buildGroupLayoutFromGroups(groupSource);
-        if (groupLayout) {
-          if (footerRow) {
-            children.push({
-              componentId: 'layout',
-              params: { direction: 'vertical', spacing: 4 },
-              children: [groupLayout, footerRow]
-            });
-          } else {
-            children.push(groupLayout);
-          }
-        }
-      } else {
-        children.push(...buildRowsFromArray(rows));
-        if (footerRow) children.push(footerRow);
-      }
-
-      if (children.length === 0) {
-        const fallbackRow = buildFormRowFromItems([
-          { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
-          { componentId: 'select', label: '状态', props: { value: '全部状态' } },
-          { componentId: 'button', props: { label: '查询', variant: 'primary' } },
-          { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
-        ]);
-        if (fallbackRow) children.push(fallbackRow);
-      }
-
-      return {
-        componentId: 'form',
-        params: {
-          title: '',
-          align,
-          layout,
-          labelWidthPreset,
-          width: 0,
-          rowSpacing: sections.length > 0 ? 40 : baseRowSpacing,
-          columnSpacing: baseColumnSpacing,
-          labelWidth: sharedFieldParams.labelWidth,
-          controlWidth: sharedFieldParams.controlWidth,
-          showColon: sharedFieldParams.showColon,
-          labelWidthAuto: layout !== 'vertical',
-          requiredMark: true
-        },
-        children
-      };
-    };
-
-    const source = getBlockSource(payload);
-    if (!source) return null;
-
-    const blockChildren: any[] = [];
-
-    const rowChildren = buildHeaderSectionChildren(source.header);
-    if (rowChildren.length > 0) {
-      blockChildren.push({
-        componentId: 'layout',
-        params: {
-          direction: 'horizontal',
-          spacing: 12,
-          paddingBottom: 8
-        },
-        children: rowChildren
-      });
-    }
-
-    const formComponent =
-      buildFormComponentFromSource(source) ||
-      buildFormComponentFromSource({
-        layout: 'vertical',
-        align: 'top',
-        labelWidthPreset: 'fill',
-        rows: [[
-          { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
-          { componentId: 'select', label: '状态', props: { value: '全部状态' } },
-          { componentId: 'button', props: { label: '查询', variant: 'primary' } },
-          { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
-        ]]
-      });
-
-    if (!formComponent) return null;
-    blockChildren.push(formComponent);
-
-    const { title, width } = resolveBlockContainerMeta(source, fallbackTitle || '表单区块', 980);
-
-    return {
-      componentId: 'card',
-      params: {
-        title,
-        width
-      },
-      children: blockChildren
-    };
-  };
-
-  const buildFormComponentFromPayload = (payload: any): any | null => {
-    const source = getBlockSource(payload);
-    if (!source) return null;
+  const buildNormalizedFormComponentFromSource = (
+    formSource: any,
+    options?: { defaultWidth?: number; forcedTitle?: string }
+  ): any | null => {
+    const source = isObject(formSource) ? formSource : {};
     const body = getBlockBody(source);
 
     const align = normalizeFormAlignValue(body.align ?? source.align ?? body.layout ?? source.layout ?? 'top');
@@ -3907,7 +3626,6 @@ StepD:
     const labelWidthRaw = resolveFormLabelWidthValue(labelWidthPreset, body.labelWidth ?? source.labelWidth, 96);
     const controlWidthRaw = Number(body.controlWidth ?? source.controlWidth);
     const widthRaw = Number(body.width ?? source.width);
-    const showColon = body.showColon ?? source.showColon ?? false;
 
     const sharedFieldParams = {
       align,
@@ -3916,90 +3634,112 @@ StepD:
       labelWidthPreset,
       labelWidth: align === 'top' ? 0 : labelWidthRaw,
       controlWidth: Number.isFinite(controlWidthRaw) && controlWidthRaw > 0 ? controlWidthRaw : 240,
-      showColon: Boolean(showColon)
+      showColon: Boolean(body.showColon ?? source.showColon ?? false)
     };
 
-    const resolveLibraryToken = (rawType: string): string | null => {
-      const normalized = String(rawType || '').trim().toLowerCase();
-      if (!normalized) return null;
-      const rules: Array<[string, string]> = [
-        ['timepicker-menu', 'library.data-input.timepicker-menu'],
-        ['checkbox-group', 'library.data-input.checkbox-group'],
-        ['radio-group', 'library.data-input.radio-group'],
-        ['tree-select', 'library.data-input.treeselect'],
-        ['treeselect', 'library.data-input.treeselect'],
-        ['input-number', 'library.data-input.inputnumber'],
-        ['inputnumber', 'library.data-input.inputnumber'],
-        ['datetime', 'library.data-input.datetimepicker-segemented'],
-        ['datepicker', 'library.data-input.datepicker'],
-        ['datepick', 'library.data-input.datepicker'],
-        ['autocomplete', 'library.data-input.autocomplete'],
-        ['cascader', 'library.data-input.cascader'],
-        ['checkbox', 'library.data-input.checkbox'],
-        ['drag', 'library.data-input.drag'],
-        ['image', 'library.data-input.image'],
-        ['radio', 'library.data-input.radio'],
-        ['search', 'library.data-input.search'],
-        ['segmented', 'library.data-input.segmented-picker'],
-        ['slider', 'library.data-input.slider'],
-        ['switch', 'library.data-input.switch'],
-        ['textarea', 'library.data-input.textarea'],
-        ['timepicker', 'library.data-input.timepicker'],
-        ['transfer', 'library.data-input.transfer']
-      ];
-      const matched = rules.find(([keyword]) => normalized.includes(keyword));
-      return matched ? matched[1] : null;
-    };
+    const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
+    const baseColumnSpacing = Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16;
+    const groupLabelMode = resolveGroupLabelMode(body.groupLabelMode ?? body.showGroupLabel ?? source.groupLabelMode ?? source.showGroupLabel);
 
-    const isSegmentedPickerItem = (item: any): boolean => {
-      const itemObj = isObject(item) ? item : {};
-      const props = isObject(itemObj.props) ? itemObj.props : {};
-      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
-      if (rawType.includes('segmented')) return true;
-      const componentKey = String(props.componentKey || itemObj.componentKey || '');
-      const componentToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '');
-      return componentKey === SEGMENTED_PICKER_COMPONENT_KEY || componentToken.includes('segmented');
-    };
+    const rows = Array.isArray(body.rows)
+      ? body.rows
+      : Array.isArray(body.fields)
+        ? [body.fields]
+        : isObject(body.filters) && Array.isArray((body.filters as any).items)
+          ? [(body.filters as any).items]
+          : Array.isArray(source.rows)
+            ? source.rows
+            : Array.isArray(source.fields)
+              ? [source.fields]
+              : isObject(source.filters) && Array.isArray((source.filters as any).items)
+                ? [(source.filters as any).items]
+                : [];
 
     const buildControlComponentFromItem = (item: any, index: number): any | null => {
       const itemObj = isObject(item) ? item : { componentId: 'input', props: { value: String(item ?? '') } };
+      const explicitParams = buildExplicitComponentParams(itemObj);
       const explicitComponentId = String(itemObj.componentId || '').trim();
-      if (explicitComponentId) {
-        if (explicitComponentId === 'figma-component') {
-          return { componentId: 'figma-component', params: buildExplicitComponentParams(itemObj) };
-        }
-        if (explicitComponentId === 'button' || explicitComponentId === 'text' || explicitComponentId === 'input' || explicitComponentId === 'select' || explicitComponentId === 'checkbox-group' || explicitComponentId === 'radio-group') {
-          return { componentId: explicitComponentId, params: buildExplicitComponentParams(itemObj) };
-        }
-      }
-      const props = isObject(itemObj.props) ? itemObj.props : {};
-      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
-      if (rawType.includes('segmented')) {
+      const rawType = String(explicitComponentId || itemObj.type || '').trim();
+      const canonicalToken = canonicalizeLooseFormComponentToken(
+        explicitParams.componentToken ?? itemObj.componentToken ?? itemObj.token
+      );
+
+      if (explicitComponentId === 'figma-component') {
         return {
           componentId: 'figma-component',
+          params: canonicalToken ? { ...explicitParams, componentToken: canonicalToken } : explicitParams
+        };
+      }
+
+      if (
+        explicitComponentId === 'button' ||
+        explicitComponentId === 'text' ||
+        explicitComponentId === 'input' ||
+        explicitComponentId === 'select' ||
+        explicitComponentId === 'checkbox-group' ||
+        explicitComponentId === 'radio-group'
+      ) {
+        return { componentId: explicitComponentId, params: explicitParams };
+      }
+
+      const normalizedControlType = normalizeFormFieldControlTypeHint(rawType || canonicalToken);
+      if (normalizedControlType === 'button') {
+        return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
+      }
+
+      if (normalizedControlType === 'text') {
+        return {
+          componentId: 'text',
           params: {
-            ...buildExplicitComponentParams(itemObj),
-            componentToken: 'library.data-input.segmented-picker',
-            componentKey: String(props.componentKey || itemObj.componentKey || SEGMENTED_PICKER_COMPONENT_KEY)
+            ...explicitParams,
+            text: String(explicitParams.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
           }
         };
       }
-      if (rawType.includes('select')) {
-        return { componentId: 'select', params: buildExplicitComponentParams(itemObj) };
+
+      if (normalizedControlType === 'select') {
+        return { componentId: 'select', params: explicitParams };
       }
-      if (rawType.includes('checkbox')) {
-        return { componentId: 'checkbox-group', params: buildExplicitComponentParams(itemObj) };
+
+      if (normalizedControlType === 'checkbox-group') {
+        return { componentId: 'checkbox-group', params: explicitParams };
       }
-      if (rawType.includes('radio')) {
-        return { componentId: 'radio-group', params: buildExplicitComponentParams(itemObj) };
+
+      if (normalizedControlType === 'radio-group') {
+        return { componentId: 'radio-group', params: explicitParams };
       }
-      if (rawType.includes('button') || rawType.includes('btn')) {
-        return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
+
+      if (
+        normalizedControlType === 'figma-component' ||
+        normalizedControlType === 'switch' ||
+        normalizedControlType === 'datepicker' ||
+        normalizedControlType === 'inputnumber' ||
+        normalizedControlType === 'slider' ||
+        normalizedControlType === 'textarea' ||
+        normalizedControlType === 'timepicker' ||
+        normalizedControlType === 'upload'
+      ) {
+        const fallbackToken = canonicalToken || resolveFormLibraryControlRule(rawType)?.token || '';
+        if (fallbackToken) {
+          const nextComponentKey = String(explicitParams.componentKey || itemObj.componentKey || '').trim();
+          const segmentedKey = fallbackToken.includes('segmented') && !nextComponentKey
+            ? SEGMENTED_PICKER_COMPONENT_KEY
+            : nextComponentKey;
+          return {
+            componentId: 'figma-component',
+            params: {
+              ...explicitParams,
+              componentToken: fallbackToken,
+              ...(segmentedKey ? { componentKey: segmentedKey } : {})
+            }
+          };
+        }
       }
-      return { componentId: 'input', params: buildExplicitComponentParams(itemObj) };
+
+      return { componentId: 'input', params: explicitParams };
     };
 
-    const buildRowChild = (item: any, index: number): any | null => {
+    const buildRowChildFromItem = (item: any, index: number): any | null => {
       const itemObj = isObject(item) ? item : { label: String(item || '') };
       const props = isObject(itemObj.props) ? itemObj.props : {};
       const explicitComponentId = String(itemObj.componentId || '').trim();
@@ -4009,20 +3749,43 @@ StepD:
           params: buildExplicitFormFieldParams(itemObj, index, sharedFieldParams)
         };
       }
+
       if (explicitComponentId === 'button' || explicitComponentId === 'text') {
         return {
           componentId: explicitComponentId,
           params: buildExplicitComponentParams(itemObj)
         };
       }
-      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
 
-      if (rawType.includes('button') || rawType.includes('btn')) {
+      const rawType = String(explicitComponentId || itemObj.type || '').trim();
+      const canonicalToken = canonicalizeLooseFormComponentToken(
+        props.componentToken ?? itemObj.componentToken ?? itemObj.token
+      );
+      const normalizedControlType = explicitComponentId === 'figma-component'
+        ? 'figma-component'
+        : normalizeFormFieldControlTypeHint(rawType || canonicalToken);
+
+      if (normalizedControlType === 'button') {
         return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
       }
 
-      const label = String(props.label || itemObj.label || itemObj.title || itemObj.name || `字段${index + 1}`);
-      const baseParams = {
+      if (normalizedControlType === 'text' || rawType.toLowerCase() === 'text') {
+        return {
+          componentId: 'text',
+          params: {
+            text: String(props.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
+          }
+        };
+      }
+
+      const label = String(
+        props.label ||
+        itemObj.label ||
+        itemObj.title ||
+        itemObj.name ||
+        `字段${index + 1}`
+      );
+      const fieldBaseParams = {
         ...sharedFieldParams,
         label,
         required: Boolean(props.required ?? itemObj.required),
@@ -4042,9 +3805,9 @@ StepD:
       const inputs = Array.isArray(props.inputs ?? itemObj.inputs)
         ? (props.inputs ?? itemObj.inputs)
         : [];
-      const inputChildren = inputs.map((inputItem: any, inputIndex: number) =>
-        buildControlComponentFromItem(inputItem, inputIndex)
-      ).filter(Boolean);
+      const inputChildren = inputs
+        .map((inputItem: any, inputIndex: number) => buildControlComponentFromItem(inputItem, inputIndex))
+        .filter(Boolean);
       const inputLayout = inputChildren.length > 0
         ? {
           componentId: 'layout',
@@ -4053,11 +3816,11 @@ StepD:
         }
         : null;
 
-      if (rawType.includes('checkbox')) {
+      if (normalizedControlType === 'checkbox-group') {
         return {
           componentId: 'form-field',
           params: {
-            ...baseParams,
+            ...fieldBaseParams,
             controlType: 'checkbox-group',
             optionsText,
             checkedValues: String(props.checkedValues || itemObj.checkedValues || props.value || itemObj.value || '选项一'),
@@ -4067,11 +3830,11 @@ StepD:
         };
       }
 
-      if (rawType.includes('radio')) {
+      if (normalizedControlType === 'radio-group') {
         return {
           componentId: 'form-field',
           params: {
-            ...baseParams,
+            ...fieldBaseParams,
             controlType: 'radio-group',
             optionsText,
             value: String(props.value || itemObj.value || '选项一'),
@@ -4081,11 +3844,11 @@ StepD:
         };
       }
 
-      if (rawType.includes('select') || rawType.includes('dropdown')) {
+      if (normalizedControlType === 'select') {
         return {
           componentId: 'form-field',
           params: {
-            ...baseParams,
+            ...fieldBaseParams,
             controlType: 'select',
             value: String(props.value || itemObj.value || '请选择')
           },
@@ -4093,11 +3856,11 @@ StepD:
         };
       }
 
-      if (rawType.includes('input') || rawType.includes('search')) {
+      if (normalizedControlType === 'input') {
         return {
           componentId: 'form-field',
           params: {
-            ...baseParams,
+            ...fieldBaseParams,
             controlType: 'input',
             ...buildInputParamsFromSource(props, itemObj)
           },
@@ -4105,27 +3868,50 @@ StepD:
         };
       }
 
-      const explicitToken = String(props.componentToken || itemObj.componentToken || itemObj.token || '').trim();
-      const componentToken = explicitToken || resolveLibraryToken(rawType);
-      if (componentToken) {
-        const segmentedKey = rawType.includes('segmented') ? SEGMENTED_PICKER_COMPONENT_KEY : '';
+      if (
+        normalizedControlType === 'switch' ||
+        normalizedControlType === 'datepicker' ||
+        normalizedControlType === 'inputnumber' ||
+        normalizedControlType === 'slider' ||
+        normalizedControlType === 'textarea' ||
+        normalizedControlType === 'timepicker' ||
+        normalizedControlType === 'upload'
+      ) {
         return {
           componentId: 'form-field',
           params: {
-            ...baseParams,
-            controlType: 'figma-component',
-            componentToken,
-            componentKey: String(props.componentKey || itemObj.componentKey || segmentedKey),
-            variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
+            ...fieldBaseParams,
+            controlType: normalizedControlType
           },
           children: inputLayout ? [inputLayout] : undefined
         };
       }
 
+      if (normalizedControlType === 'figma-component') {
+        const componentToken = canonicalToken || resolveFormLibraryControlRule(rawType)?.token || '';
+        if (componentToken) {
+          const nextComponentKey = String(props.componentKey || itemObj.componentKey || '').trim();
+          const segmentedKey = componentToken.includes('segmented') && !nextComponentKey
+            ? SEGMENTED_PICKER_COMPONENT_KEY
+            : nextComponentKey;
+          return {
+            componentId: 'form-field',
+            params: {
+              ...fieldBaseParams,
+              controlType: 'figma-component',
+              componentToken,
+              ...(segmentedKey ? { componentKey: segmentedKey } : {}),
+              variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
+            },
+            children: inputLayout ? [inputLayout] : undefined
+          };
+        }
+      }
+
       return {
         componentId: 'form-field',
         params: {
-          ...baseParams,
+          ...fieldBaseParams,
           controlType: 'input',
           placeholder: String(props.placeholder || itemObj.placeholder || '请输入'),
           value: String(props.value || itemObj.value || '')
@@ -4134,15 +3920,17 @@ StepD:
       };
     };
 
-    const rows = Array.isArray(body.rows)
-      ? body.rows
-      : Array.isArray(body.fields)
-        ? [body.fields]
-        : Array.isArray(source.rows)
-          ? source.rows
-          : Array.isArray(source.fields)
-            ? [source.fields]
-            : [];
+    const isSegmentedPickerItem = (item: any): boolean => {
+      const itemObj = isObject(item) ? item : {};
+      const props = isObject(itemObj.props) ? itemObj.props : {};
+      const rawType = String(itemObj.componentId || itemObj.type || '').trim().toLowerCase();
+      if (rawType.includes('segmented')) return true;
+      const componentKey = String(props.componentKey || itemObj.componentKey || '').trim();
+      const componentToken = canonicalizeLooseFormComponentToken(
+        props.componentToken || itemObj.componentToken || itemObj.token || ''
+      );
+      return componentKey === SEGMENTED_PICKER_COMPONENT_KEY || componentToken.includes('segmented');
+    };
 
     const footer = isObject(source.footer) ? source.footer : {};
     const footerActions = Array.isArray(footer.actions)
@@ -4165,29 +3953,25 @@ StepD:
         })
       : null;
 
-    const baseRowSpacing = Number.isFinite(rowSpacingRaw) && rowSpacingRaw > 0 ? rowSpacingRaw : (align === 'top' ? 24 : 12);
-    const baseColumnSpacing = Number.isFinite(columnSpacingRaw) && columnSpacingRaw > 0 ? columnSpacingRaw : 16;
-    const groupLabelMode = resolveGroupLabelMode(body.groupLabelMode ?? body.showGroupLabel ?? source.groupLabelMode ?? source.showGroupLabel);
-
     const buildFormRowFromItems = (
       row: any[],
-      options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
+      rowOptions?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
     ): any | null => {
       if (!Array.isArray(row)) return null;
-      const rowChildren = row.map((item: any, index: number) => buildRowChild(item, index)).filter(Boolean);
+      const rowChildren = row.map((item: any, index: number) => buildRowChildFromItem(item, index)).filter(Boolean);
       if (rowChildren.length === 0) return null;
       rowChildren.forEach((child: any) => {
         if (child?.componentId !== 'form-field' || !child.params) return;
-        if (options?.forceVertical) {
+        if (rowOptions?.forceVertical) {
           child.params.layout = 'vertical';
           child.params.align = 'top';
           child.params.labelWidth = 0;
         }
-        if (options?.hideLabels) {
+        if (rowOptions?.hideLabels) {
           child.params.label = '';
         }
       });
-      if (options?.showDelete) {
+      if (rowOptions?.showDelete) {
         rowChildren.push({
           componentId: 'figma-component',
           params: { componentToken: DELETE_ICON_COMPONENT_TOKEN }
@@ -4198,8 +3982,8 @@ StepD:
       }
       const segmentedCount = row.filter((item: any) => isSegmentedPickerItem(item)).length;
       const isSegmentedRow = segmentedCount > 1 && segmentedCount === row.length;
-      const spacing = Number.isFinite(options?.spacing)
-        ? Number(options?.spacing)
+      const spacing = Number.isFinite(rowOptions?.spacing)
+        ? Number(rowOptions?.spacing)
         : (isSegmentedRow ? 8 : baseColumnSpacing);
       return {
         componentId: 'form-row',
@@ -4211,10 +3995,13 @@ StepD:
       };
     };
 
-    const buildRowsFromArray = (rowsArray: any[], options?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }): any[] => {
+    const buildRowsFromArray = (
+      rowsArray: any[],
+      rowOptions?: { spacing?: number; forceVertical?: boolean; hideLabels?: boolean; showDelete?: boolean }
+    ): any[] => {
       const result: any[] = [];
       rowsArray.forEach((row: any) => {
-        const rowNode = buildFormRowFromItems(row, options);
+        const rowNode = buildFormRowFromItems(row, rowOptions);
         if (rowNode) result.push(rowNode);
       });
       return result;
@@ -4340,11 +4127,11 @@ StepD:
     return {
       componentId: 'form',
       params: {
-        title: String(body.title || source.title || ''),
+        title: typeof options?.forcedTitle === 'string' ? options.forcedTitle : String(body.title || source.title || ''),
         align,
         layout,
         labelWidthPreset,
-        width: Number.isFinite(widthRaw) && widthRaw > 0 ? widthRaw : 720,
+        width: Number.isFinite(widthRaw) && widthRaw > 0 ? widthRaw : (options?.defaultWidth ?? 720),
         rowSpacing: sections.length > 0 ? 40 : baseRowSpacing,
         columnSpacing: baseColumnSpacing,
         labelWidth: sharedFieldParams.labelWidth,
@@ -4355,6 +4142,63 @@ StepD:
       },
       children
     };
+  };
+
+  const buildFormBlockComponentFromPayload = (payload: any, fallbackTitle: string): any | null => {
+    const source = getBlockSource(payload);
+    if (!source) return null;
+
+    const blockChildren: any[] = [];
+
+    const rowChildren = buildHeaderSectionChildren(source.header);
+    if (rowChildren.length > 0) {
+      blockChildren.push({
+        componentId: 'layout',
+        params: {
+          direction: 'horizontal',
+          spacing: 12,
+          paddingBottom: 8
+        },
+        children: rowChildren
+      });
+    }
+
+    const formComponent =
+      buildNormalizedFormComponentFromSource(source, { defaultWidth: 0, forcedTitle: '' }) ||
+      buildNormalizedFormComponentFromSource(
+        {
+          layout: 'vertical',
+          align: 'top',
+          labelWidthPreset: 'fill',
+          rows: [[
+            { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
+            { componentId: 'select', label: '状态', props: { value: '全部状态' } },
+            { componentId: 'button', props: { label: '查询', variant: 'primary' } },
+            { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
+          ]]
+        },
+        { defaultWidth: 0, forcedTitle: '' }
+      );
+
+    if (!formComponent) return null;
+    blockChildren.push(formComponent);
+
+    const { title, width } = resolveBlockContainerMeta(source, fallbackTitle || '表单区块', 980);
+
+    return {
+      componentId: 'card',
+      params: {
+        title,
+        width
+      },
+      children: blockChildren
+    };
+  };
+
+  const buildFormComponentFromPayload = (payload: any): any | null => {
+    const source = getBlockSource(payload);
+    if (!source) return null;
+    return buildNormalizedFormComponentFromSource(source, { defaultWidth: 720 });
   };
 
   const getChartToken = (hint: string, fallbackToken = ''): string => {
@@ -6969,6 +6813,7 @@ StepD:
     if (normalized.includes('switch') || normalized.includes('开关')) return 'switch';
     if (normalized.includes('textarea') || normalized.includes('多行')) return 'textarea';
     if (normalized.includes('timepicker') || normalized.includes('时间')) return 'timepicker';
+    if (normalized.includes('segmented') || normalized.includes('分段')) return 'segmented-picker';
     if (normalized.includes('select') || normalized.includes('选择')) return 'select';
     if (normalized.includes('upload') || normalized.includes('上传')) return 'upload';
     if (normalized.includes('button') || normalized.includes('按钮')) return 'button';
@@ -6996,8 +6841,11 @@ StepD:
     if (key === 'checkedValues') {
       return controlType === 'checkbox-group';
     }
+  if (key === 'checked') {
+    return controlType === 'switch';
+  }
     if (key === 'optionsText') {
-      return controlType === 'select' || controlType === 'checkbox-group' || controlType === 'radio-group';
+      return controlType === 'checkbox-group' || controlType === 'radio-group';
     }
     if (key === 'showPrefix' || key === 'showSuffix') {
       return controlType === 'input';
@@ -7017,6 +6865,20 @@ StepD:
     if (key === 'buttonLabel' || key === 'buttonVariant') {
       return controlType === 'button';
     }
+    if (key === 'placeholder' || key === 'value') {
+      return ![
+        'checkbox-group',
+        'datepicker',
+        'inputnumber',
+        'radio-group',
+        'segmented-picker',
+        'slider',
+        'switch',
+        'textarea',
+        'timepicker',
+        'upload'
+      ].includes(controlType);
+    }
     return true;
   };
 
@@ -7031,6 +6893,7 @@ StepD:
       if (normalized.includes('switch') || normalized.includes('开关')) return 'Switch 开关';
       if (normalized.includes('textarea') || normalized.includes('多行')) return 'Textarea 多行文本';
       if (normalized.includes('timepicker') || normalized.includes('时间')) return 'TimePicker 时间选择';
+      if (normalized.includes('segmented') || normalized.includes('分段')) return 'Segmented Picker 分段选择器';
       if (normalized.includes('select') || normalized.includes('选择')) return 'Select 选择框';
       if (normalized.includes('upload') || normalized.includes('上传')) return 'Upload 上传';
       if (normalized.includes('button') || normalized.includes('按钮')) return 'Button 按钮';
@@ -7074,10 +6937,6 @@ StepD:
       if (normalized.includes('active') || normalized.includes('激活')) return '激活';
       if (normalized.includes('error') || normalized.includes('错误')) return '错误';
       if (normalized.includes('disabled') || normalized.includes('禁用')) return '禁用';
-      return '默认';
-    }
-    if (key === 'selectType') {
-      if (normalized.includes('label') || normalized.includes('内置')) return '内置标签';
       return '默认';
     }
     if (key === 'language') {
@@ -7318,7 +7177,7 @@ StepD:
       const enumValues = paramDef.enumValues || [];
       let resolvedValue = value;
       if (
-        (paramDef.type === 'select' || paramDef.type === 'enum') &&
+        (paramDef.type === 'select' || paramDef.type === 'enum' || paramDef.type === 'segmented') &&
         enumValues.length > 0 &&
         !enumValues.includes(value)
       ) {
@@ -7362,6 +7221,16 @@ StepD:
                 </option>
               ))}
             </SelectControl>
+          )}
+          {paramDef.type === 'segmented' && (
+            <SegmentedControl
+              value={String(resolvedValue)}
+              options={enumValues.map((opt) => ({
+                value: opt,
+                label: resolveOptionLabel(def, key, opt)
+              }))}
+              onChange={(next) => updateParam(key, next)}
+            />
           )}
           {paramDef.type === 'color' && (
             <ColorControl value={resolvedValue} onChange={(next) => updateParam(key, next)} />
@@ -7512,13 +7381,17 @@ StepD:
             const formFieldControlType = isFormField ? normalizeFormControlType(effectiveParams.controlType) : '';
             const useMergedFormFieldText =
               isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select');
-            const formFieldCurrentValue = useMergedFormFieldText ? String(effectiveParams.value ?? '') : '';
-            const formFieldCachedValue = useMergedFormFieldText ? String(effectiveParams.cachedValue ?? '') : '';
+            const useFormFieldValueOnly = isFormField && formFieldControlType === 'radio-group';
+            const showFormFieldTextControl = useMergedFormFieldText || useFormFieldValueOnly;
+            const formFieldCurrentValue = showFormFieldTextControl ? String(effectiveParams.value ?? '') : '';
+            const formFieldCachedValue = showFormFieldTextControl ? String(effectiveParams.cachedValue ?? '') : '';
             const formFieldTextValue = useMergedFormFieldText
               ? formFieldTextMode === 'value'
                 ? formFieldCurrentValue
                 : String(effectiveParams.placeholder ?? '')
-              : '';
+              : useFormFieldValueOnly
+                ? formFieldCurrentValue
+                : '';
             const formFieldHiddenKeys = new Set([
               'label',
               'helpText',
@@ -7534,6 +7407,7 @@ StepD:
             const paramKeys = Object.keys(def.params).filter((key) => {
               const paramDef = def.params[key];
               if (!isParamEditable(def, key, paramDef)) return false;
+              if (COMPONENT_HIDDEN_PARAM_KEYS[def.id]?.has(key)) return false;
               if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
               if (isInput && !shouldDisplayInputParam(key, effectiveParams)) return false;
               if (isFormField && useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
@@ -7571,37 +7445,41 @@ StepD:
             const primaryFormFieldKeyCount = isFormField
               ? ['controlType', 'state', 'size'].filter((key) => commonParamKeys.includes(key)).length
               : 0;
-            const formFieldTextControl = useMergedFormFieldText ? (
-              <FieldRow key="form-field-text" label="填写文字">
+            const formFieldTextControl = showFormFieldTextControl ? (
+              <FieldRow key="form-field-text" label={useFormFieldValueOnly ? '选中值' : '填写文字'}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <SegmentedControl
-                    value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
-                    onChange={(next) => {
-                      const nextMode = next === 'value' ? 'value' : 'placeholder';
-                      setFormFieldTextMode(nextMode);
-                      if (nextMode === 'placeholder') {
-                        const nextCachedValue = formFieldCurrentValue.trim().length > 0
-                          ? formFieldCurrentValue
-                          : formFieldCachedValue;
-                        updateParams({ value: '', filled: false, cachedValue: nextCachedValue });
-                        return;
-                      }
-                      if (!formFieldCurrentValue && formFieldCachedValue) {
-                        updateParams({ value: formFieldCachedValue, cachedValue: formFieldCachedValue });
-                      }
-                    }}
-                    groupClassName="othertabs-group"
-                    buttonClassName="othertabs-button"
-                    options={[
-                      { value: 'value', label: '已填写' },
-                      { value: 'placeholder', label: '占位文字' }
-                    ]}
-                  />
+                  {useMergedFormFieldText && (
+                    <SegmentedControl
+                      value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
+                      onChange={(next) => {
+                        const nextMode = next === 'value' ? 'value' : 'placeholder';
+                        setFormFieldTextMode(nextMode);
+                        if (nextMode === 'placeholder') {
+                          const nextCachedValue = formFieldCurrentValue.trim().length > 0
+                            ? formFieldCurrentValue
+                            : formFieldCachedValue;
+                          updateParams({ value: '', filled: false, cachedValue: nextCachedValue });
+                          return;
+                        }
+                        if (!formFieldCurrentValue && formFieldCachedValue) {
+                          updateParams({ value: formFieldCachedValue, cachedValue: formFieldCachedValue, filled: true });
+                        }
+                      }}
+                      groupClassName="othertabs-group"
+                      buttonClassName="othertabs-button"
+                      options={[
+                        { value: 'value', label: '已填写' },
+                        { value: 'placeholder', label: '占位文字' }
+                      ]}
+                    />
+                  )}
                   <TextInputControl
                     value={formFieldTextValue}
                     onChange={(next) => {
-                      if (formFieldTextMode === 'value') {
-                        updateParams({ value: next, cachedValue: next });
+                      if (useFormFieldValueOnly) {
+                        updateParams({ value: next, filled: true });
+                      } else if (formFieldTextMode === 'value') {
+                        updateParams({ value: next, cachedValue: next, filled: true });
                       } else {
                         updateParams({ placeholder: next, value: '', filled: false });
                       }
@@ -7610,7 +7488,7 @@ StepD:
                 </div>
               </FieldRow>
             ) : null;
-            const mainRowsWithFormFieldText = useMergedFormFieldText && formFieldTextControl
+            const mainRowsWithFormFieldText = showFormFieldTextControl && formFieldTextControl
               ? [
                   ...commonMainRows.slice(0, primaryFormFieldKeyCount),
                   formFieldTextControl,
@@ -7690,16 +7568,17 @@ StepD:
               advancedMainRows.length > 0 || advancedSwitchRows.length > 0 ? (
                 <div className="selection-advanced-section">
                   <div className="selection-divider" />
+                  <div className="selection-advanced-title">高级属性</div>
                   <div className="selection-advanced-body">
                     {advancedMainRows}
-                    {advancedSwitchRows.length > 0 && <div style={{ marginTop: '12px' }}>{advancedSwitchRows}</div>}
+                    {advancedSwitchRows.length > 0 && <div style={{ marginTop: '0' }}>{advancedSwitchRows}</div>}
                   </div>
                 </div>
               ) : null;
             return (
               <>
                 {mainRowsWithFormItemCount}
-                {commonSwitchRows.length > 0 && <div style={{ marginTop: '12px' }}>{commonSwitchRows}</div>}
+                {commonSwitchRows.length > 0 && <div style={{ marginTop: '0' }}>{commonSwitchRows}</div>}
                 {advancedSection}
               </>
             );
@@ -7776,7 +7655,7 @@ StepD:
           </div>
         </div>
 
-          <div style={{ marginTop: '12px' }}>
+          <div style={{ marginTop: '4px' }}>
             <div className="switch-item">
               <label>分页器</label>
               <SwitchControl value={!!params.hasPagination} onChange={(value) => updateParam('hasPagination', value)} />
