@@ -76,6 +76,13 @@ export interface FigmaPropertyDefinition {
   options?: string[];
 }
 
+export interface FigmaPropertyMap {
+  [figmaDisplayName: string]: {
+    sourceParam: string;
+    transform?: 'boolean';
+  };
+}
+
 export interface FigmaPropertySnapshot {
   token?: string;
   componentKey: string;
@@ -86,6 +93,8 @@ export interface FigmaPropertySnapshot {
   componentName?: string;
   componentSetName?: string;
   properties: FigmaPropertyDefinition[];
+  /** params → Figma 属性名 映射（Step 6：驱动 applyFigmaComponentProps） */
+  propertyMap?: FigmaPropertyMap;
 }
 
 export type FigmaPropertySnapshotCatalog = Record<string, FigmaPropertySnapshot>;

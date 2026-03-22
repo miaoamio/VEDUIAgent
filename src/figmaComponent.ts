@@ -595,9 +595,21 @@ function findComponentByFallbackName(fallbackName: string): ComponentNode | Comp
   const normalized = fallbackName.trim().toLowerCase();
   if (!normalized) return null;
 
-  const isTarget = (node: SceneNode | PageNode | DocumentNode) =>
-    isComponentOrSetNode(node) &&
-    (node.name.toLowerCase() === normalized || node.name.toLowerCase().includes(normalized));
+  const isTarget = (node: SceneNode | PageNode | DocumentNode) => {
+    if (!isComponentOrSetNode(node)) return false;
+    const name = node.name.toLowerCase();
+    
+    if (name === normalized || name.includes(normalized)) return true;
+    
+    if (normalized === "checkbox" && (name.includes("复选框") || name.includes("多选") || name.includes("checkbox"))) return true;
+    if (normalized === "radio" && (name.includes("单选") || name.includes("单选框") || name.includes("radio"))) return true;
+    if (normalized === "switch" && (name.includes("开关") || name.includes("switch"))) return true;
+    if (normalized === "drag" && (name.includes("拖拽") || name.includes("拖动") || name.includes("drag"))) return true;
+    if (normalized === "expand" && (name.includes("展开") || name.includes("expand"))) return true;
+    if (normalized === "row action header" && (name.includes("header") || name.includes("表头"))) return true;
+    
+    return false;
+  };
 
   const fromCurrentPage = figma.currentPage.findOne(isTarget) as ComponentNode | ComponentSetNode | null;
   if (fromCurrentPage) return fromCurrentPage;

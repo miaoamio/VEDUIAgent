@@ -40,8 +40,6 @@ function baseTypographyWithStyleRef(
   };
 }
 
-// Layer 1: Base typography tokens
-// Only this layer should hold real TextStyle ref/key candidates.
 export const BASE_TYPOGRAPHY_TOKEN_PACK: Record<string, BaseTypographyTokenProfile> = {
   'text-body': baseTypographyWithStyleRef('text-body', TABLE_TEXT_STYLE_REFS.body, {
     nameCandidates: ['Body', '正文', 'Text/Body']
@@ -57,8 +55,6 @@ export const BASE_TYPOGRAPHY_TOKEN_PACK: Record<string, BaseTypographyTokenProfi
   })
 };
 
-// Layer 2: Semantic typography tokens
-// Semantic tokens map to base tokens and are used by component specs.
 export const SEMANTIC_TYPOGRAPHY_TOKEN_PACK: Record<string, SemanticTypographyTokenProfile> = {
   'page.title': { token: 'page.title', baseToken: 'text-title' },
   'table.cell.text': { token: 'table.cell.text', baseToken: 'text-body' },

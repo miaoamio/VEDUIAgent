@@ -23,8 +23,6 @@ import {
   TextInputControl
 } from './ui/PropertyControls';
 import { Tooltip } from './ui/Tooltip';
-import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-tokens';
-import { BASE_TYPOGRAPHY_TOKEN_PACK, SEMANTIC_TYPOGRAPHY_TOKEN_PACK } from './theme.typography-tokens';
 import { BASE_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
 import { SPEC_COMPONENT_TOKEN_MAP } from './spec.component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
@@ -7854,12 +7852,6 @@ StepD:
       const components = registry.components ?? {};
       const allDefs = Object.values(components).filter(isEnabledComponent);
       const defsById = components;
-      const baseColorTokenEntries = Object.entries(BASE_COLOR_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const semanticColorTokenEntries = Object.entries(SEMANTIC_COLOR_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const baseTypographyTokenEntries = Object.entries(BASE_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const semanticTypographyTokenEntries = Object.entries(SEMANTIC_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const baseComponentTokenEntries = Object.entries(BASE_COMPONENT_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const semanticComponentTokenEntries: any[] = [];
 
       const grouped: {[key: string]: ComponentDefinition[]} = {};
       allDefs.forEach(def => {
@@ -7881,6 +7873,33 @@ StepD:
             显示继承参数
           </label>
         </div>
+
+        {selectedComponent?.params?.componentKey && (
+          <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px', background: '#f8f9fa', border: '1px solid #e9ecef' }}>
+            <div className="component-header">
+              <span className="component-name">当前选中组件 Key</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+              <code style={{ flex: 1, background: '#fff', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', wordBreak: 'break-all' }}>
+                {selectedComponent.params.componentKey}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedComponent.params.componentKey).then(() => {
+                    const btn = document.activeElement as HTMLButtonElement;
+                    if (btn) {
+                      const oldText = btn.innerText;
+                      btn.innerText = '已复制';
+                      setTimeout(() => { btn.innerText = oldText; }, 2000);
+                    }
+                  });
+                }}
+              >
+                复制
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px' }}>
           <div className="component-header">
@@ -7930,205 +7949,6 @@ StepD:
           )}
         </div>
 
-        <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px' }}>
-          <div className="component-header">
-            <span className="component-name">Theme Color Tokens</span>
-            <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>
-              semantic: {semanticColorTokenEntries.length} | base: {baseColorTokenEntries.length}
-            </span>
-          </div>
-          <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-            来自 <code>src/theme.color-tokens.ts</code>：语义 token 映射到基础 token，基础 token 再映射 VariableID/Key。
-          </p>
-
-          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Semantic Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>token</th>
-                <th style={{ padding: '4px' }}>baseToken</th>
-              </tr>
-            </thead>
-            <tbody>
-              {semanticColorTokenEntries.map(([token, profile]) => {
-                return (
-                  <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '4px' }}><code>{token}</code></td>
-                    <td style={{ padding: '4px' }}><code>{profile.baseToken}</code></td>
-                  </tr>
-                );
-              })}
-              {semanticColorTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义颜色 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ fontSize: '12px', color: '#777', marginTop: '10px', marginBottom: '4px' }}>Base Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>baseToken</th>
-                <th style={{ padding: '4px' }}>variableRef</th>
-                <th style={{ padding: '4px' }}>key/id</th>
-              </tr>
-            </thead>
-            <tbody>
-              {baseColorTokenEntries.map(([token, profile]) => {
-                const keyAndId = [
-                  profile.keyCandidates?.length ? `key: ${profile.keyCandidates.join(', ')}` : null,
-                  profile.idCandidates?.length ? `id: ${profile.idCandidates.join(', ')}` : null
-                ].filter(Boolean).join(' | ');
-                return (
-                  <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '4px' }}><code>{token}</code></td>
-                    <td style={{ padding: '4px' }}><code>{profile.variableRef || '-'}</code></td>
-                    <td style={{ padding: '4px' }}>{keyAndId || '-'}</td>
-                  </tr>
-                );
-              })}
-              {baseColorTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '8px', color: '#999' }}>暂无基础颜色 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px' }}>
-          <div className="component-header">
-            <span className="component-name">Theme Typography Tokens</span>
-            <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>
-              semantic: {semanticTypographyTokenEntries.length} | base: {baseTypographyTokenEntries.length}
-            </span>
-          </div>
-          <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-            来自 <code>src/theme.typography-tokens.ts</code>：语义 token 映射到基础 token，基础 token 再映射 TextStyle Key/ID。
-          </p>
-
-          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Semantic Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>token</th>
-                <th style={{ padding: '4px' }}>baseToken</th>
-              </tr>
-            </thead>
-            <tbody>
-              {semanticTypographyTokenEntries.map(([token, profile]) => (
-                <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '4px' }}><code>{token}</code></td>
-                  <td style={{ padding: '4px' }}><code>{profile.baseToken}</code></td>
-                </tr>
-              ))}
-              {semanticTypographyTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义排版 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ fontSize: '12px', color: '#777', marginTop: '10px', marginBottom: '4px' }}>Base Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>baseToken</th>
-                <th style={{ padding: '4px' }}>textStyleRef</th>
-                <th style={{ padding: '4px' }}>key/id</th>
-              </tr>
-            </thead>
-            <tbody>
-              {baseTypographyTokenEntries.map(([token, profile]) => {
-                const keyAndId = [
-                  profile.keyCandidates?.length ? `key: ${profile.keyCandidates.join(', ')}` : null,
-                  profile.idCandidates?.length ? `id: ${profile.idCandidates.join(', ')}` : null
-                ].filter(Boolean).join(' | ');
-                return (
-                  <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '4px' }}><code>{token}</code></td>
-                    <td style={{ padding: '4px' }}><code>{profile.textStyleRef || '-'}</code></td>
-                    <td style={{ padding: '4px' }}>{keyAndId || '-'}</td>
-                  </tr>
-                );
-              })}
-              {baseTypographyTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: '8px', color: '#999' }}>暂无基础排版 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px' }}>
-          <div className="component-header">
-            <span className="component-name">Theme Figma Component Tokens</span>
-            <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>
-              semantic: {semanticComponentTokenEntries.length} | base: {baseComponentTokenEntries.length}
-            </span>
-          </div>
-          <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-            来自 <code>src/theme.component-tokens.ts</code>：语义 token 映射到基础 token，基础 token 映射到设计系统组件库的 Figma component key。
-          </p>
-
-          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Semantic Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>token</th>
-                <th style={{ padding: '4px' }}>baseToken</th>
-              </tr>
-            </thead>
-            <tbody>
-              {semanticComponentTokenEntries.map(([token, profile]) => (
-                <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '4px' }}><code>{token}</code></td>
-                  <td style={{ padding: '4px' }}><code>{profile.baseToken}</code></td>
-                </tr>
-              ))}
-              {semanticComponentTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={2} style={{ padding: '8px', color: '#999' }}>暂无语义组件 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ fontSize: '12px', color: '#777', marginTop: '10px', marginBottom: '4px' }}>Base Tokens</div>
-          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                <th style={{ padding: '4px' }}>baseToken</th>
-                <th style={{ padding: '4px' }}>displayName</th>
-                <th style={{ padding: '4px' }}>category</th>
-                <th style={{ padding: '4px' }}>componentKey</th>
-                <th style={{ padding: '4px' }}>source</th>
-                <th style={{ padding: '4px' }}>aliases</th>
-              </tr>
-            </thead>
-            <tbody>
-              {baseComponentTokenEntries.map(([token, profile]) => (
-                <tr key={token} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '4px' }}><code>{token}</code></td>
-                  <td style={{ padding: '4px' }}>{profile.displayName || '-'}</td>
-                  <td style={{ padding: '4px' }}>{profile.category || '-'}</td>
-                  <td style={{ padding: '4px' }}><code>{profile.componentKey}</code></td>
-                  <td style={{ padding: '4px' }}><code>{profile.source}</code></td>
-                  <td style={{ padding: '4px' }}>{profile.aliases?.join(', ') || '-'}</td>
-                </tr>
-              ))}
-              {baseComponentTokenEntries.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '8px', color: '#999' }}>暂无基础组件 token</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
 
         {Object.keys(grouped).length === 0 && (
           <div className="component-card" style={{ marginTop: '12px' }}>

@@ -13,13 +13,19 @@ import {
   parseVariantCriteria,
   VariantCriteria
 } from './figmaComponent';
-import { resolveColorTokenProfile } from './theme.color-tokens';
-import { resolveTypographyTokenProfile } from './theme.typography-tokens';
+import { resolveTypographyTokenProfile } from './theme/volcengine-design/typography';
 import {
   BASE_COMPONENT_TOKEN_PACK,
   resolveComponentTokenProfile
 } from './theme.component-tokens';
 import { createInspectDrivenTagFallbackNode } from './tag.fallback';
+import {
+  applyColorVariable,
+  applyEffectColorVariable,
+  applyStrokeColorVariable,
+  parseColor,
+  setCurrentTheme
+} from './engine/skills/resolve/color';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 
@@ -311,21 +317,21 @@ function checkSelection() {
     const node = selection[0];
     const targetNode =
       node.getPluginData('is-ai-component') === 'true' ? node : findAiComponentNode(node);
-    if (targetNode && targetNode.getPluginData('is-ai-component') === 'true') {
-      const componentId = targetNode.getPluginData('component-id');
-      const params = targetNode.getPluginData('params');
-      if (componentId && params) {
-        if (componentId === 'figma-component') {
-          figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
-          return;
-        }
-        let childComponentId;
-        if (componentId === 'table-column' && targetNode.type === 'FRAME') {
-            const storedCellType = targetNode.getPluginData('cellType');
+      
+    const effectiveTarget = targetNode || 
+      (node.type === 'INSTANCE' && node.getPluginData('component-id') ? node : null);
+
+    if (effectiveTarget) {
+        const componentId = effectiveTarget.getPluginData('component-id');
+        const params = effectiveTarget.getPluginData('params');
+        if (componentId && params) {
+          let childComponentId;
+        if (componentId === 'table-column' && effectiveTarget.type === 'FRAME') {
+            const storedCellType = effectiveTarget.getPluginData('cellType');
             if (storedCellType) {
                 childComponentId = storedCellType;
             } else {
-                const firstCell = targetNode.children.find(child => {
+                const firstCell = effectiveTarget.children.find(child => {
                     const cid = child.getPluginData('component-id');
                     return cid && cid !== 'table-header-cell';
                 });
@@ -336,7 +342,7 @@ function checkSelection() {
         }
 
         const parsedParams = JSON.parse(params);
-        const liveInstance = buildComponentInstanceFromNode(targetNode);
+        const liveInstance = buildComponentInstanceFromNode(effectiveTarget);
         const liveParams = liveInstance?.params && typeof liveInstance.params === 'object'
           ? liveInstance.params
           : parsedParams;
@@ -346,7 +352,7 @@ function checkSelection() {
             : liveParams;
 
         if (isTableCellComponentId(componentId)) {
-          const column = findTableColumnFromNode(targetNode);
+          const column = findTableColumnFromNode(effectiveTarget);
           if (column) {
             const columnParams = readNodeParams(column);
             const merged = { ...columnParams, ...normalizedParams };
@@ -358,16 +364,16 @@ function checkSelection() {
         }
 
         if (componentId === 'form') {
-          const formInstance = buildComponentInstanceFromNode(targetNode);
+          const formInstance = buildComponentInstanceFromNode(effectiveTarget);
           const itemCount = formInstance ? countFormItemInstances(formInstance) : 0;
           if (itemCount > 0) {
             normalizedParams.itemCount = itemCount;
           }
         }
 
-        if (componentId === 'table' && targetNode.type === 'FRAME') {
+        if (componentId === 'table' && effectiveTarget.type === 'FRAME') {
           scheduleTableCellPrewarm();
-          const actualState = detectTableActualState(targetNode as FrameNode);
+          const actualState = detectTableActualState(effectiveTarget as FrameNode);
           normalizedParams.hasButtonGroup = actualState.hasButtonGroup;
           normalizedParams.hasFilter = actualState.hasFilter;
           normalizedParams.hasTabs = actualState.hasTabs;
@@ -382,7 +388,7 @@ function checkSelection() {
             componentId,
             params: normalizedParams,
             childComponentId, // Optional: for columns
-            nodeName: targetNode.name
+            nodeName: effectiveTarget.name
           }
         });
         return;
@@ -452,18 +458,6 @@ figma.on('documentchange', async (event) => {
     }
   }, 120);
 });
-
-// Define Theme Tokens
-const THEME_TOKENS: { [key: string]: { light: string, dark: string } } = {
-    'bg-base': { light: '#FFFFFF', dark: '#1F1F1F' },
-    'bg-secondary': { light: '#F5F5F5', dark: '#2C2C2C' },
-    'text-primary': { light: '#0C0D0E', dark: '#FFFFFF' },
-    'text-secondary': { light: '#42464E', dark: '#A0A0A0' },
-    'border-base': { light: '#EAEDF1', dark: '#333333' },
-    'brand-primary': { light: '#1664FF', dark: '#3D7EFF' },
-    'success-bg': { light: '#F6FFED', dark: '#135200' },
-    'success-text': { light: '#52C41A', dark: '#73D13D' }
-};
 
 const THEME_CONSTANTS: { [key: string]: { [key: string]: number } } = {
     'input': {
@@ -882,6 +876,9 @@ function findPaginationRow(tableRoot: FrameNode): FrameNode | null {
 }
 
 async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
+    const tableRuntime = COMPONENT_DEFS['table']?.runtime as any;
+    const paginationPaddingTop = tableRuntime?.spacing?.paginationRowPaddingTop ?? 16;
+
     const existing = findPaginationRow(tableRoot);
     if (existing) {
         existing.visible = true;
@@ -891,6 +888,7 @@ async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
         existing.primaryAxisAlignItems = 'MAX';
         existing.primaryAxisSizingMode = 'FIXED';
         existing.counterAxisSizingMode = 'AUTO';
+        existing.paddingTop = paginationPaddingTop;
         if ('layoutSizingHorizontal' in existing) {
             try {
                 (existing as any).layoutSizingHorizontal = 'FILL';
@@ -917,6 +915,7 @@ async function ensurePaginationRow(tableRoot: FrameNode, width: number) {
     paginationRow.primaryAxisAlignItems = 'MAX';
     paginationRow.layoutAlign = 'STRETCH';
     paginationRow.fills = [];
+    paginationRow.paddingTop = paginationPaddingTop;
     // Layout-only container: avoid clipping child strokes/effects.
     paginationRow.clipsContent = false;
     paginationRow.resize(width, 1);
@@ -1072,6 +1071,9 @@ function findManagedTableFilterGroupInParent(parent: FrameNode): FrameNode | nul
 }
 
 async function ensureTableToolbar(contentStack: FrameNode, width: number, options: { hasFilter?: boolean, hasTabs?: boolean, hasButtonGroup?: boolean, filterTexts?: string, primaryButtonText?: string, secondaryButtonText?: string }) {
+    const tableRuntime = COMPONENT_DEFS['table']?.runtime as any;
+    const toolbarPaddingBottom = tableRuntime?.spacing?.toolbarPaddingBottom ?? 20;
+
     // 1. Find existing Toolbar or Legacy Filter Group
     let toolbar = contentStack.children.find(
         (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
@@ -1097,6 +1099,7 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
         toolbar.counterAxisSizingMode = 'AUTO';
         toolbar.layoutAlign = 'STRETCH';
         toolbar.name = 'Table Toolbar';
+        toolbar.paddingBottom = toolbarPaddingBottom;
         try { (toolbar as any).layoutSizingHorizontal = 'FILL'; } catch {}
         try { (toolbar as any).layoutSizingVertical = 'HUG'; } catch {}
         toolbar.setPluginData('table-role', 'toolbar');
@@ -1114,6 +1117,7 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
         toolbar.layoutMode = 'HORIZONTAL';
         toolbar.itemSpacing = 20;
         toolbar.layoutAlign = 'STRETCH';
+        toolbar.paddingBottom = toolbarPaddingBottom;
         try { (toolbar as any).layoutSizingHorizontal = 'FILL'; } catch {}
         try { (toolbar as any).layoutSizingVertical = 'HUG'; } catch {}
     }
@@ -1833,29 +1837,29 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
     };
 
     const resolveBodyToken = (): string | null => {
-        if (desired === 'multiple') return 'table.rowAction.checkbox';
-        if (desired === 'single') return 'table.rowAction.radio';
-        if (desired === 'drag') return 'table.rowAction.drag';
-        if (desired === 'expand') return 'table.rowAction.expand';
-        if (desired === 'switch') return 'table.rowAction.switch';
+        if (desired === 'multiple') return 'table-row-action-checkbox';
+        if (desired === 'single') return 'table-row-action-radio';
+        if (desired === 'drag') return 'table-row-action-drag';
+        if (desired === 'expand') return 'table-row-action-expand';
+        if (desired === 'switch') return 'table-row-action-switch';
         return null;
     };
 
 	    const createHeaderControl = async (): Promise<InstanceNode | null> => {
-	        const token = 'table.rowAction.header';
+	        const token = 'table-row-action-header';
 	        const resolved = resolveComponentTokenProfile(token);
 	        const componentKey = resolved?.profile.componentKey || '';
 	        if (!componentKey) return null;
 	        try {
-	            const inst = await createFigmaComponentInstance({
-	                componentKey,
-	                fallbackName: resolved?.profile.displayName || 'Row Action Header',
-	                variantCriteria: {
-	                    'Check 多选': desired === 'multiple',
-	                    'Expand 展开': desired === 'expand',
-	                    'Size 尺寸': resolveSizeVariant(headerHeight)
-	                }
-	            });
+            const inst = await createFigmaComponentInstance({
+                componentKey,
+                fallbackName: 'Row Action Header',
+                variantCriteria: {
+                    'Check 多选': desired === 'multiple',
+                    'Expand 展开': desired === 'expand',
+                    'Size 尺寸': resolveSizeVariant(headerHeight)
+                }
+            });
 	            try {
 	                const findPropKey = (candidates: string[]): string | null => {
 	                    for (const candidate of candidates) {
@@ -1939,10 +1943,19 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
                           }
                         : undefined;
 
+        const getFallbackName = (action: string) => {
+            if (action === 'multiple') return 'Checkbox';
+            if (action === 'single') return 'Radio';
+            if (action === 'drag') return 'Drag';
+            if (action === 'expand') return 'Expand';
+            if (action === 'switch') return 'Switch';
+            return `Row Action ${action}`;
+        };
+
         try {
             const inst = await createFigmaComponentInstance({
                 componentKey,
-                fallbackName: resolved?.profile.displayName || `Row Action ${desired}`,
+                fallbackName: getFallbackName(desired),
                 variantCriteria
             });
 
@@ -2126,23 +2139,6 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
     }
 }
 
-type ColorVariableHint = {
-    keyCandidates?: string[];
-    idCandidates?: string[];
-    nameCandidates?: string[];
-};
-
-type ResolveColorVariableOptions = {
-    allowCreateToken?: boolean;
-};
-
-type ColorVariableBindingIndexEntry = ColorVariableHint & {
-    enabled: boolean;
-    token?: string;
-    baseToken?: string;
-    variableRef?: string;
-};
-
 type TypographyBindingHint = {
     keyCandidates?: string[];
     idCandidates?: string[];
@@ -2155,19 +2151,11 @@ type TypographyBindingIndexEntry = TypographyBindingHint & {
     baseToken?: string;
     textStyleRef?: string;
 };
-
-let COLOR_VARIABLE_BINDING_INDEX: Record<string, ColorVariableBindingIndexEntry> | null = null;
-const COLOR_VARIABLE_CACHE = new Map<string, Variable | null>();
-let LOCAL_COLOR_VARIABLES_CACHE: Variable[] | null = null;
-const TOKEN_COLOR_COLLECTION_NAME = 'UI Agent Theme Tokens';
-let TOKEN_COLOR_COLLECTION_CACHE: VariableCollection | null | undefined = undefined;
 let TYPOGRAPHY_BINDING_INDEX: Record<string, TypographyBindingIndexEntry> | null = null;
 const TEXT_STYLE_CACHE = new Map<string, TextStyle | null>();
 let LOCAL_TEXT_STYLES_CACHE: TextStyle[] | null = null;
 const EFFECT_STYLE_CACHE = new Map<string, EffectStyle | null>();
 let LOCAL_EFFECT_STYLES_CACHE: EffectStyle[] | null = null;
-
-let currentTheme: 'light' | 'dark' = 'light'; // Default theme
 
 let generationLockEnabled = false;
 const generationLockedNodeIds = new Set<string>();
@@ -2212,6 +2200,10 @@ function mergeUnique(base: string[] | undefined, incoming: string[] | undefined)
         if (normalized) merged.add(normalized);
     });
     return merged.size > 0 ? Array.from(merged) : undefined;
+}
+
+function toLowerTrim(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function normalizeFormLayout(value: unknown): 'horizontal' | 'vertical' {
@@ -3686,6 +3678,43 @@ function findInstanceComponentPropertyName(instance: InstanceNode, displayName: 
     );
 }
 
+/**
+ * 通用 Figma 组件属性应用函数（Step 6）
+ *
+ * 读取 registry.figmaPropertySnapshot.propertyMap，将 params 映射为 Figma variant/boolean 属性，
+ * 调用 instance.setProperties()。不再为每个组件单独硬编码属性名。
+ *
+ * transform 支持：
+ *   'boolean'  — boolean → 'True'/'False'
+ *   (undefined) — 直接使用 params 值（需与 Figma variant 枚举值完全一致）
+ */
+function applyFigmaComponentProps(
+    instance: InstanceNode,
+    componentId: string,
+    params: Record<string, any>
+): void {
+    const def = COMPONENT_DEFS[componentId];
+    const propertyMap = (def?.figmaPropertySnapshot as any)?.propertyMap as
+        | Record<string, { sourceParam: string; transform?: string }>
+        | undefined;
+    if (!propertyMap) return;
+
+    const nextProps: Record<string, string | boolean> = {};
+    for (const [displayName, binding] of Object.entries(propertyMap)) {
+        const rawValue = params[binding.sourceParam];
+        if (rawValue === undefined || rawValue === null) continue;
+        const propName = findInstanceComponentPropertyName(instance, displayName);
+        if (!propName) continue;
+        const value = binding.transform === 'boolean'
+            ? toVariantBoolean(Boolean(rawValue))
+            : String(rawValue);
+        nextProps[propName] = value;
+    }
+    if (Object.keys(nextProps).length > 0) {
+        instance.setProperties(nextProps);
+    }
+}
+
 function findCheckboxLabelTextNode(root: SceneNode): TextNode | null {
     if (!('children' in root)) return null;
     const directText = root.children.find((child) => child.type === 'TEXT');
@@ -4500,7 +4529,7 @@ async function updateFormFieldLabelTemplate(root: SceneNode, params: Record<stri
     const layout = resolveFormFieldLayout(params);
     if (layout !== 'vertical' && 'itemSpacing' in contentContainer) {
         const explicitSpacing = Number(params.labelControlSpacing);
-        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 12;
+        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 20;
         try {
             (contentContainer as FrameNode | InstanceNode | ComponentNode).itemSpacing = nextSpacing;
         } catch {}
@@ -4582,23 +4611,16 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
     const filled = Boolean(params.filled);
     const effectiveFilled = filled || hasValue;
 
-    const nextProps: Record<string, string | boolean> = {};
-    const mappings: Array<[string, string | boolean]> = [
-        ['Disable 禁用', toVariantBoolean(disabled)],
-        ['Error 错误', toVariantBoolean(error)],
-        ['Filled 已填', toVariantBoolean(effectiveFilled)],
-        ['Prefix 前缀', toVariantBoolean(showPrefix)],
-        ['Size 尺寸', resolveInputSizeVariantLabel(params.size)],
-        ['State 状态', resolveInputStateVariantLabel(params.state)],
-        ['Suffix 后缀', toVariantBoolean(showSuffix)]
-    ];
-    for (const [displayName, value] of mappings) {
-        const propertyName = findInstanceComponentPropertyName(node, displayName);
-        if (propertyName) nextProps[propertyName] = value;
-    }
-    if (Object.keys(nextProps).length > 0) {
-        node.setProperties(nextProps);
-    }
+    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
+    applyFigmaComponentProps(node, 'input', {
+        disabled,
+        error,
+        filled: effectiveFilled,
+        showPrefix,
+        size: resolveInputSizeVariantLabel(params.size),
+        state: resolveInputStateVariantLabel(params.state),
+        showSuffix,
+    });
 
     const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
     const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
@@ -4642,22 +4664,15 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
     const disabled = Boolean(params.disabled) || stateDisabled;
     const multiple = Boolean(params.multiple);
 
-    const nextProps: Record<string, string | boolean> = {};
-    const mappings: Array<[string, string | boolean]> = [
-        ['Type 类型', resolveSelectTypeVariantLabel(params.selectType ?? params.type)],
-        ['Size 尺寸', resolveInputSizeVariantLabel(params.size)],
-        ['State 状态', resolveInputStateVariantLabel(params.state)],
-        ['Filled 填写', toVariantBoolean(filled)],
-        ['Multiple 多选', toVariantBoolean(multiple)],
-        ['Disabled 禁用', toVariantBoolean(disabled)]
-    ];
-    for (const [displayName, value] of mappings) {
-        const propertyName = findInstanceComponentPropertyName(node, displayName);
-        if (propertyName) nextProps[propertyName] = value;
-    }
-    if (Object.keys(nextProps).length > 0) {
-        node.setProperties(nextProps);
-    }
+    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
+    applyFigmaComponentProps(node, 'select', {
+        disabled,
+        filled,
+        multiple,
+        size: resolveInputSizeVariantLabel(params.size),
+        state: resolveInputStateVariantLabel(params.state),
+        selectType: resolveSelectTypeVariantLabel(params.selectType ?? params.type),
+    });
 
     const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
     const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
@@ -4714,16 +4729,13 @@ async function updateRadioGroupControlTemplateInPlace(node: SceneNode, params: R
 
 async function updateSwitchControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
     if (node.type !== 'INSTANCE') return false;
-    const statusProperty = findInstanceComponentPropertyName(node, 'Status 状态');
-    const disabledProperty = findInstanceComponentPropertyName(node, 'Disabled 禁用');
-    const nextProps: Record<string, string | boolean> = {};
-    if (statusProperty) nextProps[statusProperty] = toVariantBoolean(Boolean(params.checked));
-    if (disabledProperty) nextProps[disabledProperty] = toVariantBoolean(Boolean(params.disabled));
-    if (Object.keys(nextProps).length > 0) {
-        node.setProperties(nextProps);
-        return true;
-    }
-    return false;
+    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
+    // 注：Figma 属性为 'Checked 开关'（非 'Status 状态'），propertyMap 已在 registry 中声明
+    applyFigmaComponentProps(node, 'switch', {
+        checked: Boolean(params.checked),
+        disabled: Boolean(params.disabled),
+    });
+    return true;
 }
 
 async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Record<string, any>): Promise<boolean> {
@@ -5013,6 +5025,20 @@ function resolveFormLabelWidth(params: Record<string, any>): number {
     }
 }
 
+function resolveFormLabelControlSpacing(params: Record<string, any>, layout: 'horizontal' | 'vertical'): number {
+    const explicitSpacing = Number(params.labelControlSpacing);
+    if (Number.isFinite(explicitSpacing) && explicitSpacing > 0) return explicitSpacing;
+    return layout === 'vertical' ? 8 : 20;
+}
+
+function resolveFormControlWidth(params: Record<string, any>): number {
+    const controlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const explicitWidth = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
+    if (explicitWidth !== null) return explicitWidth;
+    if (controlWidthMode === 'fill') return FORM_FIELD_DEFAULTS.controlWidth;
+    return FORM_FIELD_DEFAULTS.controlWidth;
+}
+
 function collectFormFieldInstances(instance: ComponentInstance): ComponentInstance[] {
     if (instance.componentId === 'form-field') return [instance];
     if (!Array.isArray(instance.children)) return [];
@@ -5241,8 +5267,16 @@ async function resolveFormParamsForRender(
     formParams: Record<string, any>,
     instance: ComponentInstance
 ): Promise<Record<string, any>> {
-    const formLayout = normalizeFormLayout(formParams.layout);
-    const shouldAutoLabelWidth = Boolean(formParams.labelWidthAuto) && formLayout !== 'vertical';
+    const fields = Array.isArray(instance.children) ? instance.children.flatMap((child) => collectFormFieldInstances(child)) : [];
+    const shouldAutoLabelWidth =
+        Boolean(formParams.labelWidthAuto) &&
+        fields.some((field) => {
+            const inherited = inheritFormFieldParams(formParams, field);
+            const fieldParams = inherited.params || {};
+            const layout = resolveFormFieldLayout(fieldParams);
+            const label = String(fieldParams.label || '').trim();
+            return layout !== 'vertical' && label.length > 0;
+        });
     const resolvedFormParams = shouldAutoLabelWidth ? { ...formParams } : formParams;
     if (shouldAutoLabelWidth) {
         const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
@@ -5358,16 +5392,17 @@ async function updateFormLayoutParams(
         existingTitleNode.remove();
     }
 
-    const nextWidth = toPositiveNumber(normalizedParams.width);
-    if (nextWidth !== null) {
-        applyNodeSize(formFrame, nextWidth, null);
+    const columnSpacing = toPositiveNumber(normalizedParams.columnSpacing);
+    const resolvedFormParams = await resolveFormParamsForRender(normalizedParams, patchedInstance);
+    const computedWidth =
+        toPositiveNumber(normalizedParams.width) ??
+        await resolveFormContentWidth(patchedInstance, resolvedFormParams);
+    if (computedWidth !== null) {
+        applyNodeSize(formFrame, computedWidth, null);
         formFrame.counterAxisSizingMode = 'FIXED';
     } else {
         formFrame.counterAxisSizingMode = 'AUTO';
     }
-
-    const columnSpacing = toPositiveNumber(normalizedParams.columnSpacing);
-    const resolvedFormParams = await resolveFormParamsForRender(normalizedParams, patchedInstance);
     for (let index = 0; index < itemNodes.length; index += 1) {
         const itemNode = itemNodes[index];
         const itemInstance = nextItemInstances[index];
@@ -5417,6 +5452,50 @@ async function resolveAutoFormLabelWidth(
 
     tempText.remove();
     return Math.ceil(maxWidth);
+}
+
+async function resolveFormContentWidth(
+    instance: ComponentInstance,
+    resolvedFormParams: Record<string, any>
+): Promise<number | null> {
+    if (!Array.isArray(instance.children)) return null;
+    const fields = instance.children.flatMap((child) => collectFormFieldInstances(child));
+    if (fields.length === 0) return null;
+
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+    const tempText = figma.createText();
+    tempText.visible = false;
+    tempText.fontName = { family: 'Inter', style: 'Regular' };
+    tempText.fontSize = 13;
+    figma.currentPage.appendChild(tempText);
+
+    let maxWidth = 0;
+    for (const field of fields) {
+        const inherited = inheritFormFieldParams(resolvedFormParams, field);
+        const fieldParams = inherited.params || {};
+        const layout = resolveFormFieldLayout(fieldParams);
+        const label = String(fieldParams.label || '').trim();
+        let labelTextWidth = 0;
+        if (label) {
+            tempText.characters = `${label}${fieldParams.showColon === false ? '' : '：'}`;
+            labelTextWidth = tempText.width;
+        }
+        const controlWidth = resolveFormControlWidth(fieldParams);
+        if (layout === 'vertical') {
+            maxWidth = Math.max(maxWidth, Math.ceil(Math.max(labelTextWidth, controlWidth)));
+        } else {
+            if (!label) {
+                maxWidth = Math.max(maxWidth, Math.ceil(controlWidth));
+                continue;
+            }
+            const labelWidth = resolveFormLabelWidth(fieldParams);
+            const spacing = resolveFormLabelControlSpacing(fieldParams, layout);
+            maxWidth = Math.max(maxWidth, Math.ceil(labelWidth + spacing + controlWidth));
+        }
+    }
+
+    tempText.remove();
+    return maxWidth > 0 ? maxWidth : null;
 }
 
 function parseDelimitedText(value: unknown, fallback: string[]): string[] {
@@ -5940,53 +6019,6 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
     return true;
 }
 
-function getColorVariableBindingIndex(): Record<string, ColorVariableBindingIndexEntry> {
-    if (COLOR_VARIABLE_BINDING_INDEX) {
-        return COLOR_VARIABLE_BINDING_INDEX;
-    }
-
-    const index: Record<string, ColorVariableBindingIndexEntry> = {};
-
-    Object.values(COMPONENT_DEFS).forEach((def) => {
-        const bindings = def.colorVariableBindings || {};
-        Object.entries(bindings).forEach(([semanticKey, binding]) => {
-            const key = String(semanticKey || '').trim();
-            if (!key) return;
-            const tokenResolved = binding.token ? resolveColorTokenProfile(binding.token) : undefined;
-            const tokenProfile = tokenResolved?.profile;
-
-            const existing = index[key];
-            const normalizedEntry: ColorVariableBindingIndexEntry = {
-                enabled: Boolean(binding.enabled),
-                token: binding.token,
-                baseToken: tokenResolved?.baseToken,
-                variableRef: binding.variableRef || tokenProfile?.variableRef,
-                keyCandidates: mergeUnique(tokenProfile?.keyCandidates, binding.keyCandidates),
-                idCandidates: mergeUnique(tokenProfile?.idCandidates, binding.idCandidates),
-                nameCandidates: mergeUnique(tokenProfile?.nameCandidates, binding.nameCandidates)
-            };
-
-            if (!existing) {
-                index[key] = normalizedEntry;
-                return;
-            }
-
-            index[key] = {
-                enabled: existing.enabled || normalizedEntry.enabled,
-                token: existing.token || normalizedEntry.token,
-                baseToken: existing.baseToken || normalizedEntry.baseToken,
-                variableRef: existing.variableRef || normalizedEntry.variableRef,
-                keyCandidates: mergeUnique(existing.keyCandidates, normalizedEntry.keyCandidates),
-                idCandidates: mergeUnique(existing.idCandidates, normalizedEntry.idCandidates),
-                nameCandidates: mergeUnique(existing.nameCandidates, normalizedEntry.nameCandidates)
-            };
-        });
-    });
-
-    COLOR_VARIABLE_BINDING_INDEX = index;
-    return COLOR_VARIABLE_BINDING_INDEX;
-}
-
 function getTypographyBindingIndex(): Record<string, TypographyBindingIndexEntry> {
     if (TYPOGRAPHY_BINDING_INDEX) {
         return TYPOGRAPHY_BINDING_INDEX;
@@ -6079,226 +6111,6 @@ function findComponentTypographyKey(
         }
     }
 
-    return null;
-}
-
-function normalizeVariableRef(raw: string): string {
-    let key = String(raw || '').trim();
-    if (!key) return '';
-
-    const commaIndex = key.indexOf(',');
-    if (commaIndex >= 0) key = key.slice(0, commaIndex);
-
-    if (key.startsWith('VariableID:')) {
-        key = key.slice('VariableID:'.length);
-        const slashIndex = key.indexOf('/');
-        if (slashIndex > 0) key = key.slice(0, slashIndex);
-    }
-
-    if (key.startsWith('S:')) {
-        key = key.slice(2);
-    }
-
-    return key.trim();
-}
-
-function toLowerTrim(value: string): string {
-    return value.trim().toLowerCase();
-}
-
-async function getLocalColorVariables(): Promise<Variable[]> {
-    if (LOCAL_COLOR_VARIABLES_CACHE) {
-        return LOCAL_COLOR_VARIABLES_CACHE;
-    }
-
-    if (typeof figma.variables === 'undefined') {
-        LOCAL_COLOR_VARIABLES_CACHE = [];
-        return LOCAL_COLOR_VARIABLES_CACHE;
-    }
-
-    try {
-        const variables = await figma.variables.getLocalVariablesAsync();
-        LOCAL_COLOR_VARIABLES_CACHE = variables.filter(v => v.resolvedType === 'COLOR');
-        return LOCAL_COLOR_VARIABLES_CACHE;
-    } catch (e) {
-        console.warn('Failed to read local color variables:', e);
-        LOCAL_COLOR_VARIABLES_CACHE = [];
-        return LOCAL_COLOR_VARIABLES_CACHE;
-    }
-}
-
-async function getOrCreateTokenColorCollection(): Promise<VariableCollection | null> {
-    if (TOKEN_COLOR_COLLECTION_CACHE !== undefined) {
-        return TOKEN_COLOR_COLLECTION_CACHE;
-    }
-    if (typeof figma.variables === 'undefined') {
-        TOKEN_COLOR_COLLECTION_CACHE = null;
-        return TOKEN_COLOR_COLLECTION_CACHE;
-    }
-
-    try {
-        const collections = await figma.variables.getLocalVariableCollectionsAsync();
-        const existing = collections.find((collection) => collection.name === TOKEN_COLOR_COLLECTION_NAME);
-        if (existing) {
-            TOKEN_COLOR_COLLECTION_CACHE = existing;
-            return TOKEN_COLOR_COLLECTION_CACHE;
-        }
-
-        const created = figma.variables.createVariableCollection(TOKEN_COLOR_COLLECTION_NAME);
-        TOKEN_COLOR_COLLECTION_CACHE = created;
-        return TOKEN_COLOR_COLLECTION_CACHE;
-    } catch (e) {
-        console.warn('[ColorVar] failed to get/create token collection', e);
-        TOKEN_COLOR_COLLECTION_CACHE = null;
-        return TOKEN_COLOR_COLLECTION_CACHE;
-    }
-}
-
-async function ensureTokenColorVariable(token: string, fallbackHex: string): Promise<Variable | null> {
-    if (typeof figma.variables === 'undefined') return null;
-
-    const normalizedToken = String(token || '').trim();
-    if (!normalizedToken) return null;
-
-    const localVariables = await getLocalColorVariables();
-    const tokenNames = [normalizedToken, `UIAgent/${normalizedToken}`].map(toLowerTrim);
-    const existing = localVariables.find((variable) => tokenNames.includes(toLowerTrim(variable.name)));
-    if (existing) return existing;
-
-    const collection = await getOrCreateTokenColorCollection();
-    if (!collection) return null;
-    if (!collection.modes || collection.modes.length === 0) return null;
-
-    try {
-        const variable = figma.variables.createVariable(normalizedToken, collection, 'COLOR');
-        const fallbackColor = parseColor(fallbackHex);
-        const colorValue: RGBA = { ...fallbackColor, a: 1 };
-        collection.modes.forEach((mode) => {
-            variable.setValueForMode(mode.modeId, colorValue);
-        });
-
-        if (LOCAL_COLOR_VARIABLES_CACHE) {
-            LOCAL_COLOR_VARIABLES_CACHE = [...LOCAL_COLOR_VARIABLES_CACHE, variable];
-        }
-        return variable;
-    } catch (e) {
-        console.warn(`[ColorVar] failed to create local token variable "${normalizedToken}"`, e);
-        return null;
-    }
-}
-
-async function resolveColorVariable(
-    variableKey: string,
-    fallbackHex?: string,
-    options?: ResolveColorVariableOptions
-): Promise<Variable | null> {
-    const allowCreateToken = options?.allowCreateToken !== false;
-    const cacheKey = allowCreateToken ? variableKey : `${variableKey}::strict`;
-    const cacheHit = COLOR_VARIABLE_CACHE.get(cacheKey);
-    if (cacheHit !== undefined) return cacheHit;
-
-    if (typeof figma.variables === 'undefined') {
-        console.warn(`[ColorVar] figma.variables unavailable; skip binding for "${variableKey}"`);
-        COLOR_VARIABLE_CACHE.set(cacheKey, null);
-        return null;
-    }
-
-    const binding = getColorVariableBindingIndex()[variableKey];
-    if (!binding || !binding.enabled) {
-        console.warn(`[ColorVar] binding missing or disabled for "${variableKey}"`);
-        COLOR_VARIABLE_CACHE.set(cacheKey, null);
-        return null;
-    }
-
-    const sourceRef = binding.variableRef || '';
-    const rawCandidates = new Set<string>([
-        ...(sourceRef ? [sourceRef] : []),
-        ...(binding.keyCandidates || []),
-        ...(binding.idCandidates || [])
-    ]);
-
-    for (const raw of rawCandidates) {
-        const candidate = normalizeVariableRef(raw);
-        if (!candidate) continue;
-
-        try {
-            const imported = await figma.variables.importVariableByKeyAsync(candidate);
-            if (imported && imported.resolvedType === 'COLOR') {
-                COLOR_VARIABLE_CACHE.set(cacheKey, imported);
-                return imported;
-            }
-        } catch {
-            // ignore import failures
-        }
-
-        try {
-            const byId = await figma.variables.getVariableByIdAsync(raw);
-            if (byId && byId.resolvedType === 'COLOR') {
-                COLOR_VARIABLE_CACHE.set(cacheKey, byId);
-                return byId;
-            }
-        } catch {
-            // ignore id failures
-        }
-
-        if (candidate !== raw) {
-            try {
-                const byNormalizedId = await figma.variables.getVariableByIdAsync(candidate);
-                if (byNormalizedId && byNormalizedId.resolvedType === 'COLOR') {
-                    COLOR_VARIABLE_CACHE.set(cacheKey, byNormalizedId);
-                    return byNormalizedId;
-                }
-            } catch {
-                // ignore id failures
-            }
-        }
-    }
-
-    const nameCandidates = [
-        ...(binding.nameCandidates || []),
-        variableKey
-    ]
-      .map(toLowerTrim)
-      .filter(Boolean);
-
-    let localColorsCount = 0;
-    if (nameCandidates.length > 0) {
-        const localColors = await getLocalColorVariables();
-        localColorsCount = localColors.length;
-
-        // exact match first
-        for (const name of nameCandidates) {
-            const exact = localColors.find(v => toLowerTrim(v.name) === name);
-            if (exact) {
-                COLOR_VARIABLE_CACHE.set(cacheKey, exact);
-                return exact;
-            }
-        }
-
-        // then includes match
-        for (const name of nameCandidates) {
-            const fuzzy = localColors.find(v => toLowerTrim(v.name).includes(name));
-            if (fuzzy) {
-                COLOR_VARIABLE_CACHE.set(cacheKey, fuzzy);
-                return fuzzy;
-            }
-        }
-    }
-
-    if (allowCreateToken && (binding.baseToken || binding.token) && fallbackHex) {
-        const tokenForCreate = binding.baseToken || binding.token!;
-        const created = await ensureTokenColorVariable(tokenForCreate, fallbackHex);
-        if (created && created.resolvedType === 'COLOR') {
-            COLOR_VARIABLE_CACHE.set(cacheKey, created);
-            console.info(`[ColorVar] created local variable for token "${tokenForCreate}" (semantic=${binding.token || '-'}) and bound to "${variableKey}"`);
-            return created;
-        }
-    }
-
-    console.warn(
-        `[ColorVar] failed to resolve "${variableKey}" token=${binding.token || '-'} base=${binding.baseToken || '-'} ref=${sourceRef || '-'} localColors=${localColorsCount} key=${(binding.keyCandidates || []).join('|')} id=${(binding.idCandidates || []).join('|')} names=${(binding.nameCandidates || []).join('|')}`
-    );
-    COLOR_VARIABLE_CACHE.set(cacheKey, null);
     return null;
 }
 
@@ -6631,183 +6443,7 @@ async function trySetFirstTextInInstance(instance: InstanceNode, text: string): 
     return false;
 }
 
-function resolveThemeFallbackHex(variableKey: string, fallbackHex: string): string {
-    if (variableKey === 'bg-var-key' || variableKey === 'layout-bg-key') {
-        if (fallbackHex === '#F5F5F5') return THEME_TOKENS['bg-secondary'][currentTheme];
-        if (fallbackHex === '#FFFFFF') return THEME_TOKENS['bg-base'][currentTheme];
-        return fallbackHex;
-    }
-    if (variableKey === 'layout-border-key' || variableKey === 'input-border-key' || variableKey === 'select-border-key') {
-        return fallbackHex === '#EAEDF1' ? THEME_TOKENS['border-base'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'text-primary-key' || variableKey === 'table-cell-text-key') {
-        return fallbackHex === '#0C0D0E' ? THEME_TOKENS['text-primary'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'text-secondary-key' || variableKey === 'table-header-text-key') {
-        return fallbackHex === '#42464E' ? THEME_TOKENS['text-secondary'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'btn-primary-bg') {
-        return fallbackHex === '#1890FF' ? THEME_TOKENS['brand-primary'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'table-action-primary-key') {
-        return THEME_TOKENS['brand-primary'][currentTheme];
-    }
-    if (variableKey === 'table-action-icon-key') {
-        return THEME_TOKENS['text-secondary'][currentTheme];
-    }
-    if (variableKey === 'table-cell-bg-key') {
-        return fallbackHex === '#FFFFFF' ? THEME_TOKENS['bg-base'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'table-header-bg-key') {
-        return fallbackHex === '#F5F5F5' ? THEME_TOKENS['bg-secondary'][currentTheme] : fallbackHex;
-    }
-    if (variableKey === 'table-border-key') {
-        return fallbackHex === '#EAEDF1' ? THEME_TOKENS['border-base'][currentTheme] : fallbackHex;
-    }
-    return fallbackHex;
-}
-
-type PaintProperty = 'fills' | 'strokes';
-type PaintBindingNode = SceneNode & {
-    fills?: readonly Paint[] | PluginAPI['mixed'];
-    strokes?: readonly Paint[] | PluginAPI['mixed'];
-};
-type EffectBindingNode = SceneNode & {
-    effects?: readonly Effect[] | PluginAPI['mixed'];
-};
-
-async function bindVariableToPaintProperty(
-    node: SceneNode,
-    variableKey: string,
-    property: PaintProperty,
-    fallbackColor: RGB,
-    fallbackHex: string
-): Promise<boolean> {
-    if (typeof figma.variables === 'undefined') return false;
-
-    const paintNode = node as PaintBindingNode;
-    if (!(property in paintNode)) return false;
-
-    const variable = await resolveColorVariable(variableKey, fallbackHex);
-    if (!variable) return false;
-
-    try {
-        const currentPaints = (paintNode[property] === figma.mixed || !paintNode[property])
-            ? []
-            : [...(paintNode[property] as Paint[])];
-        const paints = currentPaints.length > 0
-            ? currentPaints
-            : [{ type: 'SOLID', color: fallbackColor } as SolidPaint];
-
-        const boundPaints = paints.map((paint) => {
-            if (paint.type === 'SOLID') {
-                return figma.variables.setBoundVariableForPaint(paint, 'color', variable);
-            }
-            return paint;
-        });
-
-        (paintNode as any)[property] = boundPaints;
-        return true;
-    } catch (e) {
-        console.warn(`Failed to bind variable ${variableKey} to ${property}:`, e);
-        return false;
-    }
-}
-
-// Helper to apply color variable or fallback hex (fills)
-async function applyColorVariable(node: SceneNode, variableKey: string, fallbackHex: string) {
-    const colorHex = resolveThemeFallbackHex(variableKey, fallbackHex);
-    const color = parseColor(colorHex);
-    const bound = await bindVariableToPaintProperty(node, variableKey, 'fills', color, colorHex);
-    if (bound) return;
-
-    if ('fills' in node) {
-        (node as any).fills = [{ type: 'SOLID', color }];
-    }
-}
-
-// Helper to apply color variable or fallback hex (strokes)
-async function applyStrokeColorVariable(node: SceneNode, variableKey: string, fallbackHex: string) {
-    const colorHex = resolveThemeFallbackHex(variableKey, fallbackHex);
-    const color = parseColor(colorHex);
-    const bound = await bindVariableToPaintProperty(node, variableKey, 'strokes', color, colorHex);
-    if (bound) return;
-
-    if ('strokes' in node) {
-        (node as any).strokes = [{ type: 'SOLID', color }];
-    }
-}
-
-async function bindVariableToEffectProperty(
-    node: SceneNode,
-    effectIndex: number,
-    variableKey: string,
-    fallbackHex: string
-): Promise<boolean> {
-    if (typeof figma.variables === 'undefined') return false;
-
-    const effectNode = node as EffectBindingNode;
-    if (!('effects' in effectNode)) return false;
-
-    const variable = await resolveColorVariable(variableKey, fallbackHex, { allowCreateToken: false });
-    if (!variable) return false;
-
-    try {
-        const currentEffects = (effectNode.effects === figma.mixed || !effectNode.effects)
-            ? []
-            : [...(effectNode.effects as Effect[])];
-        const currentEffect = currentEffects[effectIndex];
-        if (!currentEffect) return false;
-
-        currentEffects[effectIndex] = figma.variables.setBoundVariableForEffect(currentEffect, 'color', variable);
-        (effectNode as any).effects = currentEffects;
-        return true;
-    } catch (e) {
-        console.warn(`Failed to bind variable ${variableKey} to effects[${effectIndex}].color:`, e);
-        return false;
-    }
-}
-
-async function applyEffectColorVariable(
-    node: SceneNode,
-    effectIndex: number,
-    variableKey: string,
-    fallbackHex: string
-) {
-    const colorHex = resolveThemeFallbackHex(variableKey, fallbackHex);
-    const color = parseColor(colorHex);
-    const bound = await bindVariableToEffectProperty(node, effectIndex, variableKey, colorHex);
-    if (bound) return;
-
-    const effectNode = node as EffectBindingNode;
-    if (!('effects' in effectNode)) return;
-    const currentEffects = (effectNode.effects === figma.mixed || !effectNode.effects)
-        ? []
-        : [...(effectNode.effects as Effect[])];
-    const currentEffect = currentEffects[effectIndex];
-    if (!currentEffect || !('color' in currentEffect)) return;
-
-    const alpha = typeof currentEffect.color?.a === 'number' ? currentEffect.color.a : 1;
-    currentEffects[effectIndex] = {
-        ...currentEffect,
-        color: { ...color, a: alpha }
-    } as Effect;
-    (effectNode as any).effects = currentEffects;
-}
-
 // Helper to parse color
-function parseColor(hex: string): RGB {
-  if (!hex) return { r: 0, g: 0, b: 0 };
-  hex = hex.replace('#', '');
-  if (hex.length === 3) {
-      hex = hex.split('').map(c => c + c).join('');
-  }
-  const r = parseInt(hex.substring(0, 2), 16) / 255;
-  const g = parseInt(hex.substring(2, 4), 16) / 255;
-  const b = parseInt(hex.substring(4, 6), 16) / 255;
-  return { r, g, b };
-}
-
 function readNodeParams(node: BaseNode): Record<string, any> {
   if (!('getPluginData' in node)) return {};
   const raw = node.getPluginData('params');
@@ -7432,10 +7068,12 @@ async function renderComponent(
     frame.fills = [];
     frame.clipsContent = false;
     const columnSpacing = toPositiveNumber(params.columnSpacing);
-
-    const width = Number(params.width);
-    if (Number.isFinite(width) && width > 0) {
-        frame.resize(width, 100);
+    const resolvedFormParams = await resolveFormParamsForRender(params, instance);
+    const computedWidth =
+        toPositiveNumber(params.width) ??
+        await resolveFormContentWidth(instance, resolvedFormParams);
+    if (computedWidth !== null) {
+        frame.resize(computedWidth, 100);
         frame.counterAxisSizingMode = 'FIXED';
     }
 
@@ -7445,19 +7083,6 @@ async function renderComponent(
         titleNode.characters = String(params.title);
         await applyColorVariable(titleNode, 'card-title', '#0C0D0E');
         frame.appendChild(titleNode);
-    }
-
-    const formLayout = normalizeFormLayout(params.layout);
-    const shouldAutoLabelWidth = Boolean(params.labelWidthAuto) && formLayout !== 'vertical';
-    const resolvedFormParams = shouldAutoLabelWidth
-        ? (() => ({ ...params }))()
-        : params;
-    if (shouldAutoLabelWidth) {
-        const maxLabelWidth = await resolveAutoFormLabelWidth(params, instance);
-        if (maxLabelWidth > 0) {
-            resolvedFormParams.labelWidth = maxLabelWidth;
-            resolvedFormParams.labelWidthPreset = 'custom';
-        }
     }
 
     if (instance.children) {
@@ -7546,7 +7171,7 @@ async function renderComponent(
     frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : 'CENTER';
     const explicitSpacing = Number(params.labelControlSpacing);
     const resolvedSpacing =
-        Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 12);
+        Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 20);
     frame.itemSpacing = resolvedSpacing;
     frame.fills = [];
     frame.clipsContent = false;
@@ -9673,7 +9298,7 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === 'switch-theme') {
       const { theme } = msg;
       if (theme === 'light' || theme === 'dark') {
-          currentTheme = theme;
+          setCurrentTheme(theme);
           figma.ui.postMessage({ type: 'action-done', message: `Switched to ${theme} theme. (Note: Only new components will apply)` });
       }
   }
