@@ -1216,6 +1216,8 @@ h2 {
   border-radius: 6px;
   font-size: 13px;
   color: #111827;
+  white-space: pre-wrap;
+  max-width: calc(100% - 32px);
 }
 
 @keyframes aiStreamBlink {

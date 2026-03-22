@@ -9015,9 +9015,10 @@ StepD:
                             ? buildAttachmentParseText(attachmentImages, attachmentTables)
                             : '';
                           const showBreathingDots = isLast && loading;
-                          const attachmentLabelText = showBreathingDots ? '附件内容解析中' : '附件内容解析';
                           const lastItemIndex = items.length > 0 ? items.length - 1 : -1;
-                          const shouldShowAttachmentDots = showBreathingDots && items.length === 0;
+                          const hasThoughtItem = items.some((item) => item.kind === 'thought');
+                          const shouldShowAttachmentDots = showBreathingDots && !hasThoughtItem;
+                          const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
                           const lastItemKind = lastItemIndex >= 0 ? items[lastItemIndex]?.kind : null;
                           let lastSystemIndex = -1;
                           let lastFrameThoughtIndex = -1;
@@ -9094,7 +9095,7 @@ StepD:
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
-                                const shouldShowLineDots = showBreathingDots && itemIndex === dotsTargetIndex;
+                                const shouldShowLineDots = showBreathingDots && hasThoughtItem && itemIndex === dotsTargetIndex;
                                 if (item.kind === 'spec_hint') {
                                   return (
                                     <IconTextRow

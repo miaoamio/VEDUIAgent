@@ -129,7 +129,9 @@ AI 气泡展示以“文本日志行”为输入，按行解析并分类渲染�
 
 ### 6.2 交互
 
-- 默认显示：`附件内容解析` 或 `附件内容解析中`（运行态）
+- 默认显示：`附件内容解析`
+- 运行态显示（附件解析等待下一条 thought 前）：`附件内容解析中...`
+- 当出现下一条 thought 时：去掉呼吸点，同时文案回到 `附件内容解析`（“中”也去掉）
 - 图标状态：
   - 默认：activity
   - hover：chevron-right
@@ -151,4 +153,3 @@ AI 气泡展示以“文本日志行”为输入，按行解析并分类渲染�
 - 系统回执翻译：`translateSystemLine(...)`（[App.tsx](file:///Users/bytedance/VEDUIAgent/src/App.tsx)）
 - 呼吸点与空白兜底逻辑：AI 消息渲染段（[App.tsx](file:///Users/bytedance/VEDUIAgent/src/App.tsx)）
 - 样式：过程展示相关 class（[styles.css](file:///Users/bytedance/VEDUIAgent/src/styles.css)）
-
