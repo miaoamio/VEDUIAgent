@@ -221,10 +221,7 @@ export const BASE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile
   ...BASE_LIBRARY_COMPONENT_TOKEN_PACK
 };
 
-export const SEMANTIC_COMPONENT_TOKEN_PACK: Record<string, SemanticComponentTokenProfile> = {
-  ...SEMANTIC_TABLE_COMPONENT_TOKEN_PACK,
-  ...SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK
-};
+
 
 export interface ResolvedComponentTokenProfile {
   token: string;
@@ -236,8 +233,7 @@ export function resolveComponentTokenProfile(token: string): ResolvedComponentTo
   const normalized = String(token || '').trim();
   if (!normalized) return undefined;
 
-  const semantic = SEMANTIC_COMPONENT_TOKEN_PACK[normalized];
-  const baseToken = semantic?.baseToken || normalized;
+  const baseToken = normalized;
   const baseProfile = BASE_COMPONENT_TOKEN_PACK[baseToken];
   if (baseProfile) {
     return {

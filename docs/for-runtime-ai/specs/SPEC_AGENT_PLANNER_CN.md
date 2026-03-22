@@ -1,5 +1,8 @@
 # Agent 计划队列与分层生成规范（Spec Coding）
 
+> **⚠️ 注意：当前 Plan 流程与 `execute_task` 任务下钻机制已被临时禁用。**
+> 等待后续开发成熟后再重新启用。在禁用期间，Agent 应直接使用 `apply_scene`、`create_node`、`draw_tabl` 等命令一次性或分步完成任务，不要调用 `set_plan` 或 `execute_task`。
+
 ## 1. 目标
 本规范定义“先外壳占位、再区块下钻”的执行机制，保证复杂页面生成可控、可追踪、可恢复。
 

@@ -175,11 +175,11 @@ set_plan 一个任务 t_bad，type=expand_unknown_block，然后连续 execute_t
 1. 不需要手动输入 `discover_component_props` JSON 指令即可完成全量反查。
 2. 导出的 Markdown 可直接用于组件 spec 文档维护与评审。
 
-### 用例 L：定向反查 + Spec Patch JSON
+### 用例 L：反查提取属性快照 + Spec Patch JSON
 操作：
 1. 打开 `组件库` 标签页，在 `Figma 属性反查自动化` 输入 token（例如 `lib-data-display-status-tag`）。
-2. 点击 `定向反查`。
-3. 点击 `复制 Spec Patch JSON` 或 `下载 Spec Patch JSON`。
+2. 点击 `自动反查`。
+3. 等待完成后，在下方 `已学习组件知识` 面板，点击 `复制学习快照给 AI`。
 4. 执行 `npm run spec:snapshot:apply -- <Spec Patch JSON 路径>`；若 JSON 已在剪贴板，可执行 `pbpaste | npm run spec:snapshot:apply -- --stdin`。
 
 预期：

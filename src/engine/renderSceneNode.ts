@@ -2,10 +2,20 @@ import type { LayoutSpec, SceneNode as ProtocolSceneNode, StyleSpec } from "../p
 import type { ComponentDefinition } from "../registry.types";
 import { createFigmaComponentInstance, findFigmaVariant, loadFigmaComponentByKey, parseVariantCriteria } from "../figmaComponent";
 import { createInspectDrivenTagFallbackNode } from "../tag.fallback";
-import { resolveComponentTokenProfile } from "../theme.component-tokens";
+import { activeTheme } from "../theme/active";
 import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
 import { resolveComponentDefinition, toUnknownComponentError } from "./registryResolver";
 import type { ApplyContext } from "./types";
+
+/** token → Figma componentKey。支持 'lib-data-input-input' 和 'library.data-input.input' 两种格式。 */
+function resolveComponentKey(token: string): string {
+  const normalized = String(token || "").trim();
+  if (!normalized) return "";
+  const direct = activeTheme.components[normalized];
+  if (direct) return direct;
+  const kebab = normalized.replace(/\./g, "-");
+  return activeTheme.components[kebab] || "";
+}
 
 type ParentContainer = BaseNode & ChildrenMixin;
 
@@ -59,9 +69,8 @@ function resolveInputSizeVariantLabel(value: unknown): "Mini 24" | "Small 28" | 
 function isDateTimePickerToken(value: unknown): boolean {
   const normalized = String(value || "").trim();
   if (!normalized) return false;
-  const resolved = resolveComponentTokenProfile(normalized);
-  const baseToken = String(resolved?.baseToken || normalized).toLowerCase();
-  return baseToken.includes("datepicker") || baseToken.includes("timepicker") || baseToken.includes("datetimepicker");
+  const lower = normalized.toLowerCase();
+  return lower.includes("datepicker") || lower.includes("timepicker") || lower.includes("datetimepicker");
 }
 
 function hasSizeVariantCriteria(criteria?: Record<string, string | boolean>): boolean {
@@ -226,13 +235,11 @@ function normalizeTagStateVariant(value: unknown): "Default 默认" | "Hover 悬
 
 function resolveTagComponentFamily(componentToken: unknown): TagComponentFamily {
   const normalized = String(componentToken ?? "").trim();
-  const baseToken = normalized
-    ? resolveComponentTokenProfile(normalized)?.baseToken || normalized
-    : "";
-  if (baseToken === STATUS_TAG_COMPONENT_TOKEN || baseToken === "library.data-display.status-tag") {
+  const lower = normalized.toLowerCase();
+  if (lower.includes("status-tag") || lower.includes("status_tag") || lower === "library.data-display.status-tag") {
     return "status";
   }
-  if (baseToken === OTHER_TAG_COMPONENT_TOKEN || baseToken === "library.data-display.other-tag") {
+  if (lower.includes("other-tag") || lower.includes("other_tag") || lower === "library.data-display.other-tag") {
     return "other";
   }
   return "default";
@@ -323,11 +330,10 @@ function normalizeUnifiedTagProps(props: Record<string, unknown>): Record<string
   const rawTagType = next.tagType ?? next.type;
   const rawOtherTagType = next.otherTagType;
   const componentToken = typeof next.componentToken === "string" ? next.componentToken.trim() : "";
-  const resolvedToken = componentToken ? resolveComponentTokenProfile(componentToken) : undefined;
-  const baseToken = resolvedToken?.baseToken;
-  const isTokenStatus = baseToken === STATUS_TAG_COMPONENT_TOKEN;
-  const isTokenOther = baseToken === OTHER_TAG_COMPONENT_TOKEN;
-  const isTokenDefault = baseToken === TAG_COMPONENT_TOKEN;
+  const tokenFamily = resolveTagComponentFamily(componentToken);
+  const isTokenStatus = tokenFamily === "status";
+  const isTokenOther = tokenFamily === "other";
+  const isTokenDefault = tokenFamily === "default" && !!componentToken;
   const isKnownToken = isTokenStatus || isTokenOther || isTokenDefault;
 
   const hasExplicitDefaultTagType = rawTagType !== undefined && isDefaultTagTypeValue(rawTagType);
@@ -583,9 +589,7 @@ async function applyTextStyleRef(node: TextNode, ref: string, ctx?: ApplyContext
     const imported = await figma.importStyleByKeyAsync(normalized);
     if (imported && imported.type === "TEXT") {
       const textStyle = imported as TextStyle;
-      if (textStyle.fontName !== figma.mixed) {
-        await figma.loadFontAsync(textStyle.fontName as FontName);
-      }
+      await figma.loadFontAsync(textStyle.fontName as FontName);
       await node.setTextStyleIdAsync(textStyle.id);
       return true;
     }
@@ -597,9 +601,7 @@ async function applyTextStyleRef(node: TextNode, ref: string, ctx?: ApplyContext
     const local = figma.getStyleById(ref) || figma.getStyleById(normalized);
     if (local && local.type === "TEXT") {
       const textStyle = local as TextStyle;
-      if (textStyle.fontName !== figma.mixed) {
-        await figma.loadFontAsync(textStyle.fontName as FontName);
-      }
+      await figma.loadFontAsync(textStyle.fontName as FontName);
       await node.setTextStyleIdAsync(textStyle.id);
       return true;
     }
@@ -753,6 +755,40 @@ export function applyLayoutToFigmaNode(figmaNode: SceneNode, layout?: LayoutSpec
   if (width !== undefined || height !== undefined) {
     figmaNode.resize(width ?? figmaNode.width, height ?? figmaNode.height);
   }
+
+  if (figmaNode.layoutMode !== "NONE") {
+    if (layout.width?.type === "hug") {
+      if (figmaNode.layoutMode === "HORIZONTAL") {
+        figmaNode.primaryAxisSizingMode = "AUTO";
+      } else {
+        figmaNode.counterAxisSizingMode = "AUTO";
+      }
+    }
+    if (layout.height?.type === "hug") {
+      if (figmaNode.layoutMode === "VERTICAL") {
+        figmaNode.primaryAxisSizingMode = "AUTO";
+      } else {
+        figmaNode.counterAxisSizingMode = "AUTO";
+      }
+    }
+  }
+
+  const parent = figmaNode.parent;
+  const parentLayoutMode = parent && parent.type === "FRAME" ? (parent as FrameNode).layoutMode : "NONE";
+  if (layout.width?.type === "fill") {
+    if (parentLayoutMode === "HORIZONTAL") {
+      (figmaNode as any).layoutGrow = 1;
+    } else if (parentLayoutMode === "VERTICAL") {
+      (figmaNode as any).layoutAlign = "STRETCH";
+    }
+  }
+  if (layout.height?.type === "fill") {
+    if (parentLayoutMode === "VERTICAL") {
+      (figmaNode as any).layoutGrow = 1;
+    } else if (parentLayoutMode === "HORIZONTAL") {
+      (figmaNode as any).layoutAlign = "STRETCH";
+    }
+  }
 }
 
 export async function applyStyleToFigmaNode(
@@ -810,10 +846,10 @@ export async function applyStyleToFigmaNode(
   }
 }
 
-function createFallbackFrameNode(sceneNode: ProtocolSceneNode): FrameNode {
+function createFallbackFrameNode(sceneNode: ProtocolSceneNode, preferredLayoutMode?: "HORIZONTAL" | "VERTICAL" | "NONE"): FrameNode {
   const frame = figma.createFrame();
   frame.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
-  frame.layoutMode = "VERTICAL";
+  frame.layoutMode = preferredLayoutMode ?? "VERTICAL";
   frame.primaryAxisSizingMode = "AUTO";
   frame.counterAxisSizingMode = "AUTO";
   frame.fills = [];
@@ -831,11 +867,8 @@ async function createFigmaNode(
     const normalizedProps = normalizeUnifiedTagProps(sceneNode.props);
     const componentTokenFromProps =
       typeof normalizedProps.componentToken === "string" ? normalizedProps.componentToken.trim() : "";
-    const resolvedFromToken = componentTokenFromProps
-      ? resolveComponentTokenProfile(componentTokenFromProps)
-      : undefined;
     const componentKey =
-      resolvedFromToken?.profile.componentKey ||
+      (componentTokenFromProps ? resolveComponentKey(componentTokenFromProps) : "") ||
       (typeof definition.figmaPropertySnapshot?.componentKey === "string"
         ? definition.figmaPropertySnapshot.componentKey.trim()
         : "");
@@ -890,10 +923,7 @@ async function createFigmaNode(
       typeof sceneNode.props.componentKey === "string" ? sceneNode.props.componentKey.trim() : "";
     const componentTokenFromProps =
       typeof sceneNode.props.componentToken === "string" ? sceneNode.props.componentToken.trim() : "";
-    const resolvedFromToken = componentTokenFromProps
-      ? resolveComponentTokenProfile(componentTokenFromProps)
-      : undefined;
-    const componentKeyFromToken = resolvedFromToken?.profile.componentKey || "";
+    const componentKeyFromToken = componentTokenFromProps ? resolveComponentKey(componentTokenFromProps) : "";
     const componentKeyFromBinding =
       typeof definition.figmaBinding?.renderKey === "string" ? definition.figmaBinding.renderKey.trim() : "";
     const componentKey = componentKeyFromProps || componentKeyFromToken || componentKeyFromBinding;
@@ -904,7 +934,7 @@ async function createFigmaNode(
     const tokenOrKey = componentTokenFromProps || componentKeyFromProps;
     const parsedCriteria = parseVariantCriteria(sceneNode.props.variantCriteria) as Record<string, string | boolean> | undefined;
 
-    if (componentTokenFromProps && !resolvedFromToken) {
+    if (componentTokenFromProps && !componentKeyFromToken) {
       ctx.warnings.push({
         code: "INSTANCE_COMPONENT_TOKEN_UNKNOWN",
         message: `Unknown componentToken '${componentTokenFromProps}' for '${sceneNode.componentId}'`,
@@ -918,7 +948,7 @@ async function createFigmaNode(
         message: `Component '${sceneNode.componentId}' requires props.componentToken or props.componentKey for instance rendering`,
         path: buildScenePath(sceneNode)
       });
-      return createFallbackFrameNode(sceneNode);
+      return createFallbackFrameNode(sceneNode, definition.figmaBinding?.preferredLayoutMode);
     }
 
     try {
@@ -957,7 +987,7 @@ async function createFigmaNode(
         code: "INSTANCE_CREATE_FAILED",
         message: `Failed to create instance for '${sceneNode.componentId}': ${String(error)}`
       });
-      return createFallbackFrameNode(sceneNode);
+      return createFallbackFrameNode(sceneNode, definition.figmaBinding?.preferredLayoutMode);
     }
   }
 
@@ -968,7 +998,7 @@ async function createFigmaNode(
     return textNode;
   }
 
-  return createFallbackFrameNode(sceneNode);
+  return createFallbackFrameNode(sceneNode, definition.figmaBinding?.preferredLayoutMode);
 }
 
 export function insertChildNode(parent: SceneNode, child: SceneNode, index?: number): boolean {

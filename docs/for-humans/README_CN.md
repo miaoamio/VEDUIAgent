@@ -8,6 +8,7 @@
 ## 📐 项目概览
 
 - [项目架构总览](overview/IMPLEMENTATION_SUMMARY_CN.md) — 这个插件是什么、怎么运作的
+- [表格/表单/图表生成流程](overview/GENERATION_FLOW_CN.md) — 生成逻辑与执行链路梳理
 - [文档分层逻辑](overview/DOCS_LOGIC_CN.md) — 各类文档的职责边界说明（进阶，按需阅读）
 
 ---

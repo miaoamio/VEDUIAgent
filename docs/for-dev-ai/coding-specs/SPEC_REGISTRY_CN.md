@@ -60,7 +60,7 @@ interface ComponentRegistry {
 interface ComponentDefinition {
   id: string;                              // 必填，全局唯一
   name: string;                            // 必填
-  category: "Layout" | "Basic" | "Form" | "Table" | "Data" | "Other";
+  category: "Layout" | "Basic" | "Form" | "Table" | "Data" | "Icon" | "Other";
   description: string;                     // 必填
   schemaVersion: string;                   // 组件定义版本，如 "2.0.0"
 
@@ -79,7 +79,9 @@ interface ComponentDefinition {
   capabilities?: CapabilityDefinition;
   figmaBinding?: FigmaBinding;
   figmaPropertySnapshot?: FigmaPropertySnapshot; // 开发文档上下文字段（非运行时必需）
+  figmaPropertySnapshotCatalog?: Record<string, FigmaPropertySnapshot>; // 多 token/多 key 组件的快照目录
   colorVariableBindings?: Record<string, ColorVariableBinding>;
+  runtime?: ComponentRuntimeDefinition;         // 运行时规格元数据（如 sizeMetrics）
   migrations?: MigrationRule[];
 }
 ```
@@ -197,7 +199,11 @@ interface FigmaPropertySnapshot {
   token?: string;                          // 例如 lib-data-display-status-tag
   componentKey: string;
   inspectedAt: string;                     // ISO8601
-  source: "discover_component_props";
+  source: "discover_component_props" | "inspect_live_instance";
+  sourceNodeId?: string;                   // 本地锚点（可选）
+  sourceNodeType?: "COMPONENT" | "COMPONENT_SET";
+  componentName?: string;
+  componentSetName?: string;
   properties: Array<{
     propertyName: string;
     displayName?: string;
@@ -212,6 +218,7 @@ interface FigmaPropertySnapshot {
 1. 该字段用于“沟通上下文与维护”，不作为运行时必填。
 2. 所有 `variantCriteria` 相关 spec，必须先基于 `discover_component_props` 的真实结果更新此快照。
 3. 快照过期（组件库升级）时，应重新探测并更新时间。
+4. 对 `figma-component` 这类“一个组件入口对应多个 token”的场景，优先写入 `figmaPropertySnapshotCatalog`，避免单个 `figmaPropertySnapshot` 被后写覆盖。
 
 推荐流程：
 1. `read_specs(['figma-component'])` 先确认 token。
@@ -239,6 +246,35 @@ interface ColorVariableBinding {
 3. 替代在渲染代码里硬编码 token 规则。
 4. 推荐在 spec 中只写 `token`，VariableID/Key 统一维护在主题 token 包：`src/theme.color-tokens.ts`。
 5. Figma 实例组件同理，建议在 `figma-component` 参数使用 `componentToken`，由 `src/theme.component-tokens.ts` 统一映射到 `componentKey`（主组件库来源：`src/theme.component-library-tokens.ts`）。
+
+## 11.1 运行时规格定义（ComponentRuntimeDefinition）
+
+```ts
+interface SizeMetricDefinition {
+  height: number;
+  paddingX: number;
+  paddingY: number;
+  fontSize: number;
+  cornerRadius: number;
+}
+
+interface ComponentRuntimeDefinition {
+  sizeMetrics?: Record<string, SizeMetricDefinition>; // key 必须来自 params.size.enumValues
+  sizeMetricsRef?: string;                            // 复用其他组件的 sizeMetrics
+}
+```
+
+用途：
+
+1. 让 Registry 成为运行时尺寸规格的单一事实来源。
+2. Renderer 渲染输入类组件时，禁止在代码里再维护另一份高度/内边距/字号表。
+3. 当多个组件共享一套尺寸规格时，优先使用 `sizeMetricsRef`，避免重复维护。
+
+约束：
+
+1. 组件声明 `sizeMetrics`/`sizeMetricsRef` 时，必须同时声明 `params.size`。
+2. `sizeMetrics` 的 key 必须与 `params.size.enumValues` 对齐。
+3. `params.size.default` 必须能在本组件或 `sizeMetricsRef` 指向的规格中解析到。
 
 ## 12. 迁移规则（MigrationRule）
 

@@ -3,6 +3,7 @@ export type VariantCriteria = Record<string, string | boolean>;
 interface FigmaComponentLoadOptions {
   componentKey: string;
   fallbackName?: string;
+  componentNodeId?: string;
 }
 
 interface CreateFigmaComponentInstanceOptions extends FigmaComponentLoadOptions {
@@ -38,7 +39,9 @@ const FIGMA_COMPONENT_KEY_ALIASES: Record<string, string> = {
   'library.data-display.component-piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
   toplist: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
   'lib-data-display-toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff',
-  'library.data-display.toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff'
+  'library.data-display.toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff',
+  '_components/cell 单元格/content 内容/select cell 选择单元格': '626546d0006e10eadc083927a0aecac0023858a9',
+  'avataricon 头像图标': '8365ec79313a17f0687ed671a0fde43bc64e8f14'
 };
 
 function normalizeFigmaComponentKey(raw: string): string {
@@ -68,6 +71,8 @@ export interface DiscoveredComponentSchema {
   componentName?: string;
   componentSetName?: string;
   nodeType?: 'COMPONENT' | 'COMPONENT_SET';
+  sourceNodeId?: string;
+  sourceNodeType?: 'COMPONENT' | 'COMPONENT_SET';
   variantCount?: number;
   sampleVariantProperties?: Record<string, string>;
   properties?: DiscoveredComponentProperty[];
@@ -163,6 +168,8 @@ export interface InspectedComponentStructureResult {
   componentName?: string;
   componentSetName?: string;
   nodeType?: 'COMPONENT' | 'COMPONENT_SET';
+  sourceNodeId?: string;
+  sourceNodeType?: 'COMPONENT' | 'COMPONENT_SET';
   variantCount?: number;
   sampleVariantProperties?: Record<string, string>;
   properties?: DiscoveredComponentProperty[];
@@ -353,7 +360,7 @@ async function inspectPaintArray(
     if (paint.type === 'SOLID') {
       info.color = colorToHex(paint.color, paint.opacity);
     } else if ('gradientStops' in paint && Array.isArray(paint.gradientStops)) {
-      info.gradientStops = paint.gradientStops.map((stop) => colorToHex(stop.color));
+      info.gradientStops = paint.gradientStops.map((stop: ColorStop) => colorToHex(stop.color));
     }
 
     const bindings: Array<{ field: string; variable: InspectedVariableReference }> = [];
@@ -491,7 +498,7 @@ function matchesVariantCriteria(variant: ComponentNode, criteria: VariantCriteri
 
     const actual = String(props[matchedPropName]).trim().toLowerCase();
     const expected = normalizeVariantOptionValue(value).toLowerCase();
-    if (actual !== expected) {
+    if (actual !== expected && !actual.includes(expected)) {
       return false;
     }
   }
@@ -588,9 +595,21 @@ function findComponentByFallbackName(fallbackName: string): ComponentNode | Comp
   const normalized = fallbackName.trim().toLowerCase();
   if (!normalized) return null;
 
-  const isTarget = (node: SceneNode | PageNode | DocumentNode) =>
-    isComponentOrSetNode(node) &&
-    (node.name.toLowerCase() === normalized || node.name.toLowerCase().includes(normalized));
+  const isTarget = (node: SceneNode | PageNode | DocumentNode) => {
+    if (!isComponentOrSetNode(node)) return false;
+    const name = node.name.toLowerCase();
+    
+    if (name === normalized || name.includes(normalized)) return true;
+    
+    if (normalized === "checkbox" && (name.includes("复选框") || name.includes("多选") || name.includes("checkbox"))) return true;
+    if (normalized === "radio" && (name.includes("单选") || name.includes("单选框") || name.includes("radio"))) return true;
+    if (normalized === "switch" && (name.includes("开关") || name.includes("switch"))) return true;
+    if (normalized === "drag" && (name.includes("拖拽") || name.includes("拖动") || name.includes("drag"))) return true;
+    if (normalized === "expand" && (name.includes("展开") || name.includes("expand"))) return true;
+    if (normalized === "row action header" && (name.includes("header") || name.includes("表头"))) return true;
+    
+    return false;
+  };
 
   const fromCurrentPage = figma.currentPage.findOne(isTarget) as ComponentNode | ComponentSetNode | null;
   if (fromCurrentPage) return fromCurrentPage;
@@ -598,20 +617,79 @@ function findComponentByFallbackName(fallbackName: string): ComponentNode | Comp
   return figma.root.findOne(isTarget) as ComponentNode | ComponentSetNode | null;
 }
 
+async function resolveSchemaSourceNode(
+  node: BaseNode | null
+): Promise<ComponentNode | ComponentSetNode | null> {
+  if (!node) return null;
+
+  let targetNode: BaseNode | null = node;
+  if (targetNode.type === 'INSTANCE') {
+    const mainComponent = await resolveInstanceMainComponent(targetNode);
+    targetNode = mainComponent;
+  }
+
+  if (!targetNode) return null;
+
+  if (targetNode.type === 'COMPONENT') {
+    if (targetNode.parent && targetNode.parent.type === 'COMPONENT_SET') {
+      return targetNode.parent;
+    }
+    return targetNode;
+  }
+
+  if (targetNode.type === 'COMPONENT_SET') {
+    return targetNode;
+  }
+
+  return null;
+}
+
+function cacheLoadedFigmaComponent(
+  loaded: ComponentNode | ComponentSetNode,
+  keys: string[]
+): void {
+  const normalizedKeys = Array.from(
+    new Set(
+      keys
+        .map((key) => String(key || '').trim())
+        .filter(Boolean)
+    )
+  );
+  normalizedKeys.forEach((key) => {
+    figmaComponentCache.set(key, loaded);
+  });
+}
+
 export async function loadFigmaComponentByKey(
   options: FigmaComponentLoadOptions
 ): Promise<ComponentNode | ComponentSetNode> {
-  const componentKey = options.componentKey.trim();
-  if (!componentKey) {
-    throw new Error("componentKey is required.");
+  const componentKey = normalizeFigmaComponentKey(options.componentKey);
+  const componentNodeId = String(options.componentNodeId || '').trim();
+  if (!componentKey && !componentNodeId) {
+    throw new Error("componentKey or componentNodeId is required.");
   }
 
-  const cached = figmaComponentCache.get(componentKey);
-  if (cached && !cached.removed) {
-    return cached;
+  if (componentKey) {
+    const cached = figmaComponentCache.get(componentKey);
+    if (cached && !cached.removed) {
+      return cached;
+    }
+    if (cached?.removed) {
+      figmaComponentCache.delete(componentKey);
+    }
   }
-  if (cached?.removed) {
-    figmaComponentCache.delete(componentKey);
+
+  if (componentNodeId) {
+    const localNode = figma.getNodeById(componentNodeId);
+    const localSource = await resolveSchemaSourceNode(localNode);
+    if (localSource) {
+      cacheLoadedFigmaComponent(localSource, [componentKey, localSource.key]);
+      return localSource;
+    }
+  }
+
+  if (!componentKey) {
+    throw new Error("componentKey is required when componentNodeId cannot be resolved.");
   }
 
   let componentSetImportError: unknown = null;
@@ -621,7 +699,7 @@ export async function loadFigmaComponentByKey(
     }).importComponentSetByKeyAsync;
     if (typeof importSetAsync === "function") {
       const importedSet = await importSetAsync.call(figma, componentKey);
-      figmaComponentCache.set(componentKey, importedSet);
+      cacheLoadedFigmaComponent(importedSet, [componentKey, importedSet.key]);
       return importedSet;
     }
   } catch (error) {
@@ -631,25 +709,25 @@ export async function loadFigmaComponentByKey(
   try {
     const imported = await figma.importComponentByKeyAsync(componentKey);
     if (imported.type === "COMPONENT" && imported.parent?.type === "COMPONENT_SET") {
-      figmaComponentCache.set(componentKey, imported.parent);
+      cacheLoadedFigmaComponent(imported.parent, [componentKey, imported.parent.key]);
       return imported.parent;
     }
 
-    figmaComponentCache.set(componentKey, imported);
+    cacheLoadedFigmaComponent(imported, [componentKey, imported.key]);
     return imported;
   } catch (error) {
     const localByKey = figma.currentPage.findOne(
       (node) => isComponentOrSetNode(node) && node.key === componentKey
     ) as ComponentNode | ComponentSetNode | null;
     if (localByKey) {
-      figmaComponentCache.set(componentKey, localByKey);
+      cacheLoadedFigmaComponent(localByKey, [componentKey, localByKey.key]);
       return localByKey;
     }
 
     if (options.fallbackName) {
       const localByName = findComponentByFallbackName(options.fallbackName);
       if (localByName) {
-        figmaComponentCache.set(componentKey, localByName);
+        cacheLoadedFigmaComponent(localByName, [componentKey, localByName.key]);
         return localByName;
       }
     }
@@ -694,7 +772,7 @@ export function findFigmaVariant(
 
         const actual = String(props[matchedPropName]).trim().toLowerCase();
         const expected = normalizeVariantOptionValue(value).toLowerCase();
-        if (actual !== expected) {
+        if (actual !== expected && !actual.includes(expected)) {
           return false;
         }
       }
@@ -772,7 +850,8 @@ export async function createFigmaComponentInstance(
 ): Promise<InstanceNode> {
   const component = await loadFigmaComponentByKey({
     componentKey: normalizeFigmaComponentKey(options.componentKey),
-    fallbackName: options.fallbackName
+    fallbackName: options.fallbackName,
+    componentNodeId: options.componentNodeId
   });
 
   const target = findFigmaVariant(component, options.variantCriteria);
@@ -974,97 +1053,113 @@ async function inspectSceneNodeTree(
   return info;
 }
 
+function buildDiscoveredComponentSchemaResult(
+  loaded: ComponentNode | ComponentSetNode,
+  options: FigmaComponentLoadOptions & { token?: string }
+): DiscoveredComponentSchema {
+  const nodeType: 'COMPONENT' | 'COMPONENT_SET' = loaded.type;
+  const variantCount =
+    loaded.type === 'COMPONENT_SET'
+      ? loaded.children.filter((child) => child.type === 'COMPONENT').length
+      : loaded.variantProperties
+        ? 1
+        : 0;
+
+  const sampleVariantProperties =
+    loaded.type === 'COMPONENT_SET'
+      ? loaded.defaultVariant?.variantProperties || undefined
+      : loaded.variantProperties || undefined;
+
+  const variantValueMap = collectVariantValueMap(loaded);
+  const definitions = loaded.componentPropertyDefinitions || {};
+
+  const properties: DiscoveredComponentProperty[] = Object.entries(definitions).map(
+    ([propertyName, definition]) => {
+      const displayName = toDisplayPropertyName(propertyName);
+      const property: DiscoveredComponentProperty = {
+        propertyName,
+        displayName,
+        type: definition.type,
+        defaultValue: definition.defaultValue
+      };
+
+      if (definition.type === 'VARIANT') {
+        const fromDefinition = Array.isArray(definition.variantOptions)
+          ? definition.variantOptions.map((value) => String(value))
+          : [];
+        const fromVariants = Array.from(variantValueMap[displayName] || []);
+        const merged = Array.from(new Set([...fromDefinition, ...fromVariants])).filter(Boolean);
+        if (merged.length > 0) {
+          property.variantOptions = merged;
+        }
+      }
+
+      if (definition.type === 'BOOLEAN') {
+        property.variantOptions = ['True', 'False'];
+      }
+
+      if (
+        definition.type === 'INSTANCE_SWAP' &&
+        Array.isArray(definition.preferredValues) &&
+        definition.preferredValues.length > 0
+      ) {
+        property.preferredValues = definition.preferredValues.map((value) => ({
+          type: value.type,
+          key: value.key
+        }));
+      }
+
+      return property;
+    }
+  );
+
+  properties.sort((a, b) => {
+    if (a.type !== b.type) return a.type.localeCompare(b.type);
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  return {
+    status: 'ok',
+    token: options.token,
+    componentKey: String(loaded.key || options.componentKey || '').trim(),
+    componentName:
+      loaded.type === 'COMPONENT_SET' ? loaded.defaultVariant?.name || loaded.name : loaded.name,
+    componentSetName:
+      loaded.type === 'COMPONENT_SET'
+        ? loaded.name
+        : loaded.parent?.type === 'COMPONENT_SET'
+          ? loaded.parent.name
+          : undefined,
+    nodeType,
+    sourceNodeId: loaded.id,
+    sourceNodeType: loaded.type,
+    variantCount,
+    sampleVariantProperties,
+    properties
+  };
+}
+
 export async function discoverFigmaComponentSchema(
   options: FigmaComponentLoadOptions & { token?: string }
 ): Promise<DiscoveredComponentSchema> {
   const componentKey = String(options.componentKey || '').trim();
-  if (!componentKey) {
+  const componentNodeId = String(options.componentNodeId || '').trim();
+  if (!componentKey && !componentNodeId) {
     return {
       status: 'error',
       token: options.token,
-      componentKey: '',
-      error: 'componentKey is required'
+      componentKey: componentKey || '',
+      error: 'componentKey or componentNodeId is required'
     };
   }
 
   try {
     const loaded = await loadFigmaComponentByKey({
       componentKey,
-      fallbackName: options.fallbackName
+      fallbackName: options.fallbackName,
+      componentNodeId
     });
-
-    const nodeType: 'COMPONENT' | 'COMPONENT_SET' = loaded.type;
-    const variantCount =
-      loaded.type === 'COMPONENT_SET'
-        ? loaded.children.filter((child) => child.type === 'COMPONENT').length
-        : loaded.variantProperties
-          ? 1
-          : 0;
-
-    const sampleVariantProperties =
-      loaded.type === 'COMPONENT_SET'
-        ? loaded.defaultVariant?.variantProperties || undefined
-        : loaded.variantProperties || undefined;
-
-    const variantValueMap = collectVariantValueMap(loaded);
-    const definitions = loaded.componentPropertyDefinitions || {};
-
-    const properties: DiscoveredComponentProperty[] = Object.entries(definitions).map(
-      ([propertyName, definition]) => {
-        const displayName = toDisplayPropertyName(propertyName);
-        const property: DiscoveredComponentProperty = {
-          propertyName,
-          displayName,
-          type: definition.type,
-          defaultValue: definition.defaultValue
-        };
-
-        if (definition.type === 'VARIANT') {
-          const fromDefinition = Array.isArray(definition.variantOptions)
-            ? definition.variantOptions.map((value) => String(value))
-            : [];
-          const fromVariants = Array.from(variantValueMap[displayName] || []);
-          const merged = Array.from(new Set([...fromDefinition, ...fromVariants])).filter(Boolean);
-          if (merged.length > 0) {
-            property.variantOptions = merged;
-          }
-        }
-
-        if (definition.type === 'BOOLEAN') {
-          property.variantOptions = ['True', 'False'];
-        }
-
-        if (
-          definition.type === 'INSTANCE_SWAP' &&
-          Array.isArray(definition.preferredValues) &&
-          definition.preferredValues.length > 0
-        ) {
-          property.preferredValues = definition.preferredValues.map((value) => ({
-            type: value.type,
-            key: value.key
-          }));
-        }
-
-        return property;
-      }
-    );
-
-    properties.sort((a, b) => {
-      if (a.type !== b.type) return a.type.localeCompare(b.type);
-      return a.displayName.localeCompare(b.displayName);
-    });
-
-    return {
-      status: 'ok',
-      token: options.token,
-      componentKey,
-      componentName: loaded.type === 'COMPONENT_SET' ? loaded.defaultVariant?.name || loaded.name : loaded.name,
-      componentSetName: loaded.type === 'COMPONENT_SET' ? loaded.name : loaded.parent?.type === 'COMPONENT_SET' ? loaded.parent.name : undefined,
-      nodeType,
-      variantCount,
-      sampleVariantProperties,
-      properties
-    };
+    return buildDiscoveredComponentSchemaResult(loaded, options);
   } catch (error) {
     return {
       status: 'error',
@@ -1084,19 +1179,21 @@ export async function inspectFigmaComponentStructure(
   }
 ): Promise<InspectedComponentStructureResult> {
   const componentKey = String(options.componentKey || '').trim();
-  if (!componentKey) {
+  const componentNodeId = String(options.componentNodeId || '').trim();
+  if (!componentKey && !componentNodeId) {
     return {
       status: 'error',
       token: options.token,
-      componentKey: '',
-      error: 'componentKey is required'
+      componentKey: componentKey || '',
+      error: 'componentKey or componentNodeId is required'
     };
   }
 
   try {
     const loaded = await loadFigmaComponentByKey({
       componentKey,
-      fallbackName: options.fallbackName
+      fallbackName: options.fallbackName,
+      componentNodeId
     });
     const schema = await discoverFigmaComponentSchema(options);
     const schemaProperties = schema.status === 'ok' ? schema.properties : undefined;
@@ -1150,6 +1247,8 @@ export async function inspectFigmaComponentStructure(
             ? loaded.parent.name
             : undefined,
       nodeType: loaded.type,
+      sourceNodeId: schema.status === 'ok' ? schema.sourceNodeId : loaded.id,
+      sourceNodeType: schema.status === 'ok' ? schema.sourceNodeType : loaded.type,
       variantCount: loaded.type === 'COMPONENT_SET' ? variants.length : primaryVariant.variantProperties ? 1 : 0,
       sampleVariantProperties: primaryVariant?.variantProperties || undefined,
       properties: schemaProperties,

@@ -3,7 +3,7 @@
   "id": "figma-ui-agent",
   "api": "1.0.0",
   "main": "dist/code.js",
-  "ui": "dist/src/ui.html",
+  "ui": "dist/ui.html",
   "capabilities": [],
   "enableProposedApi": false,
   "editorType": ["figma", "figjam"]

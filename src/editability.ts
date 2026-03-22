@@ -4,11 +4,7 @@ export const FULL_RERENDER_COMPONENT_IDS = new Set([
   'form',
   'figma-component',
   'button',
-  'input',
-  'select',
   'filter-group',
-  'checkbox',
-  'checkbox-group',
   'radio-group',
   'form-field',
   'tag'
@@ -38,6 +34,10 @@ export const GENERIC_EDITABLE_PARAM_KEYS = new Set([
 export const COMPONENT_EDITABLE_PARAM_KEYS: Record<string, string[]> = {
   layout: ['direction', 'clipsContent'],
   'form-row': ['align']
+};
+
+export const COMPONENT_HIDDEN_PARAM_KEYS: Record<string, Set<string>> = {
+  'form-row': new Set(['paddingBottom', 'align'])
 };
 
 export const GENERATION_ONLY_PARAM_KEYS = new Set([

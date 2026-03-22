@@ -2,16 +2,15 @@ import { COMPONENT_REGISTRY } from "./registry";
 import {
   type ComponentDefinition,
   type ComponentRegistry,
-  type ParamDefinition,
-  REGISTRY_VERSION
+  type ParamDefinition
 } from "./registry.types";
 
 export type RegistryValidationCode =
   | "REGISTRY_INVALID_SHAPE"
-  | "REGISTRY_INVALID_VERSION"
   | "REGISTRY_COMPONENT_ID_MISMATCH"
   | "REGISTRY_PARAM_DEFAULT_TYPE_MISMATCH"
   | "REGISTRY_SELECT_PARAM_INVALID"
+  | "REGISTRY_RUNTIME_SPEC_INVALID"
   | "REGISTRY_SLOT_INVALID";
 
 export interface RegistryValidationIssue {
@@ -27,7 +26,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export function isRegistry(value: unknown): value is ComponentRegistry {
   return (
     isObject(value) &&
-    value.version === REGISTRY_VERSION &&
     isObject(value.components)
   );
 }
@@ -42,6 +40,7 @@ function isDefaultTypeCompatible(param: ParamDefinition): boolean {
     case "color":
     case "enum":
     case "select":
+    case "segmented":
       return typeof param.default === "string";
     case "number":
       return typeof param.default === "number" && Number.isFinite(param.default);
@@ -56,17 +55,12 @@ function isDefaultTypeCompatible(param: ParamDefinition): boolean {
   }
 }
 
+function isPositiveFiniteNumber(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function validateRegistry(registry: ComponentRegistry): RegistryValidationIssue[] {
   const issues: RegistryValidationIssue[] = [];
-
-  if (registry.version !== REGISTRY_VERSION) {
-    issues.push({
-      code: "REGISTRY_INVALID_VERSION",
-      message: `Unsupported registry version '${registry.version}'`,
-      path: "version"
-    });
-    return issues;
-  }
 
   for (const [componentKey, def] of Object.entries(registry.components)) {
     const componentPath = `components.${componentKey}`;
@@ -106,6 +100,75 @@ export function validateRegistry(registry: ComponentRegistry): RegistryValidatio
           message: `Param '${paramKey}' default must be included in enumValues`,
           path: `${componentPath}.params.${paramKey}.default`
         });
+      }
+    }
+
+    if (def.runtime?.sizeMetrics || def.runtime?.sizeMetricsRef) {
+      const sizeParam = def.params.size;
+      if (!sizeParam || (sizeParam.type !== "select" && sizeParam.type !== "enum")) {
+        issues.push({
+          code: "REGISTRY_RUNTIME_SPEC_INVALID",
+          message: "runtime.sizeMetrics requires a select/enum size param",
+          path: `${componentPath}.runtime`
+        });
+      }
+
+      if (def.runtime?.sizeMetricsRef) {
+        const referenced = registry.components[def.runtime.sizeMetricsRef];
+        if (!referenced) {
+          issues.push({
+            code: "REGISTRY_RUNTIME_SPEC_INVALID",
+            message: `runtime.sizeMetricsRef '${def.runtime.sizeMetricsRef}' does not exist`,
+            path: `${componentPath}.runtime.sizeMetricsRef`
+          });
+        }
+      }
+
+      if (def.runtime?.sizeMetrics) {
+        const metricEntries = Object.entries(def.runtime.sizeMetrics);
+        if (metricEntries.length === 0) {
+          issues.push({
+            code: "REGISTRY_RUNTIME_SPEC_INVALID",
+            message: "runtime.sizeMetrics must not be empty",
+            path: `${componentPath}.runtime.sizeMetrics`
+          });
+        }
+
+        const enumValues = Array.isArray(sizeParam?.enumValues) ? sizeParam.enumValues : [];
+        for (const [sizeKey, metrics] of metricEntries) {
+          if (enumValues.length > 0 && !enumValues.includes(sizeKey)) {
+            issues.push({
+              code: "REGISTRY_RUNTIME_SPEC_INVALID",
+              message: `runtime.sizeMetrics key '${sizeKey}' must exist in params.size.enumValues`,
+              path: `${componentPath}.runtime.sizeMetrics.${sizeKey}`
+            });
+          }
+          if (!isObject(metrics)) {
+            issues.push({
+              code: "REGISTRY_RUNTIME_SPEC_INVALID",
+              message: `runtime.sizeMetrics '${sizeKey}' must be an object`,
+              path: `${componentPath}.runtime.sizeMetrics.${sizeKey}`
+            });
+            continue;
+          }
+          for (const metricKey of ["height", "paddingX", "paddingY", "fontSize", "cornerRadius"]) {
+            if (!isPositiveFiniteNumber(metrics[metricKey])) {
+              issues.push({
+                code: "REGISTRY_RUNTIME_SPEC_INVALID",
+                message: `runtime.sizeMetrics '${sizeKey}.${metricKey}' must be a positive number`,
+                path: `${componentPath}.runtime.sizeMetrics.${sizeKey}.${metricKey}`
+              });
+            }
+          }
+        }
+
+        if (sizeParam?.default !== undefined && !def.runtime.sizeMetrics[String(sizeParam.default)]) {
+          issues.push({
+            code: "REGISTRY_RUNTIME_SPEC_INVALID",
+            message: "params.size.default must exist in runtime.sizeMetrics",
+            path: `${componentPath}.runtime.sizeMetrics`
+          });
+        }
       }
     }
 
