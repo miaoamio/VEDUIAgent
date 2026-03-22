@@ -2,6 +2,8 @@
 
 > 📚 **文档导航：** 本份文件是开发 AI 的行为规范入口。完整的工程规范文档在 [`docs/for-dev-ai/README_CN.md`](docs/for-dev-ai/README_CN.md)，运行时 AI 规范在 [`docs/for-runtime-ai/README_CN.md`](docs/for-runtime-ai/README_CN.md)。
 
+> ⭐ **指导思想：** 遇到"应该怎么做"、"放哪里"、"哪个文档对"的疑问，先看 [`docs/NORTH_STAR.md`](docs/NORTH_STAR.md)。它是唯一的架构决策文档，其他文档均不得与之矛盾。
+
 ## Working Style
 - 请使用第一性原理思考。不要假设用户已经给出了最短路径或完整约束。
 - 如果目标不清晰，先澄清目标；如果目标清晰但路径不是最短，直接指出并采用更短路径。

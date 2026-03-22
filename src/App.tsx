@@ -25,9 +25,10 @@ import {
 import { Tooltip } from './ui/Tooltip';
 import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-tokens';
 import { BASE_TYPOGRAPHY_TOKEN_PACK, SEMANTIC_TYPOGRAPHY_TOKEN_PACK } from './theme.typography-tokens';
-import { BASE_COMPONENT_TOKEN_PACK, SEMANTIC_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
+import { BASE_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
 import { SPEC_COMPONENT_TOKEN_MAP } from './spec.component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
+import { buildFormComponentFromPayload as buildFormComponentFromPayloadSkill } from './engine/skills/form.skill';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 const isEnabledComponent = (def: ComponentDefinition) => (
@@ -2113,15 +2114,14 @@ StepD:
           specsInfo += `Examples:\n${examples.map(ex => `- ${ex}`).join('\n')}\n`;
         }
         if (id === 'figma-component') {
-          const tokenRows = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK)
+          const tokenRows = Object.entries(BASE_COMPONENT_TOKEN_PACK)
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([token, semantic]) => {
-              const base = BASE_COMPONENT_TOKEN_PACK[semantic.baseToken];
+            .map(([token, base]) => {
               return {
                 token,
-                baseToken: semantic.baseToken,
+                baseToken: token,
                 componentKey: base?.componentKey || '',
-                displayName: base?.displayName || semantic.baseToken,
+                displayName: base?.displayName || token,
                 category: base?.category || '-'
               };
             });
@@ -3482,13 +3482,7 @@ StepD:
     const raw = String(value || '').trim();
     if (!raw) return '';
     const normalized = normalizeFormControlLookupValue(raw);
-    if (SEMANTIC_COMPONENT_TOKEN_PACK[normalized]) return normalized;
-    if (BASE_COMPONENT_TOKEN_PACK[normalized]) {
-      const semanticToken = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK).find(
-        ([, semantic]) => semantic.baseToken === normalized
-      )?.[0];
-      return semanticToken || normalized;
-    }
+    if (BASE_COMPONENT_TOKEN_PACK[normalized]) return normalized;
     return resolveFormLibraryControlRule(normalized)?.token || raw;
   };
 
@@ -3611,6 +3605,7 @@ StepD:
     };
   };
 
+  // @deprecated → 已迁移到 engine/skills/form.skill.ts
   const buildNormalizedFormComponentFromSource = (
     formSource: any,
     options?: { defaultWidth?: number; forcedTitle?: string }
@@ -4195,6 +4190,7 @@ StepD:
     };
   };
 
+  // @deprecated → 已迁移到 engine/skills/form.skill.ts，此处仅供 buildFormBlockComponentFromPayload 临时使用
   const buildFormComponentFromPayload = (payload: any): any | null => {
     const source = getBlockSource(payload);
     if (!source) return null;
@@ -5265,7 +5261,7 @@ StepD:
       const token = typeof param?.default === 'string' ? param.default.trim() : '';
       if (token) {
         addTokenMapping(token, def.id);
-        const semanticProfile = SEMANTIC_COMPONENT_TOKEN_PACK[token];
+        const semanticProfile = null as any;
         if (semanticProfile?.baseToken) {
           addTokenMapping(semanticProfile.baseToken, def.id);
         }
@@ -6517,7 +6513,7 @@ StepD:
                   actionTaskId,
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
-                const formComponent = buildFormComponentFromPayload(payload?.form ?? payload);
+                const formComponent = buildFormComponentFromPayloadSkill(payload?.form ?? payload);
 
                 if (!formComponent) {
                     const invalidMsg = `[System]: Invalid draw_form payload. Required: { rows?: any[][], fields?: any[], layout?: string, footer?: { actions?: any[] } }.`;
@@ -7863,7 +7859,7 @@ StepD:
       const baseTypographyTokenEntries = Object.entries(BASE_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
       const semanticTypographyTokenEntries = Object.entries(SEMANTIC_TYPOGRAPHY_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
       const baseComponentTokenEntries = Object.entries(BASE_COMPONENT_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
-      const semanticComponentTokenEntries = Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const semanticComponentTokenEntries: any[] = [];
 
       const grouped: {[key: string]: ComponentDefinition[]} = {};
       allDefs.forEach(def => {
@@ -8633,7 +8629,7 @@ StepD:
       const token = String(selectedComponent.params?.componentToken || '').trim();
       const componentKey = String(selectedComponent.params?.componentKey || '').trim();
       if (token) {
-        const semanticProfile = SEMANTIC_COMPONENT_TOKEN_PACK[token];
+        const semanticProfile = null as any;
         const baseToken = semanticProfile?.baseToken || token;
         const baseProfile = BASE_COMPONENT_TOKEN_PACK[baseToken];
         const tokenName = baseProfile?.displayName || baseToken;

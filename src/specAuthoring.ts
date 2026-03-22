@@ -1,10 +1,6 @@
 import { parseAiSceneEnvelope, type AiSceneEnvelope } from './protocol/scene';
 import { validateRegistry } from './registry.loader';
-import {
-  REGISTRY_VERSION,
-  type ComponentDefinition,
-  type ComponentRegistry
-} from './registry.types';
+import { type ComponentDefinition, type ComponentRegistry } from './registry.types';
 
 export interface AiSpecTestCase {
   name: string;
@@ -14,7 +10,6 @@ export interface AiSpecTestCase {
 }
 
 export interface AiComponentSpecPackage {
-  registryVersion: typeof REGISTRY_VERSION;
   component: ComponentDefinition;
   tests?: AiSpecTestCase[];
   meta?: {
@@ -50,7 +45,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 export function buildRegistryFromSpecPackage(pkg: AiComponentSpecPackage): ComponentRegistry {
   return {
-    version: REGISTRY_VERSION,
     components: {
       [pkg.component.id]: pkg.component
     },
@@ -71,14 +65,6 @@ function validatePackageShape(pkg: unknown): AiSpecIssue[] {
       message: 'Spec package must be an object'
     });
     return issues;
-  }
-
-  if (pkg.registryVersion !== REGISTRY_VERSION) {
-    issues.push({
-      code: 'SPEC_INVALID_VERSION',
-      message: `registryVersion must be '${REGISTRY_VERSION}'`,
-      path: 'registryVersion'
-    });
   }
 
   if (!isObject(pkg.component) || typeof pkg.component.id !== 'string' || !pkg.component.id) {

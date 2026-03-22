@@ -1,8 +1,4 @@
-export const REGISTRY_VERSION = "2.0" as const;
-
-export type RegistryVersion = typeof REGISTRY_VERSION;
-
-export type ComponentCategory = "Layout" | "Basic" | "Form" | "Table" | "Data" | "Other";
+export type ComponentCategory = "Layout" | "Basic" | "Form" | "Table" | "Data" | "Icon" | "Other";
 
 export type ParamType =
   | "string"
@@ -84,9 +80,15 @@ export interface FigmaPropertySnapshot {
   token?: string;
   componentKey: string;
   inspectedAt: string;
-  source: "discover_component_props";
+  source: "discover_component_props" | "inspect_live_instance";
+  sourceNodeId?: string;
+  sourceNodeType?: "COMPONENT" | "COMPONENT_SET";
+  componentName?: string;
+  componentSetName?: string;
   properties: FigmaPropertyDefinition[];
 }
+
+export type FigmaPropertySnapshotCatalog = Record<string, FigmaPropertySnapshot>;
 
 export interface ColorVariableBinding {
   enabled: boolean;
@@ -104,6 +106,36 @@ export interface TypographyBinding {
   keyCandidates?: string[];
   idCandidates?: string[];
   nameCandidates?: string[];
+}
+
+export interface SizeMetricDefinition {
+  height: number;
+  paddingX: number;
+  paddingY: number;
+  fontSize: number;
+  cornerRadius: number;
+  lineHeight?: number;
+  gap?: number;
+  iconSize?: number;
+  dotSize?: number;
+  glyphSize?: number;
+}
+
+export interface ComponentRuntimeDefinition {
+  sizeMetrics?: Record<string, SizeMetricDefinition>;
+  sizeMetricsRef?: string;
+  spacing?: Record<string, number>;
+  fallback?: {
+    width?: number;
+    height?: number;
+  };
+}
+
+export interface RenderNotes {
+  actionHint?: string;
+  paramRules?: string[];
+  commonErrors?: string[];
+  agentHints?: string[];
 }
 
 export interface MigrationRule {
@@ -135,13 +167,15 @@ export interface ComponentDefinition {
   capabilities?: CapabilityDefinition;
   figmaBinding?: FigmaBinding;
   figmaPropertySnapshot?: FigmaPropertySnapshot;
+  figmaPropertySnapshotCatalog?: FigmaPropertySnapshotCatalog;
   colorVariableBindings?: Record<string, ColorVariableBinding>;
   typographyBindings?: Record<string, TypographyBinding>;
+  runtime?: ComponentRuntimeDefinition;
+  renderNotes?: RenderNotes;
   migrations?: MigrationRule[];
 }
 
 export interface ComponentRegistry {
-  version: RegistryVersion;
   components: Record<string, ComponentDefinition>;
   meta?: {
     updatedAt?: string;

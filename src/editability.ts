@@ -4,11 +4,7 @@ export const FULL_RERENDER_COMPONENT_IDS = new Set([
   'form',
   'figma-component',
   'button',
-  'input',
-  'select',
   'filter-group',
-  'checkbox',
-  'checkbox-group',
   'radio-group',
   'form-field',
   'tag'

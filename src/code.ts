@@ -17,7 +17,6 @@ import { resolveColorTokenProfile } from './theme.color-tokens';
 import { resolveTypographyTokenProfile } from './theme.typography-tokens';
 import {
   BASE_COMPONENT_TOKEN_PACK,
-  SEMANTIC_COMPONENT_TOKEN_PACK,
   resolveComponentTokenProfile
 } from './theme.component-tokens';
 import { createInspectDrivenTagFallbackNode } from './tag.fallback';
@@ -969,88 +968,45 @@ function removePaginationRow(tableRoot: FrameNode) {
 
 function findTableContentStack(tableRoot: FrameNode): FrameNode | null {
     const existing = tableRoot.children.find(
-        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'content-stack'
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'table-content'
     );
     return existing && existing.type === 'FRAME' ? (existing as FrameNode) : null;
 }
 
 function ensureTableContentStack(tableRoot: FrameNode, tableContent: FrameNode): FrameNode {
-    const width = tableContent.width;
-    let stack = findTableContentStack(tableRoot);
-    if (!stack) {
-        stack = figma.createFrame();
-        stack.setPluginData('table-role', 'content-stack');
-        stack.name = 'Table Content';
-        stack.layoutMode = 'VERTICAL';
-        stack.primaryAxisSizingMode = 'AUTO';
-        stack.counterAxisSizingMode = 'FIXED';
-        stack.itemSpacing = 20;
-        stack.layoutAlign = 'STRETCH';
-        stack.fills = [];
-        stack.clipsContent = false;
-        stack.resize(width, 1);
-        // Some Figma versions reset sizing modes when resize() is called.
-        stack.primaryAxisSizingMode = 'AUTO';
-        stack.counterAxisSizingMode = 'FIXED';
-        if ('layoutSizingHorizontal' in stack) {
-            try {
-                (stack as any).layoutSizingHorizontal = 'FILL';
-            } catch {
-                // ignore
-            }
+    tableRoot.layoutMode = 'VERTICAL';
+    tableRoot.primaryAxisSizingMode = 'AUTO';
+    tableRoot.counterAxisSizingMode = 'FIXED';
+    tableRoot.itemSpacing = 0;
+    tableRoot.layoutAlign = 'STRETCH';
+    tableRoot.fills = [];
+    tableRoot.clipsContent = false;
+    if ('layoutSizingHorizontal' in tableRoot) {
+        try {
+            (tableRoot as any).layoutSizingHorizontal = 'FILL';
+        } catch {
         }
-        if ('layoutSizingVertical' in stack) {
-            try {
-                (stack as any).layoutSizingVertical = 'HUG';
-            } catch {
-                // ignore
-            }
+    }
+    if ('layoutSizingVertical' in tableRoot) {
+        try {
+            (tableRoot as any).layoutSizingVertical = 'HUG';
+        } catch {
         }
+    }
 
+    if (tableContent.parent !== tableRoot) {
         const paginationRow = findPaginationRow(tableRoot);
         const insertionIndex = paginationRow ? tableRoot.children.indexOf(paginationRow) : tableRoot.children.length;
-        tableRoot.insertChild(insertionIndex >= 0 ? insertionIndex : tableRoot.children.length, stack);
-    } else {
-        // Keep stack config stable.
-        stack.layoutMode = 'VERTICAL';
-        stack.primaryAxisSizingMode = 'AUTO';
-        stack.counterAxisSizingMode = 'FIXED';
-        stack.itemSpacing = 20;
-        stack.layoutAlign = 'STRETCH';
-        stack.fills = [];
-        stack.clipsContent = false;
-        if (Number.isFinite(width) && width > 0) {
-            try {
-                stack.resize(width, stack.height);
-            } catch {
-                // ignore
-            }
-        }
-        if ('layoutSizingHorizontal' in stack) {
-            try {
-                (stack as any).layoutSizingHorizontal = 'FILL';
-            } catch {
-                // ignore
-            }
-        }
-        if ('layoutSizingVertical' in stack) {
-            try {
-                (stack as any).layoutSizingVertical = 'HUG';
-            } catch {
-                // ignore
-            }
-        }
+        tableRoot.insertChild(insertionIndex >= 0 ? insertionIndex : tableRoot.children.length, tableContent);
     }
 
-    if (tableContent.parent !== stack) {
-        try {
-            stack.appendChild(tableContent);
-        } catch {
-            // ignore
-        }
+    if (tableContent !== tableRoot) {
+        tableRoot.name = 'Table';
+        tableContent.name = 'Table Content';
+        tableContent.setPluginData('table-role', 'table-content');
     }
 
-    // Ensure the inner table expands horizontally inside the stack.
+    // Ensure the inner table expands horizontally inside the root.
     try {
         tableContent.layoutAlign = 'STRETCH';
     } catch {
@@ -1071,7 +1027,7 @@ function ensureTableContentStack(tableRoot: FrameNode, tableContent: FrameNode):
         }
     }
 
-    return stack;
+    return tableRoot;
 }
 
 function detectTableActualState(tableRoot: FrameNode): {
@@ -1087,16 +1043,13 @@ function detectTableActualState(tableRoot: FrameNode): {
         hasPagination: false
     };
 
-    const contentStack = findTableContentStack(tableRoot);
-    if (contentStack) {
-        const toolbar = contentStack.children.find(
-            (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
-        ) as FrameNode | undefined;
-        if (toolbar) {
-            result.hasButtonGroup = toolbar.children.some(c => c.getPluginData('table-role') === 'button-group');
-            result.hasFilter = toolbar.children.some(c => c.getPluginData('table-role') === 'filter-group');
-            result.hasTabs = toolbar.children.some(c => c.getPluginData('table-role') === 'tabs');
-        }
+    const toolbar = tableRoot.children.find(
+        (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
+    ) as FrameNode | undefined;
+    if (toolbar) {
+        result.hasButtonGroup = toolbar.children.some(c => c.getPluginData('table-role') === 'button-group');
+        result.hasFilter = toolbar.children.some(c => c.getPluginData('table-role') === 'filter-group');
+        result.hasTabs = toolbar.children.some(c => c.getPluginData('table-role') === 'tabs');
     }
 
     result.hasPagination = !!findPaginationRow(tableRoot);
@@ -1450,7 +1403,7 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
     // Prevent re-wrapping if the frame is already a wrapper (has managed children)
     if (tableFrame.children.some((child) => 
         child.type === 'FRAME' && 
-        ['filter-group', 'content-stack', 'pagination-row'].includes(child.getPluginData('table-role'))
+        ['filter-group', 'toolbar', 'pagination-row', 'table-content'].includes(child.getPluginData('table-role'))
     )) {
         return tableFrame;
     }
@@ -1459,11 +1412,11 @@ function createTableWrapperFromTableFrame(tableFrame: FrameNode, params: Record<
     if (!parent || !('insertChild' in parent) || !('children' in parent)) return null;
 
     const wrapper = figma.createFrame();
-    wrapper.name = tableFrame.name;
+    wrapper.name = 'Table';
     wrapper.layoutMode = 'VERTICAL';
     wrapper.primaryAxisSizingMode = 'AUTO';
     wrapper.counterAxisSizingMode = 'FIXED';
-    wrapper.itemSpacing = 16;
+    wrapper.itemSpacing = 0;
     wrapper.fills = [];
     clearNodeStrokes(wrapper);
     wrapper.clipsContent = false;
@@ -4782,6 +4735,9 @@ async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Re
     ) || contentContainer.children.find(isLikelyFormFieldControlNode);
     if (!existingControlNode) return false;
 
+    // #region debug-point D:form-field-control-existing
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"D",location:"code.ts:4780",msg:"[DEBUG] existing control in template",data:{controlType:normalizeFormFieldControlType(params.controlType),nodeType:existingControlNode.type,width:existingControlNode.width,height:existingControlNode.height}})}).catch(()=>{});
+    // #endregion
     setNodeClipsContent(existingControlNode, false);
 
     const controlType = normalizeFormFieldControlType(params.controlType);
@@ -4891,6 +4847,9 @@ async function createFormFieldFromFigmaTemplate(
     params: Record<string, any>
 ): Promise<SceneNode | null> {
     const layout = resolveFormFieldLayout(params);
+    // #region debug-point E:form-field-template-enter
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"E",location:"code.ts:4893",msg:"[DEBUG] enter createFormFieldFromFigmaTemplate",data:{layout,controlType:normalizeFormFieldControlType(params.controlType),labelWidthAuto:Boolean(params.labelWidthAuto)}})}).catch(()=>{});
+    // #endregion
     if (params.labelWidthAuto && layout !== 'vertical') {
         return null;
     }
@@ -4930,6 +4889,9 @@ async function createFormFieldFromFigmaTemplate(
 
         if (!templateInstance) return null;
 
+        // #region debug-point F:form-field-template-instance
+        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"F",location:"code.ts:4931",msg:"[DEBUG] template instance created",data:{instanceWidth:templateInstance.width,instanceHeight:templateInstance.height,layout,controlType}})}).catch(()=>{});
+        // #endregion
         relaxFormFieldTemplateClipping(templateInstance);
         await updateFormFieldLabelTemplate(templateInstance, params);
         const updatedInPlace = !instance.children?.length
@@ -4938,6 +4900,9 @@ async function createFormFieldFromFigmaTemplate(
         await updateFormFieldMessageTemplate(templateInstance, params);
         if (updatedInPlace) {
             templateInstance.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
+            // #region debug-point G:form-field-template-updated
+            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"G",location:"code.ts:4940",msg:"[DEBUG] template updated in place",data:{width:templateInstance.width,height:templateInstance.height,layout,controlType}})}).catch(()=>{});
+            // #endregion
             return templateInstance;
         }
 
@@ -4947,6 +4912,9 @@ async function createFormFieldFromFigmaTemplate(
         await replaceFormFieldControlTemplate(detached, instance, params);
         await updateFormFieldMessageTemplate(detached, params);
         detached.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
+        // #region debug-point H:form-field-template-detached
+        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"H",location:"code.ts:4949",msg:"[DEBUG] template detached",data:{width:detached.width,height:detached.height,layout,controlType}})}).catch(()=>{});
+        // #endregion
         return detached;
     } catch (e) {
         console.warn('[FormFieldTemplate] failed to create form field from original Figma template', e);
@@ -7630,6 +7598,9 @@ async function renderComponent(
     const controlNode = instance.children && instance.children.length > 0
       ? await renderComponent(instance.children[0], { isRoot: false })
       : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
+    // #region debug-point I:form-field-control-node
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"I",location:"code.ts:7630",msg:"[DEBUG] form-field fallback control node",data:{controlType:normalizeFormFieldControlType(params.controlType),nodeType:controlNode.type,width:controlNode.width,height:controlNode.height}})}).catch(()=>{});
+    // #endregion
     controlColumn.appendChild(controlNode);
 
     const messageText = String(params.errorText || params.descriptionText || params.helpText || '').trim();
@@ -7677,6 +7648,8 @@ async function renderComponent(
       frame.resize(params.width || 1176, 100);
       frame.cornerRadius = params.cornerRadius || 0;
       frame.clipsContent = true;
+      frame.name = 'Table Content';
+      frame.setPluginData('table-role', 'table-content');
       const tableColumnInstances: ComponentInstance[] =
           instance.children && instance.children.length > 0
               ? instance.children
@@ -7842,12 +7815,12 @@ async function renderComponent(
       if (params.rowAction) {
           await applyRowActionColumn(frame, String(params.rowAction));
       }
-        if (wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) {
+      if (wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) {
           const wrapper = createTableWrapperFromTableFrame(frame, params) || frame.parent as FrameNode;
-          const contentStack = ensureTableContentStack(wrapper, frame);
+          ensureTableContentStack(wrapper, frame);
 
           if (wantsFilter || wantsTabs || wantsButtonGroup) {
-              await ensureTableToolbar(contentStack, wrapper.width, {
+              await ensureTableToolbar(wrapper, wrapper.width, {
                   hasFilter: wantsFilter,
                   hasTabs: wantsTabs,
                   hasButtonGroup: wantsButtonGroup,
@@ -7856,7 +7829,7 @@ async function renderComponent(
                   secondaryButtonText: params.secondaryButtonText
               });
           } else {
-              removeTableToolbar(contentStack);
+              removeTableToolbarFromParent(wrapper);
           }
 
           if (wantsPagination) {
@@ -7867,12 +7840,10 @@ async function renderComponent(
           node = wrapper;
       } else {
           // Cleanup if needed (remove wrapper/pagination/filter if they exist but are disabled)
-          const stack = findTableContentStack(frame.parent as FrameNode);
-          if (stack) {
-             removeTableToolbar(stack);
-             // If stack becomes empty or only has table, we might want to unwrap (omitted for safety)
+          if (frame.parent && frame.parent.type === 'FRAME') {
+              removeTableToolbarFromParent(frame.parent as FrameNode);
+              removePaginationRow(frame.parent as FrameNode);
           }
-          removePaginationRow(frame.parent as FrameNode);
           node = frame;
       }
       const borderWidth = Number(params.borderWidth ?? 0);
@@ -8874,8 +8845,7 @@ function resolveInspectionTargets(payload: any): Array<{
   };
 
   if (includeAll) {
-    Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK).forEach(([token, semantic]) => {
-      const base = BASE_COMPONENT_TOKEN_PACK[semantic.baseToken];
+    Object.entries(BASE_COMPONENT_TOKEN_PACK).forEach(([token, base]) => {
       if (!base?.componentKey) return;
       targets.push({
         token,
@@ -8897,7 +8867,7 @@ function resolveInspectionTargets(payload: any): Array<{
       });
     });
   } else {
-    Object.entries(SEMANTIC_COMPONENT_TOKEN_PACK).forEach(([token]) => pushToken(token));
+    Object.entries(BASE_COMPONENT_TOKEN_PACK).forEach(([token]) => pushToken(token));
   }
 
   const dedup = new Set<string>();
@@ -10031,6 +10001,9 @@ figma.ui.onmessage = async (msg) => {
 	            // Keep inner table params in sync so sizing / row-action helpers read correct values.
 	            if (tableContent !== tableRoot) {
 	                writeNodeParams(tableContent, params);
+            } else {
+                tableRoot.name = 'Table Content';
+                tableRoot.setPluginData('table-role', 'table-content');
 	            }
 
 	            const wantsPagination = params.hasPagination === true;
@@ -10060,8 +10033,8 @@ figma.ui.onmessage = async (msg) => {
             if (wantsFilter || wantsTabs || wantsButtonGroup) {
                 tableContent = resolveTableContentFrame(tableRoot);
                 if (tableContent !== tableRoot) {
-                    const contentStack = ensureTableContentStack(tableRoot, tableContent);
-                    await ensureTableToolbar(contentStack, tableContent.width, {
+                    ensureTableContentStack(tableRoot, tableContent);
+                    await ensureTableToolbar(tableRoot, tableContent.width, {
                         hasFilter: wantsFilter,
                         hasTabs: wantsTabs,
                         hasButtonGroup: wantsButtonGroup,
@@ -10079,10 +10052,7 @@ figma.ui.onmessage = async (msg) => {
                     figma.ui.postMessage({ type: 'action-done', message: '无法为表格添加工具栏：缺少可写入的父容器' });
                 }
             } else {
-                const contentStack = findTableContentStack(tableRoot);
-                if (contentStack) {
-                    removeTableToolbar(contentStack);
-                }
+                removeTableToolbarFromParent(tableRoot);
                 if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
                     removeTableToolbarFromParent(tableRoot.parent as FrameNode);
                 }

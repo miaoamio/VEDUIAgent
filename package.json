@@ -5,12 +5,11 @@
   "main": "dist/code.js",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "vite --config vite.admin.config.ts",
     "build": "npm run build:ui && npm run build:main",
     "build:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
     "build:ui": "vite build",
-    "spec:param:audit": "node scripts/registry-param-audit.mjs",
-    "spec:snapshot:apply": "node scripts/apply-component-spec-patch.mjs",
-    "spec:snapshot:status": "node scripts/component-snapshot-status.mjs",
+    "build:admin": "vite build --config vite.admin.config.ts",
     "watch": "concurrently \"npm run watch:main\" \"npm run watch:ui\"",
     "watch:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6 --watch",
     "watch:ui": "vite build --watch"

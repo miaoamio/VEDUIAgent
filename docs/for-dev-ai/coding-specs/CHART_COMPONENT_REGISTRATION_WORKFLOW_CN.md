@@ -3,7 +3,7 @@
 ## 1. 目标
 将图表类 Figma 组件（如饼图）稳定登记到 Registry 生态中，确保：
 - LLM 通过组件 token 正确定位到 `figma-component`
-- `discover_component_props` 结果可回填为 `figmaPropertySnapshot`
+- `discover_component_props` 结果可回填为 `figmaPropertySnapshotCatalog`
 - 运行时不再“未读 spec 就猜参数”
 
 ## 2. 适用范围
@@ -30,12 +30,12 @@
 
 4. 回填快照  
    `npm run spec:snapshot:apply -- <Spec Patch JSON 路径>`  
-   目标是把 `figmaPropertySnapshot` 写入 `src/registry.ts` 的 `figma-component`。
+   目标是把对应 token 的快照写入 `src/registry.ts` 的 `figma-component.figmaPropertySnapshotCatalog`。
 
 5. 验证  
    - `npm run build`  
    - 在聊天中执行 `read_specs(["figma-component"])`，确认返回包含快照字段  
-   - `npm run spec:snapshot:status` 中该组件 `hasSnapshot=yes`
+   - `npm run spec:snapshot:status` 中该组件 `hasSnapshot=yes` 且 `snapshotCatalogCount` 增长
 
 ## 5. 运行时使用规范（避免“未读 spec”）
 1. 必须先读 `figma-component` 规范  

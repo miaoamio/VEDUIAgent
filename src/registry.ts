@@ -1,7 +1,6 @@
 import type { ComponentRegistry } from "./registry.types";
 
 export const COMPONENT_REGISTRY: ComponentRegistry = {
-  "version": "2.0",
   "components": {
     "page": {
       "id": "page",
@@ -62,6 +61,15 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "nodeType": "FRAME",
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "page"
+      },
+      "runtime": {
+        "spacing": {
+          "topNavHeight": 48,
+          "sideNavWidth": 200,
+          "contentPadding": 32,
+          "contentSpacing": 20,
+          "topNavPadding": 20
+        }
       },
       "typographyBindings": {
         "page-title-text-style-key": {
@@ -182,8 +190,6 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             "text",
             "tag",
             "button",
-            "input",
-            "select",
             "card",
             "figma-component"
           ],
@@ -740,6 +746,11 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "table-cell-avatar"
       },
+      "runtime": {
+        "spacing": {
+          "avatarSize": 20
+        }
+      },
       "colorVariableBindings": {
         "table-cell-bg-key": {
           "enabled": true,
@@ -893,7 +904,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "placeholder": {
           "type": "string",
-          "default": "Enter text...",
+          "default": "已输入",
           "description": "占位符"
         }
       },
@@ -980,7 +991,93 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         }
       }
     },
-    "table-cell-action-text": {
+    "table-cell-select": {
+    "id": "table-cell-select",
+    "name": "Select 选择器",
+    "category": "Table",
+    "description": "包含选择器(Select)的表格单元格",
+    "schemaVersion": "2.0.0",
+    "family": "table-cell",
+    "prompts": {
+      "description": "包含选择器(Select)的表格单元格",
+      "usage": "用于在表格中显示下拉选择器，通常用于允许用户在表格内直接修改某些状态或选项。",
+      "examples": [
+        "选择器单元格: { \"componentId\": \"table-cell-select\", \"params\": { \"text\": \"选项一\" } }"
+      ]
+    },
+    "params": {
+      "text": {
+        "type": "string",
+        "default": "请选择",
+        "description": "选择器显示文本"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-select"
+    }
+  },
+  "table-cell-action-text": {
       "id": "table-cell-action-text",
       "name": "ActionText 操作文字",
       "category": "Table",
@@ -1529,6 +1626,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             "table-cell-tag",
             "table-cell-avatar",
             "table-cell-input",
+            "table-cell-select",
             "table-cell-action-text",
             "table-cell-action-icon"
           ],
@@ -1560,10 +1658,19 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "schemaVersion": "2.0.0",
       "prompts": {
         "description": "由多个列组成的完整表格",
-        "usage": "用于创建标准数据表格。它水平排列多个 table-column。如果你需要自定义表头，请通过 children 传入具体的 table-column 节点并设置其 headerText。如果不传 children，将根据 columnCount 自动生成默认表头。重要：如果你传入了 children（即自定义列），请确保传入所有需要的列，不要设置 columnCount，否则可能会导致列重复。这是创建表格的唯一入口，不要使用 layout 拼凑表格。",
+        "usage": "表格创建优先走 draw_table(payload)（不要输出冗长 table 子树）。\n- 当目标是创建新表格时，直接调用 draw_table。\n- 如果是“新建表格”，禁止输出 apply_scene(table-root)。\n- draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。\n- 支持直接定义表格工具栏与分页：\n  - 若需标签页，请在 payload 中添加 \"tabs\": [\"全部\", \"进行中\"] 或 \"hasTabs\": true。\n  - 若需筛选器，请在 payload 中添加 \"filters\": [\"状态\", \"城市\", \"关键词\"] 或字符串。\n  - 若需按钮组，请在 payload 中添加 \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" } 或 \"hasButtonGroup\": true。\n  - 分页器默认启用；若需关闭，请显式设置 \"pagination\": false。\n  - 不要为此拆分任务，直接在一个 draw_table 动作中完成。\n- 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 \"rowAction\": \"multiple\"。\n- 单选列请使用 \"rowAction\": \"single\"。\n- 不要把勾选列写进 headers/rows/columnTypes。\n- 标签列（Tag）请显式区分两类：\n  - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：{ \"text\": \"启用\", \"statusTheme\": \"Success 成功\" } 或 { \"statusText\": \"禁用\", \"statusColor\": \"red\" }\n  - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：{ \"text\": \"企业\", \"tagType\": \"Outline 线型标签\" }\n- 兼容：旧的 columnTypes \"Tag\" 视为 \"StatusTag\"。\n- 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 \"ActionText\" 或 \"ActionIcon\"。\n- 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：\n @@table_stream {\"event\":\"table_start\",\"headers\":[\"姓名\",\"年龄\"],\"rows\":[[\"张三\",28]],\"columnTypes\":[\"Text\",\"Text\"],\"rowHeight\":{\"header\":40,\"body\":40}}\n @@table_stream {\"event\":\"table_row\",\"row\":[\"李四\",32]}\n @@table_stream {\"event\":\"table_done\"}\n- 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。",
         "examples": [
-          "创建 3列10行表格: { \"componentId\": \"table\", \"params\": { \"columnCount\": 3, \"rowCount\": 10 } }",
-          "创建包含特定表头的表格（必须包含所有列）: { \"componentId\": \"table\", \"children\": [ { \"componentId\": \"table-column\", \"params\": { \"headerText\": \"姓名\", \"width\": 100 } }, { \"componentId\": \"table-column\", \"params\": { \"headerText\": \"年龄\", \"width\": 60 } }, { \"componentId\": \"table-column\", \"params\": { \"headerText\": \"城市\", \"width\": 100 } } ] }"
+          "标准表格: { \"headers\": [\"姓名\", \"年龄\", \"城市\"], \"rows\": [[\"张三\", \"28\", \"北京\"], [\"李四\", \"32\", \"上海\"]], \"columnTypes\": [\"Text\", \"Text\", \"Text\"], \"tabs\": [\"全部\", \"进行中\"], \"filters\": [\"状态\", \"城市\", \"关键词\"], \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" }, \"pagination\": true, \"rowHeight\": { \"header\": 40, \"body\": 40 } }"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "新建表格必须使用 draw_table payload { headers, rows, columnTypes?, columnWidths? }，避免输出 apply_scene 的表格子树。",
+        "paramRules": [
+          "若消息里出现 \"表格结构(JSON)\"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。",
+          "若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。"
+        ],
+        "commonErrors": [
+          "新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。"
         ]
       },
       "params": {
@@ -1672,6 +1779,46 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "table"
       },
+      "runtime": {
+        "sizeMetrics": {
+          "mini": {
+            "height": 32,
+            "paddingX": 12,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 8
+          },
+          "default": {
+            "height": 40,
+            "paddingX": 12,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 8
+          },
+          "medium": {
+            "height": 48,
+            "paddingX": 12,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 8
+          },
+          "large": {
+            "height": 56,
+            "paddingX": 12,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 8
+          }
+        },
+        "spacing": {
+          "rowActionPaddingLeft": 16,
+          "rowActionPaddingRight": 8,
+          "rowActionWidth": 35,
+          "rowActionSwitchWidth": 60,
+          "rowActionIconSize": 14,
+          "headerIconSize": 12
+        }
+      },
       "colorVariableBindings": {
         "table-border-key": {
           "enabled": true,
@@ -1698,6 +1845,19 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "examples": [
           "按 token 导入表头组件: { \"componentId\": \"figma-component\", \"params\": { \"componentToken\": \"table.header.main\" } }",
           "按 key 导入指定变体: { \"componentId\": \"figma-component\", \"params\": { \"componentKey\": \"YOUR_COMPONENT_SET_KEY\", \"variantCriteria\": \"{\\\"Size\\\":\\\"Large\\\",\\\"State\\\":\\\"Default\\\"}\" } }"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "优先使用 RegisteredFigmaPropertySnapshotCatalog 中已有的属性快照；仅在目标 token 缺失或属性不足时调用 discover_component_props。",
+        "paramRules": [
+          "优先使用 params.componentToken，componentKey 仅作为 fallback",
+          "除非用户明确要求尺寸，不要输出 width/height"
+        ],
+        "commonErrors": [
+          "属性探测失败时不要猜测属性名"
+        ],
+        "agentHints": [
+          "探测失败时仅用 componentToken 创建，不要补写 properties"
         ]
       },
       "params": {
@@ -1730,6 +1890,11 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
           "type": "number",
           "default": 0,
           "description": "高度覆盖（0 表示不覆盖）"
+        },
+        "clipsContent": {
+          "type": "boolean",
+          "default": false,
+          "description": "裁剪超出组件的内容"
         }
       },
       "capabilities": {
@@ -1808,6 +1973,74 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             ]
           }
         ]
+      },
+      "figmaPropertySnapshotCatalog": {
+        "token:lib-data-display-toplist": {
+          "token": "lib-data-display-toplist",
+          "componentKey": "6acea515cbcd1ae970ef5627425bd55cbda137ff",
+          "inspectedAt": "2026-03-13T14:17:22.987Z",
+          "source": "discover_component_props",
+          "componentName": "Toplist 条形图",
+          "componentSetName": "Toplist 条形图",
+          "properties": [
+            {
+              "propertyName": "Show Legend",
+              "displayName": "Show Legend",
+              "type": "BOOLEAN",
+              "defaultValue": true,
+              "options": [
+                "True",
+                "False"
+              ]
+            },
+            {
+              "propertyName": "数量 ",
+              "displayName": "数量 ",
+              "type": "VARIANT",
+              "defaultValue": "1",
+              "options": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            },
+            {
+              "propertyName": "状态 state",
+              "displayName": "状态 state",
+              "type": "VARIANT",
+              "defaultValue": "默认 Default",
+              "options": [
+                "默认 Default",
+                "悬浮 Hover",
+                "聚焦 Focus"
+              ]
+            },
+            {
+              "propertyName": "类型 type",
+              "displayName": "类型 type",
+              "type": "VARIANT",
+              "defaultValue": "基础/分组柱 default",
+              "options": [
+                "基础/分组柱 default",
+                "堆叠 stacked",
+                "百分比堆叠 stacked part to whole",
+                "特殊 special case",
+                "特殊 special case 2"
+              ]
+            },
+            {
+              "propertyName": "适配方式 responsive",
+              "displayName": "适配方式 responsive",
+              "type": "VARIANT",
+              "defaultValue": "固定柱宽 fixed width",
+              "options": [
+                "固定柱宽 fixed width",
+                "固定间距 fixed gap"
+              ]
+            }
+          ]
+        }
       }
     },
     "text": {
@@ -2067,6 +2300,58 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "tag"
       },
+      "runtime": {
+        "sizeMetrics": {
+          "Mini 16": {
+            "height": 16,
+            "paddingX": 6,
+            "paddingY": 1,
+            "fontSize": 10,
+            "cornerRadius": 4,
+            "lineHeight": 16,
+            "gap": 4,
+            "iconSize": 10,
+            "dotSize": 4,
+            "glyphSize": 9
+          },
+          "Small 18": {
+            "height": 18,
+            "paddingX": 6,
+            "paddingY": 1,
+            "fontSize": 10,
+            "cornerRadius": 4,
+            "lineHeight": 18,
+            "gap": 4,
+            "iconSize": 10,
+            "dotSize": 4,
+            "glyphSize": 10
+          },
+          "Default 20": {
+            "height": 20,
+            "paddingX": 6,
+            "paddingY": 1,
+            "fontSize": 12,
+            "cornerRadius": 4,
+            "lineHeight": 20,
+            "gap": 4,
+            "iconSize": 12,
+            "dotSize": 6,
+            "glyphSize": 10
+          },
+          "Large 24": {
+            "height": 24,
+            "paddingX": 6,
+            "paddingY": 1,
+            "fontSize": 12,
+            "cornerRadius": 4,
+            "lineHeight": 24,
+            "gap": 4,
+            "iconSize": 12,
+            "dotSize": 6,
+            "glyphSize": 12
+          }
+        }
+      },
       "figmaPropertySnapshot": {
         "token": "lib-data-display-tag",
         "componentKey": "19089a80333c317accdfb64ccd31736c7fef9dbd",
@@ -2268,6 +2553,94 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         }
       }
     },
+    "icon-asterisk": {
+      "id": "icon-asterisk",
+      "name": "必填星号",
+      "category": "Icon",
+      "description": "表单必填星号图标",
+      "schemaVersion": "2.0.0",
+      "prompts": {
+        "description": "表单必填星号图标",
+        "usage": "用于表单字段的必填标识。",
+        "examples": [
+          "必填星号: { \"componentId\": \"icon-asterisk\" }"
+        ]
+      },
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度覆盖（0 表示不覆盖）"
+        },
+        "height": {
+          "type": "number",
+          "default": 0,
+          "description": "高度覆盖（0 表示不覆盖）"
+        },
+        "clipsContent": {
+          "type": "boolean",
+          "default": false,
+          "description": "裁剪超出组件的内容"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "renderKey": "eaaaf6bb82b8bdb2fc20b81407ba862cea786d2c"
+      }
+    },
+    "icon-delete": {
+      "id": "icon-delete",
+      "name": "删除图标",
+      "category": "Icon",
+      "description": "删除动作图标",
+      "schemaVersion": "2.0.0",
+      "prompts": {
+        "description": "删除动作图标",
+        "usage": "用于表示删除/移除动作。",
+        "examples": [
+          "删除图标: { \"componentId\": \"icon-delete\" }"
+        ]
+      },
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度覆盖（0 表示不覆盖）"
+        },
+        "height": {
+          "type": "number",
+          "default": 0,
+          "description": "高度覆盖（0 表示不覆盖）"
+        },
+        "clipsContent": {
+          "type": "boolean",
+          "default": false,
+          "description": "裁剪超出组件的内容"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "renderKey": "3cf68ee183ff9840dffb8e4ba760dfea519e4a8d"
+      }
+    },
     "button": {
       "id": "button",
       "name": "按钮",
@@ -2383,6 +2756,38 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "nodeType": "FRAME",
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "button"
+      },
+      "runtime": {
+        "sizeMetrics": {
+          "Mini 24": {
+            "height": 24,
+            "paddingX": 16,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 6
+          },
+          "Small 28": {
+            "height": 28,
+            "paddingX": 16,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 6
+          },
+          "Default 32": {
+            "height": 32,
+            "paddingX": 16,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 6
+          },
+          "Large 36": {
+            "height": 36,
+            "paddingX": 16,
+            "paddingY": 8,
+            "fontSize": 13,
+            "cornerRadius": 6
+          }
+        }
       },
       "figmaPropertySnapshot": {
         "token": "lib-basic-button",
@@ -2586,618 +2991,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         }
       }
     },
-    "input": {
-      "id": "input",
-      "name": "输入框",
-      "category": "Form",
-      "description": "单行文本输入框，支持尺寸、状态、禁用、错误、前后缀等能力，按 lib-data-input-input 复刻增强",
-      "isRebuilt": true,
-      "schemaVersion": "2.0.0",
-      "prompts": {
-        "description": "单行文本输入框，支持尺寸、状态、禁用、错误、前后缀等能力，按 lib-data-input-input 复刻增强",
-        "usage": "创建文本输入框。支持 placeholder/value、size、state、filled、disabled、error、prefix、suffix 等参数。",
-        "examples": [
-          "基础输入框: { \"componentId\": \"input\", \"params\": { \"placeholder\": \"请输入\" } }",
-          "带前缀和激活态: { \"componentId\": \"input\", \"params\": { \"value\": \"北京\", \"state\": \"Active 激活\", \"showPrefix\": true, \"prefixText\": \"@\" } }"
-        ]
-      },
-      "params": {
-        "placeholder": {
-          "type": "string",
-          "default": "Placeholder",
-          "description": "占位符"
-        },
-        "value": {
-          "type": "string",
-          "default": "示例文字",
-          "description": "当前值"
-        },
-        "width": {
-          "type": "number",
-          "default": 240,
-          "description": "宽度"
-        },
-        "size": {
-          "type": "select",
-          "default": "Default 32",
-          "description": "尺寸",
-          "enumValues": [
-            "Mini 24",
-            "Small 28",
-            "Default 32",
-            "Large 36"
-          ]
-        },
-        "state": {
-          "type": "select",
-          "default": "Default 默认",
-          "description": "交互状态",
-          "enumValues": [
-            "Default 默认",
-            "Hover 悬浮",
-            "Active 激活"
-          ]
-        },
-        "filled": {
-          "type": "boolean",
-          "default": false,
-          "description": "已填状态"
-        },
-        "error": {
-          "type": "boolean",
-          "default": false,
-          "description": "错误态"
-        },
-        "disabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "禁用"
-        },
-        "showPrefix": {
-          "type": "boolean",
-          "default": false,
-          "description": "显示前缀"
-        },
-        "prefixText": {
-          "type": "string",
-          "default": "",
-          "description": "前缀文本；为空时显示占位图标块"
-        },
-        "showSuffix": {
-          "type": "boolean",
-          "default": false,
-          "description": "显示后缀"
-        },
-        "suffixText": {
-          "type": "string",
-          "default": "",
-          "description": "后缀文本；为空时显示占位图标块"
-        }
-      },
-      "capabilities": {
-        "allowChildren": false,
-        "allowSwapVariant": false,
-        "allowSetProps": true,
-        "allowSetLayout": true,
-        "allowSetStyle": true,
-        "allowBindData": false,
-        "allowRemove": true
-      },
-      "figmaBinding": {
-        "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
-        "renderKey": "input"
-      },
-      "figmaPropertySnapshot": {
-        "token": "lib-data-input-input",
-        "componentKey": "f04bea11a4ef73f626b7402aac670a94ad32faf0",
-        "inspectedAt": "2026-03-06T00:00:00.000Z",
-        "source": "discover_component_props",
-        "properties": [
-          {
-            "propertyName": "Disable 禁用",
-            "displayName": "Disable 禁用",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Error 错误",
-            "displayName": "Error 错误",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "True",
-              "False"
-            ]
-          },
-          {
-            "propertyName": "Filled 已填",
-            "displayName": "Filled 已填",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "True",
-              "False"
-            ]
-          },
-          {
-            "propertyName": "Prefix 前缀",
-            "displayName": "Prefix 前缀",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Size 尺寸",
-            "displayName": "Size 尺寸",
-            "type": "VARIANT",
-            "defaultValue": "Default 32",
-            "options": [
-              "Mini 24",
-              "Small 28",
-              "Default 32",
-              "Large 36"
-            ]
-          },
-          {
-            "propertyName": "State 状态",
-            "displayName": "State 状态",
-            "type": "VARIANT",
-            "defaultValue": "Default 默认",
-            "options": [
-              "Default 默认",
-              "Hover 悬浮",
-              "Active 激活"
-            ]
-          },
-          {
-            "propertyName": "Suffix 后缀",
-            "displayName": "Suffix 后缀",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          }
-        ]
-      },
-      "colorVariableBindings": {
-        "input-bg": {
-          "enabled": true,
-          "token": "input.bg",
-          "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
-          "keyCandidates": [
-            "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
-          ],
-          "idCandidates": [
-            "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
-          ],
-          "nameCandidates": [
-            "color-bg-1",
-            "fill/输入类组件填充 @color-bg-white",
-            "@color-bg-white"
-          ]
-        },
-        "input-text": {
-          "enabled": true,
-          "token": "input.text",
-          "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
-          "keyCandidates": [
-            "178115a8c3bc7983da5bc10e637208895750dbfd"
-          ],
-          "idCandidates": [
-            "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
-          ]
-        },
-        "input-placeholder": {
-          "enabled": true,
-          "token": "input.placeholder",
-          "variableRef": "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276",
-          "keyCandidates": [
-            "98bdfd58bdd60974e1fe50bb12cd2c24661e8ded"
-          ],
-          "idCandidates": [
-            "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276"
-          ],
-          "nameCandidates": [
-            "text/次要信息 @color-text-3",
-            "@color-text-3"
-          ]
-        },
-        "input-border-key": {
-          "enabled": true,
-          "token": "input.border",
-          "nameCandidates": [
-            "color-border-1"
-          ]
-        },
-        "input-hover-border-key": {
-          "enabled": true,
-          "token": "text.secondary",
-          "variableRef": "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562",
-          "keyCandidates": [
-            "a7442f0ba4f4f027d86e03f335df11c38232c0ce"
-          ],
-          "idCandidates": [
-            "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"
-          ],
-          "nameCandidates": [
-            "Input/Border/Hover",
-            "输入框/边框/悬浮"
-          ]
-        },
-        "input-active-border-key": {
-          "enabled": true,
-          "token": "button.outline.text",
-          "variableRef": "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300",
-          "keyCandidates": [
-            "75f358d76d414f045a47f128470fcbbde49888dc"
-          ],
-          "idCandidates": [
-            "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300"
-          ],
-          "nameCandidates": [
-            "primary-6",
-            "Input/Border/Active",
-            "输入框/边框/激活"
-          ]
-        },
-        "input-error-border-key": {
-          "enabled": true,
-          "token": "button.danger.text",
-          "variableRef": "VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672",
-          "keyCandidates": [
-            "f60b03f9d134cb4ac3f68fb23b1fda9ba1304745"
-          ],
-          "idCandidates": [
-            "VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672"
-          ],
-          "nameCandidates": [
-            "Input/Border/Error",
-            "输入框/边框/错误"
-          ]
-        },
-        "input-error-bg-key": {
-          "enabled": true,
-          "token": "input.error.bg",
-          "nameCandidates": [
-            "red/tag背景色 @danger-2",
-            "@danger-2"
-          ]
-        },
-        "input-disabled-bg-key": {
-          "enabled": true,
-          "token": "input.disabled.bg",
-          "variableRef": "VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586",
-          "keyCandidates": [
-            "0ad927853701159721b6bb95d53b532de24282a7"
-          ],
-          "idCandidates": [
-            "VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586"
-          ],
-          "nameCandidates": [
-            "background/深 灰底 @color-bg-4",
-            "@color-bg-4",
-            "Input/BG/Disabled",
-            "输入框/背景/禁用"
-          ]
-        },
-        "input-disabled-text-key": {
-          "enabled": true,
-          "token": "input.disabled.text",
-          "nameCandidates": [
-            "text/置灰信息 @color-text-4",
-            "@color-text-4",
-            "Input/Text/Disabled",
-            "输入框/文本/禁用"
-          ]
-        },
-        "input-affix-key": {
-          "enabled": true,
-          "token": "input.placeholder",
-          "variableRef": "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276",
-          "keyCandidates": [
-            "98bdfd58bdd60974e1fe50bb12cd2c24661e8ded"
-          ],
-          "idCandidates": [
-            "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276"
-          ],
-          "nameCandidates": [
-            "text/次要信息 @color-text-3",
-            "@color-text-3",
-            "Input/Affix",
-            "输入框/前后缀"
-          ]
-        }
-      },
-      "typographyBindings": {
-        "input-text-style-key": {
-          "enabled": true,
-          "token": "input.text",
-          "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
-          "keyCandidates": [
-            "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
-          ],
-          "idCandidates": [
-            "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
-          ],
-          "nameCandidates": [
-            "Body",
-            "正文",
-            "Text/Body"
-          ]
-        }
-      }
-    },
-    "select": {
-      "id": "select",
-      "name": "下拉选择框",
-      "category": "Form",
-      "description": "下拉菜单选择器，支持尺寸、状态、禁用、已填、多选、内置标签和下拉项文案能力，按 lib-data-input-select 高保真复刻增强",
-      "isRebuilt": true,
-      "schemaVersion": "2.0.0",
-      "prompts": {
-        "description": "下拉菜单选择器，支持尺寸、状态、禁用、已填、多选、内置标签和下拉项文案能力，按 lib-data-input-select 高保真复刻增强",
-        "usage": "创建下拉选择框。支持 placeholder/value、size、state、filled、disabled、multiple、selectType、optionsText 等参数。",
-        "examples": [
-          "选择框: { \"componentId\": \"select\", \"params\": { \"placeholder\": \"请选择城市\", \"value\": \"北京\" } }",
-          "多选激活态: { \"componentId\": \"select\", \"params\": { \"state\": \"Active 激活\", \"multiple\": true, \"placeholder\": \"请选择城市\", \"optionsText\": \"北京,上海,杭州\" } }"
-        ]
-      },
-      "params": {
-        "placeholder": {
-          "type": "string",
-          "default": "请选择",
-          "description": "占位文案"
-        },
-        "value": {
-          "type": "string",
-          "default": "示例文字",
-          "description": "当前选中值；为空时显示 placeholder"
-        },
-        "width": {
-          "type": "number",
-          "default": 240,
-          "description": "宽度"
-        },
-        "size": {
-          "type": "select",
-          "default": "Default 32",
-          "description": "尺寸",
-          "enumValues": [
-            "Mini 24",
-            "Small 28",
-            "Default 32",
-            "Large 36"
-          ]
-        },
-        "state": {
-          "type": "select",
-          "default": "Default 默认",
-          "description": "交互状态",
-          "enumValues": [
-            "Default 默认",
-            "Hover 悬浮",
-            "Active 激活"
-          ]
-        },
-        "filled": {
-          "type": "boolean",
-          "default": false,
-          "description": "已填状态"
-        },
-        "disabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "禁用"
-        },
-        "multiple": {
-          "type": "boolean",
-          "default": false,
-          "description": "多选"
-        },
-        "selectType": {
-          "type": "boolean",
-          "default": false,
-          "description": "内置标签"
-        },
-        "optionsText": {
-          "type": "string",
-          "default": "北京,上海,杭州,深圳,广州",
-          "description": "下拉项文案，支持逗号或换行分隔；导入原始组件后会替换默认菜单项文本并按数量裁剪/补齐菜单项"
-        }
-      },
-      "capabilities": {
-        "allowChildren": false,
-        "allowSwapVariant": false,
-        "allowSetProps": true,
-        "allowSetLayout": true,
-        "allowSetStyle": true,
-        "allowBindData": false,
-        "allowRemove": true
-      },
-      "figmaBinding": {
-        "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
-        "renderKey": "select"
-      },
-      "figmaPropertySnapshot": {
-        "token": "lib-data-input-select",
-        "componentKey": "d124dbe0576b8dfd900897124bd14e888e4db6f3",
-        "inspectedAt": "2026-03-09T11:29:51.599Z",
-        "source": "discover_component_props",
-        "properties": [
-          {
-            "propertyName": "Placeholder 占位符#115960:0",
-            "displayName": "Placeholder 占位符",
-            "type": "TEXT",
-            "defaultValue": "请选择"
-          },
-          {
-            "propertyName": "Value#115960:55",
-            "displayName": "Value",
-            "type": "TEXT",
-            "defaultValue": "北京"
-          },
-          {
-            "propertyName": "Disabled 禁用",
-            "displayName": "Disabled 禁用",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Filled 填写",
-            "displayName": "Filled 填写",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Multiple 多选",
-            "displayName": "Multiple 多选",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Size 尺寸",
-            "displayName": "Size 尺寸",
-            "type": "VARIANT",
-            "defaultValue": "Default 32",
-            "options": [
-              "Mini 24",
-              "Small 28",
-              "Default 32",
-              "Large 36"
-            ]
-          },
-          {
-            "propertyName": "State 状态",
-            "displayName": "State 状态",
-            "type": "VARIANT",
-            "defaultValue": "Default 默认",
-            "options": [
-              "Default 默认",
-              "Hover 悬浮",
-              "Active 激活"
-            ]
-          },
-          {
-            "propertyName": "Type 类型",
-            "displayName": "Type 类型",
-            "type": "VARIANT",
-            "defaultValue": "Default 默认",
-            "options": [
-              "Default 默认",
-              "Label 内置标签"
-            ]
-          }
-        ]
-      },
-      "colorVariableBindings": {
-        "select-bg": {
-          "enabled": true,
-          "token": "select.bg",
-          "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
-          "keyCandidates": [
-            "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
-          ],
-          "idCandidates": [
-            "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
-          ],
-          "nameCandidates": [
-            "color-bg-1",
-            "fill/输入类组件填充 @color-bg-white",
-            "@color-bg-white"
-          ]
-        },
-        "select-text": {
-          "enabled": true,
-          "token": "select.text",
-          "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
-          "keyCandidates": [
-            "178115a8c3bc7983da5bc10e637208895750dbfd"
-          ],
-          "idCandidates": [
-            "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
-          ]
-        },
-        "select-placeholder": {
-          "enabled": true,
-          "token": "select.placeholder",
-          "variableRef": "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276",
-          "keyCandidates": [
-            "98bdfd58bdd60974e1fe50bb12cd2c24661e8ded"
-          ],
-          "idCandidates": [
-            "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276"
-          ],
-          "nameCandidates": [
-            "text/次要信息 @color-text-3",
-            "@color-text-3"
-          ]
-        },
-        "select-icon": {
-          "enabled": true,
-          "token": "select.icon",
-          "variableRef": "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276",
-          "keyCandidates": [
-            "98bdfd58bdd60974e1fe50bb12cd2c24661e8ded"
-          ],
-          "idCandidates": [
-            "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276"
-          ],
-          "nameCandidates": [
-            "text/次要信息 @color-text-3",
-            "@color-text-3"
-          ]
-        },
-        "select-border-key": {
-          "enabled": true,
-          "token": "select.border",
-          "nameCandidates": [
-            "color-border-1"
-          ]
-        }
-      },
-      "typographyBindings": {
-        "select-text-style-key": {
-          "enabled": true,
-          "token": "select.text",
-          "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
-          "keyCandidates": [
-            "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
-          ],
-          "idCandidates": [
-            "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
-          ],
-          "nameCandidates": [
-            "Body",
-            "正文",
-            "Text/Body"
-          ]
-        }
-      }
-    },
-    "filter-group": {
+"filter-group": {
       "id": "filter-group",
       "name": "筛选器组",
       "category": "Form",
@@ -3208,6 +3002,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "usage": "用于生成筛选条（多个选择器 + 可选搜索项）。通过 itemsText 配置筛选项，格式为用逗号/换行分隔的 `label:type`，其中 type 支持 select/input/search；未写 type 默认 select。内部统一使用 select 组件（selectType=Label 内置标签）。search 类型需要把下拉 icon 替换成 search icon；input 类型默认隐藏下拉 icon。注意：当用户明确要“筛选器组(filter-group)”时，直接创建该组件，不要用 draw_form 代替。",
         "examples": [
           "筛选器组: { \"componentId\": \"filter-group\", \"params\": { \"itemsText\": \"状态:select,城市:select,关键词:search\" } }"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "筛选器组是独立组件；创建它请使用 create_node(componentId=\"filter-group\")，不要用 draw_form 代替（除非用户明确要带字段标签的表单布局）。",
+        "paramRules": [
+          "itemsText 格式为 逗号/换行分隔的 label:type；type 支持 select/input/search（search 会将下拉 icon 替换为 search icon）"
         ]
       },
       "params": {
@@ -3273,320 +3073,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "renderKey": "filter-group"
       }
     },
-    "checkbox": {
-      "id": "checkbox",
-      "name": "复选框",
-      "category": "Form",
-      "description": "单个复选框控件，支持选中、半选、悬浮、禁用和标签开关，按 lib-data-input-checkbox 高保真复刻增强",
-      "isRebuilt": true,
-      "schemaVersion": "2.0.0",
-      "prompts": {
-        "description": "单个复选框控件，支持选中、半选、悬浮、禁用和标签开关，按 lib-data-input-checkbox 高保真复刻增强",
-        "usage": "创建单个复选框。支持 label、showLabel、checked、indeterminate、hover、disabled 等参数。",
-        "examples": [
-          "基础复选框: { \"componentId\": \"checkbox\", \"params\": { \"label\": \"选项一\", \"checked\": false } }",
-          "禁用已选复选框: { \"componentId\": \"checkbox\", \"params\": { \"label\": \"已同意\", \"checked\": true, \"disabled\": true } }"
-        ]
-      },
-      "params": {
-        "label": {
-          "type": "string",
-          "default": "选项一",
-          "description": "标签文案"
-        },
-        "showLabel": {
-          "type": "boolean",
-          "default": true,
-          "description": "显示标签"
-        },
-        "checked": {
-          "type": "boolean",
-          "default": false,
-          "description": "选中"
-        },
-        "indeterminate": {
-          "type": "boolean",
-          "default": false,
-          "description": "半选"
-        },
-        "hover": {
-          "type": "boolean",
-          "default": false,
-          "description": "悬浮态"
-        },
-        "disabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "禁用"
-        }
-      },
-      "capabilities": {
-        "allowChildren": false,
-        "allowSwapVariant": false,
-        "allowSetProps": true,
-        "allowSetLayout": true,
-        "allowSetStyle": true,
-        "allowBindData": false,
-        "allowRemove": true
-      },
-      "figmaBinding": {
-        "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
-        "renderKey": "checkbox"
-      },
-      "figmaPropertySnapshot": {
-        "token": "lib-data-input-checkbox",
-        "componentKey": "51a9e035c762059b3c592e77aadbbe5b22dcb04e",
-        "inspectedAt": "2026-03-09T12:12:29.987Z",
-        "source": "discover_component_props",
-        "properties": [
-          {
-            "propertyName": "label 标签#109762:15",
-            "displayName": "label 标签",
-            "type": "BOOLEAN",
-            "defaultValue": true,
-            "options": [
-              "True",
-              "False"
-            ]
-          },
-          {
-            "propertyName": "Checked 已选",
-            "displayName": "Checked 已选",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Disabled 禁用",
-            "displayName": "Disabled 禁用",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Hover 悬浮",
-            "displayName": "Hover 悬浮",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Indeterminate 半选",
-            "displayName": "Indeterminate 半选",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          }
-        ]
-      },
-      "colorVariableBindings": {
-        "checkbox-bg": {
-          "enabled": true,
-          "token": "checkbox.bg",
-          "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
-          "keyCandidates": [
-            "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
-          ],
-          "idCandidates": [
-            "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
-          ],
-          "nameCandidates": [
-            "color-bg-1",
-            "fill/输入类组件填充 @color-bg-white",
-            "@color-bg-white"
-          ]
-        },
-        "checkbox-border": {
-          "enabled": true,
-          "token": "checkbox.border",
-          "nameCandidates": [
-            "color-border-1"
-          ]
-        },
-        "checkbox-checked-bg": {
-          "enabled": true,
-          "token": "checkbox.checked.bg",
-          "variableRef": "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300",
-          "keyCandidates": [
-            "75f358d76d414f045a47f128470fcbbde49888dc"
-          ],
-          "idCandidates": [
-            "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300"
-          ],
-          "nameCandidates": [
-            "link-6"
-          ]
-        },
-        "checkbox-checkmark": {
-          "enabled": true,
-          "token": "checkbox.indicator",
-          "variableRef": "VariableID:6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f/174345:272",
-          "keyCandidates": [
-            "6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f"
-          ],
-          "idCandidates": [
-            "VariableID:6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f/174345:272"
-          ],
-          "nameCandidates": [
-            "text-inverse",
-            "text-on-primary",
-            "text/纯白文字 @color-white",
-            "@color-white"
-          ]
-        },
-        "checkbox-label": {
-          "enabled": true,
-          "token": "checkbox.text",
-          "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
-          "keyCandidates": [
-            "178115a8c3bc7983da5bc10e637208895750dbfd"
-          ],
-          "idCandidates": [
-            "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
-          ]
-        }
-      }
-    },
-    "checkbox-group": {
-      "id": "checkbox-group",
-      "name": "复选框组",
-      "category": "Form",
-      "description": "复选框组选项控件，优先复用真实 lib-data-input-checkbox 组件逐项拼组，避免手工绘制勾选 SVG；会根据 optionsText 调整子项数量并覆写勾选状态",
-      "schemaVersion": "2.0.0",
-      "prompts": {
-        "description": "复选框组选项控件，优先复用真实 lib-data-input-checkbox 组件逐项拼组，避免手工绘制勾选 SVG；会根据 optionsText 调整子项数量并覆写勾选状态",
-        "usage": "当表单字段或选项区需要多选能力时使用。通过 optionsText 传入逗号或换行分隔的选项，checkedValues 传入默认勾选值；优先使用真实 checkbox Figma 组件逐项组合，不要自己画勾选框。",
-        "examples": [
-          "横向复选框组: { \"componentId\": \"checkbox-group\", \"params\": { \"optionsText\": \"选项一,选项二\", \"checkedValues\": \"选项一\" } }"
-        ]
-      },
-      "params": {
-        "optionsText": {
-          "type": "string",
-          "default": "选项一,选项二",
-          "description": "选项文案，支持逗号或换行分隔"
-        },
-        "checkedValues": {
-          "type": "string",
-          "default": "选项一",
-          "description": "默认勾选项，支持逗号分隔多个值"
-        },
-        "direction": {
-          "type": "select",
-          "default": "horizontal",
-          "description": "排列方向",
-          "enumValues": [
-            "horizontal",
-            "vertical"
-          ]
-        },
-        "gap": {
-          "type": "number",
-          "default": 24,
-          "description": "选项间距"
-        },
-        "disabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "禁用"
-        }
-      },
-      "capabilities": {
-        "allowChildren": false,
-        "allowSwapVariant": false,
-        "allowSetProps": true,
-        "allowSetLayout": true,
-        "allowSetStyle": true,
-        "allowBindData": false,
-        "allowRemove": true
-      },
-      "figmaBinding": {
-        "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
-        "renderKey": "checkbox-group"
-      },
-      "colorVariableBindings": {
-        "checkbox-bg": {
-          "enabled": true,
-          "token": "checkbox.bg",
-          "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
-          "keyCandidates": [
-            "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
-          ],
-          "idCandidates": [
-            "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
-          ],
-          "nameCandidates": [
-            "color-bg-1",
-            "fill/输入类组件填充 @color-bg-white",
-            "@color-bg-white"
-          ]
-        },
-        "checkbox-border": {
-          "enabled": true,
-          "token": "checkbox.border",
-          "nameCandidates": [
-            "color-border-1"
-          ]
-        },
-        "checkbox-checked-bg": {
-          "enabled": true,
-          "token": "checkbox.checked.bg",
-          "variableRef": "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300",
-          "keyCandidates": [
-            "75f358d76d414f045a47f128470fcbbde49888dc"
-          ],
-          "idCandidates": [
-            "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300"
-          ],
-          "nameCandidates": [
-            "link-6"
-          ]
-        },
-        "checkbox-checkmark": {
-          "enabled": true,
-          "token": "checkbox.indicator",
-          "variableRef": "VariableID:6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f/174345:272",
-          "keyCandidates": [
-            "6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f"
-          ],
-          "idCandidates": [
-            "VariableID:6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f/174345:272"
-          ],
-          "nameCandidates": [
-            "text-inverse",
-            "text-on-primary",
-            "text/纯白文字 @color-white",
-            "@color-white"
-          ]
-        },
-        "checkbox-label": {
-          "enabled": true,
-          "token": "checkbox.text",
-          "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
-          "keyCandidates": [
-            "178115a8c3bc7983da5bc10e637208895750dbfd"
-          ],
-          "idCandidates": [
-            "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
-          ]
-        }
-      }
-    },
-    "radio-group": {
+"radio-group": {
       "id": "radio-group",
       "name": "单选框组",
       "category": "Form",
@@ -3598,6 +3085,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "usage": "当表单字段需要单选能力时使用。通过 optionsText 传入逗号或换行分隔的选项，value 传入默认选中值；优先导入原始 Figma 组组件后做最小编辑。",
         "examples": [
           "横向单选框组: { \"componentId\": \"radio-group\", \"params\": { \"optionsText\": \"选项一,选项二\", \"value\": \"选项一\" } }"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "Checkbox/radio 视觉敏感，优先复用真实 Figma 组件；不要用 vector/svg/path/text 手工绘制勾选或圆点。",
+        "paramRules": [
+          "多选行优先使用 checkbox-group；单选行使用 radio-group"
         ]
       },
       "params": {
@@ -3766,16 +3259,37 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "id": "form",
       "name": "表单",
       "category": "Form",
-      "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
+      "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设",
       "isRebuilt": true,
       "schemaVersion": "2.0.0",
       "prompts": {
-        "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设，适合复刻和扩展 lib-data-input-form",
-        "usage": "当用户要创建筛选区、查询表单或编辑表单时使用。优先配合 form-row、form-field、checkbox-group、radio-group 组织结构；如果只是一次性生成，可直接使用 draw_form。",
+        "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设",
+        "usage": "## draw_form 使用规则\n\n**创建/新建表单** → `draw_form(payload)`，**修改已有表单** → `apply_scene`（增量改，不要重新生成）\n\n### payload 结构\n```\n{\n  layout?: 'vertical'(默认) | 'horizontal',\n  align?: 'top'(默认) | 'left' | 'right',\n  labelWidthPreset?: 'fill'(默认) | 'default-80' | 'medium-120' | 'large-160',\n  width?: number,          // 0=自动\n  rowSpacing?: number,     // 默认 24\n  rows: FieldItem[][],     // 每行一个子数组；默认每行只放 1 个字段\n  footer?: {               // 按钮区（独立于 rows，不要放进 rows 里）\n    actions: ActionItem[],\n    align?: 'end'(默认) | 'start' | 'center'\n  }\n}\n```\n\n### FieldItem 字段格式\n```\n{ componentId: 'input'|'select'|'checkbox-group'|'radio-group'|'switch'|\n               'datepicker'|'timepicker'|'inputnumber'|'slider'|'textarea'|'upload',\n  label: string, required?: boolean, placeholder?: string,\n  props?: { optionsText?: string, checkedValues?: string, value?: string, ... } }\n```\n\n### 关键规则\n- **默认单列**：每个 rows 子数组只放 1 个字段，除非用户明确要求双列/多列\n- **按钮独立**：提交/重置等操作按钮放 `footer.actions`，不要放进 rows\n- **不要用 form-row 包单字段**：`form-row` 仅在同一行多字段时自动使用\n- 如果用户要\"筛选器/筛选条\"→ 用 `create_node(\"filter-group\")`，不是 draw_form\n- 图片生成场景：必须用 rows[][] 输出所有识别到的字段，不要省略",
         "examples": [
-          "横向表单: { \"componentId\": \"form\", \"params\": { \"layout\": \"horizontal\", \"width\": 720, \"labelWidth\": 96 } }",
-          "横向筛选表单: { \"componentId\": \"form\", \"params\": { \"layout\": \"horizontal\", \"columnSpacing\": 12 } }",
-          "复刻 lib-data-input-form 的纵向样式: { \"componentId\": \"form\", \"params\": { \"align\": \"top\", \"labelWidthPreset\": \"fill\", \"width\": 266, \"rowSpacing\": 24, \"controlWidth\": 266 } }"
+          "## 示例1：纵向登录表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\", \"labelWidthPreset\": \"fill\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"用户名\", \"required\": true, \"placeholder\": \"请输入用户名\" }],\n    [{ \"componentId\": \"input\", \"label\": \"密码\", \"required\": true, \"placeholder\": \"请输入密码\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"登录\", \"variant\": \"primary\" }], \"align\": \"center\" }\n}```",
+          "## 示例2：带下拉/复选的纵向编辑表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"姓名\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"部门\", \"props\": { \"optionsText\": \"产品,研发,设计,运营\" } }],\n    [{ \"componentId\": \"radio-group\", \"label\": \"性别\", \"props\": { \"optionsText\": \"男,女\", \"checkedValues\": \"男\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"入职日期\" }],\n    [{ \"componentId\": \"textarea\", \"label\": \"备注\", \"placeholder\": \"请输入备注\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存\", \"variant\": \"primary\" }, { \"label\": \"取消\" }], \"align\": \"end\" }\n}```",
+          "## 示例3：横向筛选表单（双列）\n```json\n{ \"layout\": \"horizontal\", \"labelWidthPreset\": \"default-80\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"关键词\" }, { \"componentId\": \"select\", \"label\": \"状态\", \"props\": { \"optionsText\": \"全部,启用,禁用\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"开始日期\" }, { \"componentId\": \"datepicker\", \"label\": \"结束日期\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"搜索\", \"variant\": \"primary\" }, { \"label\": \"重置\" }], \"align\": \"end\" }\n}```",
+          "## 示例4：带分组开关的设置表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"应用名称\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"类型\", \"props\": { \"optionsText\": \"Web应用,移动应用,API\" } }],\n    [{ \"componentId\": \"switch\", \"label\": \"启用通知\" }],\n    [{ \"componentId\": \"checkbox-group\", \"label\": \"权限\", \"props\": { \"optionsText\": \"读取,写入,删除\" } }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存设置\", \"variant\": \"primary\" }], \"align\": \"end\" }\n}```"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "新建表单用 draw_form；修改已有表单用 apply_scene（不要重新 draw_form，会丢失控件类型）。",
+        "paramRules": [
+          "layout: vertical（默认）| horizontal",
+          "align: top（默认）| left | right",
+          "labelWidthPreset: fill（默认）| default-80 | medium-120 | large-160",
+          "rows: 每行一个子数组，默认每行 1 个字段，用户要双列才放 2 个",
+          "footer.actions: 按钮组，独立于 rows，渲染在表单底部"
+        ],
+        "commonErrors": [
+          "按钮(提交/重置)放进了 rows 里 → 应放 footer.actions",
+          "单字段行用了 form-row 包裹 → form-row 仅用于同行多字段",
+          "rows 里直接放 figma-component → 必须用 componentId 指定控件类型",
+          "图片生成时只输出了部分字段 → 必须输出所有识别到的字段"
+        ],
+        "agentHints": [
+          "控件类型不确定→input，有选项→select/checkbox-group/radio-group，时间日期→datepicker/timepicker，长文→textarea，数字→inputnumber",
+          "复选框/单选框/开关优先用真实控件(checkbox-group/radio-group/switch)，不要手工画"
         ]
       },
       "params": {
@@ -3817,8 +3331,8 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "width": {
           "type": "number",
-          "default": 720,
-          "description": "表单宽度 (0为自适应)"
+          "default": 0,
+          "description": "表单宽度 (0为根据内容自动计算)"
         },
         "rowSpacing": {
           "type": "number",
@@ -3842,7 +3356,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "controlWidthMode": {
           "type": "select",
-          "default": "fixed",
+          "default": "fill",
           "description": "控件宽度模式",
           "enumValues": [
             "fixed",
@@ -3894,36 +3408,11 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "form"
       },
-      "figmaPropertySnapshot": {
-        "token": "lib-data-input-form",
-        "componentKey": "25f071ee2f2569f0fd3744d41ed085020d386b26",
-        "inspectedAt": "2026-03-06T00:00:00.000Z",
-        "source": "discover_component_props",
-        "properties": [
-          {
-            "propertyName": "Align 对齐",
-            "displayName": "Align 对齐",
-            "type": "VARIANT",
-            "defaultValue": "Top 顶部对齐",
-            "options": [
-              "Left 左对齐",
-              "Top 顶部对齐",
-              "Right 右对齐"
-            ]
-          },
-          {
-            "propertyName": "Label 标签长度",
-            "displayName": "Label 标签长度",
-            "type": "VARIANT",
-            "defaultValue": "Fill 跟随输入域",
-            "options": [
-              "Default 80",
-              "Large 160",
-              "Medium 120",
-              "Fill 跟随输入域"
-            ]
-          }
-        ]
+      "runtime": {
+        "spacing": {
+          "rowSpacingTop": 24,
+          "rowSpacingDefault": 12
+        }
       }
     },
     "form-row": {
@@ -3933,10 +3422,10 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "description": "表单内部的一行容器，用于放置多个表单字段或操作按钮",
       "schemaVersion": "2.0.0",
       "prompts": {
-        "description": "表单内部的一行容器，用于放置多个表单字段或操作按钮",
-        "usage": "用于组织一行表单内容。通常作为 form 的子节点，内部可放 form-field、button 或辅助文本。",
+        "description": "表单内部的一行容器，仅用于同一行放多个字段时",
+        "usage": "**只在同一行需要多个字段时使用**，单字段行不需要 form-row 包裹（draw_form 会自动处理）。",
         "examples": [
-          "一行两个字段: { \"componentId\": \"form-row\", \"params\": { \"spacing\": 16 }, \"children\": [ { \"componentId\": \"form-field\" }, { \"componentId\": \"form-field\" } ] }"
+          "双列行: { componentId: 'form-row', params: { spacing: 16 }, children: [field1, field2] }"
         ]
       },
       "params": {
@@ -3974,8 +3463,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             "form-field",
             "button",
             "text",
-            "layout",
-            "figma-component"
+            "layout"
           ],
           "required": false,
           "minItems": 0,
@@ -3993,7 +3481,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       },
       "figmaBinding": {
         "nodeType": "FRAME",
-        "preferredLayoutMode": "VERTICAL",
+        "preferredLayoutMode": "HORIZONTAL",
         "renderKey": "form-row"
       }
     },
@@ -4001,18 +3489,26 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
       "id": "form-field",
       "name": "表单字段",
       "category": "Form",
-      "description": "带标签的表单字段单元，优先按 lib-data-input-vertical-form / lib-data-input-form 高保真复刻字段壳子，再最小替换内部控件；支持 input/select/checkbox-group/radio-group/button 或设计系统控件实例",
+      "description": "带标签的表单字段单元，支持 input/select/checkbox-group/radio-group/button 等原子控件",
       "isRebuilt": true,
       "schemaVersion": "2.0.0",
       "prompts": {
-        "description": "带标签的表单字段单元，优先按 lib-data-input-vertical-form / lib-data-input-form 高保真复刻字段壳子，再最小替换内部控件；支持 input/select/checkbox-group/radio-group/button 或设计系统控件实例",
-        "usage": "用于承载单个表单字段。默认优先复用 Form 表单体系中的原始字段模板；纵向字段优先走 lib-data-input-vertical-form，横向字段会从 lib-data-input-form 样板中抽取 Horizontal Form 壳子，再最小替换控件与文案。",
+        "description": "带标签的表单字段单元，通过 controlType 选择内部控件",
+        "usage": "通过 draw_form 的 rows 自动生成，不需要手动创建。controlType 决定控件类型。",
         "examples": [
-          "输入字段: { \"componentId\": \"form-field\", \"params\": { \"label\": \"姓名\", \"controlType\": \"input\", \"placeholder\": \"请输入姓名\" } }",
-          "错误态输入字段: { \"componentId\": \"form-field\", \"params\": { \"label\": \"邮箱\", \"controlType\": \"input\", \"placeholder\": \"请输入邮箱\", \"error\": true, \"state\": \"Active 激活\", \"showSuffix\": true } }",
-          "选择字段: { \"componentId\": \"form-field\", \"params\": { \"label\": \"状态\", \"controlType\": \"select\", \"value\": \"全部状态\" } }",
-          "复选字段: { \"componentId\": \"form-field\", \"params\": { \"label\": \"偏好\", \"layout\": \"vertical\", \"controlType\": \"checkbox-group\", \"optionsText\": \"选项一,选项二\", \"checkedValues\": \"选项一\" } }",
-          "设计系统日期选择器: { \"componentId\": \"form-field\", \"params\": { \"label\": \"日期\", \"controlType\": \"figma-component\", \"componentToken\": \"library.data-input.datepicker\" } }"
+          "输入框: { componentId: 'input', label: '姓名', required: true, placeholder: '请输入' }",
+          "下拉选: { componentId: 'select', label: '状态', props: { optionsText: '启用,禁用' } }",
+          "复选框: { componentId: 'checkbox-group', label: '权限', props: { optionsText: '读,写,删', checkedValues: '读' } }",
+          "日期: { componentId: 'datepicker', label: '日期' }",
+          "开关: { componentId: 'switch', label: '启用' }"
+        ]
+      },
+      "renderNotes": {
+        "actionHint": "表单字段必须通过 controlType 选择原子控件，不要在 form-row/rows 中直接放 figma-component。",
+        "paramRules": [
+          "controlType 决定内部控件类型，label/placeholder/value 等参数按控件语义传递",
+          "input 控件高度由 size 决定（Default 32px / Small 28px / Mini 24px / Large 36px），渲染引擎自动应用，无需手动传 height",
+          "内部 controlColumn wrapper（input + helpText/errorText 的容器）会 clip content，其余容器不 clip"
         ]
       },
       "params": {
@@ -4107,12 +3603,12 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         },
         "placeholder": {
           "type": "string",
-          "default": "请输入",
+          "default": "已输入",
           "description": "输入框占位文案"
         },
         "value": {
           "type": "string",
-          "default": "示例文字",
+          "default": "",
           "description": "当前值/选中值"
         },
         "size": {
@@ -4237,9 +3733,6 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "default": {
           "displayName": "Default",
           "allowedComponents": [
-            "input",
-            "select",
-            "checkbox-group",
             "radio-group",
             "button",
             "figma-component",
@@ -4263,53 +3756,6 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "nodeType": "FRAME",
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "form-field"
-      },
-      "figmaPropertySnapshot": {
-        "token": "lib-data-input-vertical-form",
-        "componentKey": "0be124134930bd594da9da61af7046c4e442878d",
-        "inspectedAt": "2026-03-10T03:54:10.120Z",
-        "source": "discover_component_props",
-        "properties": [
-          {
-            "propertyName": "Description 描述",
-            "displayName": "Description 描述",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Error 报错",
-            "displayName": "Error 报错",
-            "type": "VARIANT",
-            "defaultValue": "False",
-            "options": [
-              "False",
-              "True"
-            ]
-          },
-          {
-            "propertyName": "Type 类型",
-            "displayName": "Type 类型",
-            "type": "VARIANT",
-            "defaultValue": "Input 输入框",
-            "options": [
-              "Input 输入框",
-              "Select 选择框",
-              "Checkbox 多选",
-              "DatePicker 日期选择",
-              "Inputnumber 数字输入",
-              "Radio 单选",
-              "Slider 滑动",
-              "Switch 开关",
-              "Textarea 多行文本",
-              "TimePicker 时间选择",
-              "Upload 上传"
-            ]
-          }
-        ]
       },
       "colorVariableBindings": {
         "form-label-text": {
@@ -4351,6 +3797,1358 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         }
       }
     },
+    "input": {
+      "id": "input",
+      "name": "输入框",
+      "category": "Form",
+      "description": "输入框控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "placeholder": {
+          "type": "string",
+          "default": "已输入",
+          "description": "占位文案"
+        },
+        "value": {
+          "type": "string",
+          "default": "",
+          "description": "输入值"
+        },
+        "size": {
+          "type": "select",
+          "default": "Default 32",
+          "description": "尺寸",
+          "enumValues": [
+            "Mini 24",
+            "Small 28",
+            "Default 32",
+            "Large 36"
+          ]
+        },
+        "state": {
+          "type": "select",
+          "default": "Default 默认",
+          "description": "状态",
+          "enumValues": [
+            "Default 默认",
+            "Hover 悬浮",
+            "Active 激活",
+            "Error 错误",
+            "Disabled 禁用"
+          ]
+        },
+        "filled": {
+          "type": "boolean",
+          "default": false,
+          "description": "已填"
+        },
+        "error": {
+          "type": "boolean",
+          "default": false,
+          "description": "错误态"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "禁用"
+        },
+        "showPrefix": {
+          "type": "boolean",
+          "default": false,
+          "description": "显示前缀"
+        },
+        "prefixText": {
+          "type": "string",
+          "default": "",
+          "description": "前缀文本"
+        },
+        "showSuffix": {
+          "type": "boolean",
+          "default": false,
+          "description": "显示后缀"
+        },
+        "suffixText": {
+          "type": "string",
+          "default": "",
+          "description": "后缀文本"
+        },
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        },
+        "controlWidthMode": {
+          "type": "select",
+          "default": "fill",
+          "description": "宽度模式",
+          "enumValues": [
+            "fixed",
+            "fill"
+          ]
+        },
+        "controlWidth": {
+          "type": "number",
+          "default": 0,
+          "description": "控件宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "input"
+      },
+      "runtime": {
+        "sizeMetrics": {
+          "Mini 24": {
+            "height": 24,
+            "paddingX": 8,
+            "paddingY": 3,
+            "fontSize": 12,
+            "cornerRadius": 4
+          },
+          "Small 28": {
+            "height": 28,
+            "paddingX": 10,
+            "paddingY": 4,
+            "fontSize": 12,
+            "cornerRadius": 4
+          },
+          "Default 32": {
+            "height": 32,
+            "paddingX": 12,
+            "paddingY": 5,
+            "fontSize": 13,
+            "cornerRadius": 4
+          },
+          "Large 36": {
+            "height": 36,
+            "paddingX": 12,
+            "paddingY": 7,
+            "fontSize": 14,
+            "cornerRadius": 4
+          }
+        },
+        "spacing": {
+          "affixIconSize": 12,
+          "affixCornerRadius": 6
+        },
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-input",
+        "componentKey": "f04bea11a4ef73f626b7402aac670a94ad32faf0",
+        "inspectedAt": "2026-03-22T10:31:28.107Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "78:32025",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "State 状态=Default 默认, Size 尺寸=Default 32, Filled 已填=False, Error 错误=False, Disable 禁用=False, Prefix 前缀=False, Suffix 后缀=False",
+        "componentSetName": "Input 输入框",
+        "properties": [
+          {
+            "propertyName": "Disable 禁用",
+            "displayName": "Disable 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Error 错误",
+            "displayName": "Error 错误",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Filled 已填",
+            "displayName": "Filled 已填",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Prefix 前缀",
+            "displayName": "Prefix 前缀",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          },
+          {
+            "propertyName": "Suffix 后缀",
+            "displayName": "Suffix 后缀",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          }
+        ]
+      }
+    },
+    "select": {
+      "id": "select",
+      "name": "选择框",
+      "category": "Form",
+      "description": "选择框控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "placeholder": {
+          "type": "string",
+          "default": "请选择",
+          "description": "占位文案"
+        },
+        "value": {
+          "type": "string",
+          "default": "",
+          "description": "当前值"
+        },
+        "size": {
+          "type": "select",
+          "default": "Default 32",
+          "description": "尺寸",
+          "enumValues": [
+            "Mini 24",
+            "Small 28",
+            "Default 32",
+            "Large 36"
+          ]
+        },
+        "state": {
+          "type": "select",
+          "default": "Default 默认",
+          "description": "状态",
+          "enumValues": [
+            "Default 默认",
+            "Hover 悬浮",
+            "Active 激活",
+            "Error 错误",
+            "Disabled 禁用"
+          ]
+        },
+        "filled": {
+          "type": "boolean",
+          "default": false,
+          "description": "已填"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "禁用"
+        },
+        "multiple": {
+          "type": "boolean",
+          "default": false,
+          "description": "多选"
+        },
+        "selectType": {
+          "type": "string",
+          "default": "Default 默认",
+          "description": "选择器类型"
+        },
+        "optionsText": {
+          "type": "string",
+          "default": "选项一,选项二",
+          "description": "选项文案"
+        },
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        },
+        "controlWidthMode": {
+          "type": "select",
+          "default": "fill",
+          "description": "宽度模式",
+          "enumValues": [
+            "fixed",
+            "fill"
+          ]
+        },
+        "controlWidth": {
+          "type": "number",
+          "default": 0,
+          "description": "控件宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "select"
+      },
+      "runtime": {
+        "sizeMetricsRef": "input",
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-select",
+        "componentKey": "d124dbe0576b8dfd900897124bd14e888e4db6f3",
+        "inspectedAt": "2026-03-22T10:48:03.940Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "111:33695",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Type 类型=Default 默认, Size 尺寸=Default 32, State 状态=Default 默认, Filled 填写=False, Multiple 多选=False, Disabled 禁用=False",
+        "componentSetName": "Select 选择器",
+        "properties": [
+          {
+            "propertyName": "Placeholder 占位符#115960:0",
+            "displayName": "Placeholder 占位符",
+            "type": "TEXT",
+            "defaultValue": "请选择"
+          },
+          {
+            "propertyName": "Value#115960:55",
+            "displayName": "Value",
+            "type": "TEXT",
+            "defaultValue": "北京"
+          },
+          {
+            "propertyName": "Disabled 禁用",
+            "displayName": "Disabled 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Filled 填写",
+            "displayName": "Filled 填写",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Multiple 多选",
+            "displayName": "Multiple 多选",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          },
+          {
+            "propertyName": "Type 类型",
+            "displayName": "Type 类型",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Label 内置标签"
+            ]
+          }
+        ]
+      }
+    },
+    "checkbox-group": {
+      "id": "checkbox-group",
+      "name": "复选框组",
+      "category": "Form",
+      "description": "复选框组控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "renderNotes": {
+        "actionHint": "Checkbox/radio 视觉敏感，优先复用真实 Figma 组件；不要用 vector/svg/path/text 手工绘制勾选。",
+        "paramRules": [
+          "多选行优先使用 checkbox-group；零散多选可组合多个 checkbox"
+        ]
+      },
+      "params": {
+        "optionsText": {
+          "type": "string",
+          "default": "选项一,选项二",
+          "description": "选项文案"
+        },
+        "checkedValues": {
+          "type": "string",
+          "default": "选项一",
+          "description": "默认勾选"
+        },
+        "direction": {
+          "type": "select",
+          "default": "horizontal",
+          "description": "排列方向",
+          "enumValues": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "gap": {
+          "type": "number",
+          "default": 24,
+          "description": "间距"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "禁用"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "checkbox-group"
+      },
+      "runtime": {
+        "spacing": {
+          "iconHitAreaSize": 16,
+          "iconHitAreaThreshold": 24
+        },
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-checkbox-group",
+        "componentKey": "ca3d2f097d5c3a695f6b4b8c8d7455b03d6dcafd",
+        "inspectedAt": "2026-03-22T10:44:34.016Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "120:46849",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Layout 布局=Horizontal 横向, Items 数量=2",
+        "componentSetName": "Checkbox Group 复选框组",
+        "properties": [
+          {
+            "propertyName": "Items 数量",
+            "displayName": "Items 数量",
+            "type": "VARIANT",
+            "defaultValue": "2",
+            "options": [
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8"
+            ]
+          },
+          {
+            "propertyName": "Layout 布局",
+            "displayName": "Layout 布局",
+            "type": "VARIANT",
+            "defaultValue": "Horizontal 横向",
+            "options": [
+              "Vertical 纵向",
+              "Horizontal 横向"
+            ]
+          }
+        ]
+      }
+    },
+    "switch": {
+      "id": "switch",
+      "name": "开关",
+      "category": "Form",
+      "description": "开关控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否开启"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "禁用"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "switch"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 44,
+          "height": 24
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-switch",
+        "componentKey": "d6017b9a513cbd53d6963d768259bbe0fcb8ddde",
+        "inspectedAt": "2026-03-22T10:41:57.296Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "30:47485",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Checked 开关=False, Size 尺寸=Default  20, Label 标签=False, Disabled 禁用=False, Loading 加载中=False",
+        "componentSetName": "Switch 开关",
+        "properties": [
+          {
+            "propertyName": "Checked 开关",
+            "displayName": "Checked 开关",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Disabled 禁用",
+            "displayName": "Disabled 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Label 标签",
+            "displayName": "Label 标签",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Loading 加载中",
+            "displayName": "Loading 加载中",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default  20",
+            "options": [
+              "Mini 16",
+              "Default  20"
+            ]
+          }
+        ]
+      }
+    },
+    "datepicker": {
+      "id": "datepicker",
+      "name": "日期选择",
+      "category": "Form",
+      "description": "日期选择控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "datepicker"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-datepicker",
+        "componentKey": "75d61442da83762c096571de0f34f56012bea78d",
+        "inspectedAt": "2026-03-22T10:51:01.430Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "14:97181",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Type 类型=Date 日期, State 状态=Default 默认, Size 尺寸=Default 32, Filled 已填=False, Disabled 禁用=False",
+        "componentSetName": "Datepicker 日期选择器",
+        "properties": [
+          {
+            "propertyName": "Disabled 禁用",
+            "displayName": "Disabled 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Filled 已填",
+            "displayName": "Filled 已填",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          },
+          {
+            "propertyName": "Type 类型",
+            "displayName": "Type 类型",
+            "type": "VARIANT",
+            "defaultValue": "Date 日期",
+            "options": [
+              "Date 日期",
+              "DateRange 日期范围",
+              "DateTimeRange 日期时间范围",
+              "RelativeDate 相对时间",
+              "RelativeDateRange 相对时间范围",
+              "RelativeDateTimeRang 相对日期时间范围"
+            ]
+          }
+        ]
+      }
+    },
+    "timepicker": {
+      "id": "timepicker",
+      "name": "时间选择",
+      "category": "Form",
+      "description": "时间选择控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "timepicker"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-timepicker",
+        "componentKey": "b6eadcc611e8d23cea25b9799bc317154a718322",
+        "inspectedAt": "2026-03-22T10:50:49.338Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "120:46644",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Type 类型=Time 时间, State 状态=Default 默认, Size 尺寸=Default 32, Filled 已填=False, Disable 禁用=False",
+        "componentSetName": "Timepicker 时间选择器",
+        "properties": [
+          {
+            "propertyName": "Disable 禁用",
+            "displayName": "Disable 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Filled 已填",
+            "displayName": "Filled 已填",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          },
+          {
+            "propertyName": "Type 类型",
+            "displayName": "Type 类型",
+            "type": "VARIANT",
+            "defaultValue": "Time 时间",
+            "options": [
+              "Time 时间",
+              "TimeRange 时间范围"
+            ]
+          }
+        ]
+      }
+    },
+    "inputnumber": {
+      "id": "inputnumber",
+      "name": "数字输入",
+      "category": "Form",
+      "description": "数字输入控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "inputnumber"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-inputnumber",
+        "componentKey": "207e734d854bc8d664b0218f431761c985ecccf1",
+        "inspectedAt": "2026-03-22T10:41:02.972Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "120:45440",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Type 类型=Row 双侧调整, Size 尺寸=Default 32, State 状态=Default 默认, Filled 已填=True, Disabled 禁用=False",
+        "componentSetName": "InputNumber 数字输入框",
+        "properties": [
+          {
+            "propertyName": "Prefix 前缀#129313:0",
+            "displayName": "Prefix 前缀",
+            "type": "BOOLEAN",
+            "defaultValue": false,
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Suffix后缀#129313:45",
+            "displayName": "Suffix后缀",
+            "type": "BOOLEAN",
+            "defaultValue": false,
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Disabled 禁用",
+            "displayName": "Disabled 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Filled 已填",
+            "displayName": "Filled 已填",
+            "type": "VARIANT",
+            "defaultValue": "True",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          },
+          {
+            "propertyName": "Type 类型",
+            "displayName": "Type 类型",
+            "type": "VARIANT",
+            "defaultValue": "Row 双侧调整",
+            "options": [
+              "Right 右侧调整",
+              "Row 双侧调整"
+            ]
+          }
+        ]
+      }
+    },
+    "slider": {
+      "id": "slider",
+      "name": "滑动条",
+      "category": "Form",
+      "description": "滑动条控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "slider"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 120,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-slider",
+        "componentKey": "cc707c07037cc48e0551dcd72feae6dabe9ed484",
+        "inspectedAt": "2026-03-22T10:51:40.476Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "120:45784",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Layout 布局=Horizontal 水平, State 状态=Default 默认, Rang 双游标=False, Icon 图标=False, Tooltip 提示=False, Inputnumber 数字输入=False, Marks 刻度=False, Disabled 禁用=False",
+        "componentSetName": "Slider 滑动输入",
+        "properties": [
+          {
+            "propertyName": "Disabled 禁用",
+            "displayName": "Disabled 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Icon 图标",
+            "displayName": "Icon 图标",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Inputnumber 数字输入",
+            "displayName": "Inputnumber 数字输入",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Layout 布局",
+            "displayName": "Layout 布局",
+            "type": "VARIANT",
+            "defaultValue": "Horizontal 水平",
+            "options": [
+              "Horizontal 水平",
+              "Vertical 垂直"
+            ]
+          },
+          {
+            "propertyName": "Marks 刻度",
+            "displayName": "Marks 刻度",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "Rang 双游标",
+            "displayName": "Rang 双游标",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Hover 悬停",
+              "Active 激活",
+              "Disabled 禁用"
+            ]
+          },
+          {
+            "propertyName": "Tooltip 提示",
+            "displayName": "Tooltip 提示",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          }
+        ]
+      }
+    },
+    "textarea": {
+      "id": "textarea",
+      "name": "多行文本",
+      "category": "Form",
+      "description": "多行文本控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "textarea"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 160,
+          "height": 80
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-textarea",
+        "componentKey": "acba4b2ca240bc5a54672107c78235f4f82fd419",
+        "inspectedAt": "2026-03-22T10:47:51.921Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "1165:6570",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "State 状态=Defalult 默认, Filled 已填=False, Error 错误=False, Disable 禁用=False",
+        "componentSetName": "TextArea 文本域",
+        "properties": [
+          {
+            "propertyName": "WordLimit 字数限制#148819:29",
+            "displayName": "WordLimit 字数限制",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "可拖拽大小#148819:0",
+            "displayName": "可拖拽大小",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "placeholder 占位符#89418:13",
+            "displayName": "placeholder 占位符",
+            "type": "TEXT",
+            "defaultValue": "This is the contents of the textarea. \n"
+          },
+          {
+            "propertyName": "value#111345:434",
+            "displayName": "value",
+            "type": "TEXT",
+            "defaultValue": "This is the contents of the textarea. \n"
+          },
+          {
+            "propertyName": "Disable 禁用",
+            "displayName": "Disable 禁用",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Error 错误",
+            "displayName": "Error 错误",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "propertyName": "Filled 已填",
+            "displayName": "Filled 已填",
+            "type": "VARIANT",
+            "defaultValue": "False",
+            "options": [
+              "True",
+              "False"
+            ]
+          },
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Defalult 默认",
+            "options": [
+              "Defalult 默认",
+              "Hover 悬浮",
+              "Active 激活"
+            ]
+          }
+        ]
+      }
+    },
+    "upload": {
+      "id": "upload",
+      "name": "上传按钮",
+      "category": "Form",
+      "description": "上传控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "upload"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 160,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-button",
+        "componentKey": "d93abfb10eb04a5723ba8016b9147c131b54dc6d",
+        "inspectedAt": "2026-03-22T10:44:08.434Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "120:45309",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Theme 主题=Default 默认, State 状态=Before 上传前",
+        "componentSetName": "Button 按钮上传",
+        "properties": [
+          {
+            "propertyName": "State 状态",
+            "displayName": "State 状态",
+            "type": "VARIANT",
+            "defaultValue": "Before 上传前",
+            "options": [
+              "Before 上传前",
+              "After 上传后"
+            ]
+          },
+          {
+            "propertyName": "Theme 主题",
+            "displayName": "Theme 主题",
+            "type": "VARIANT",
+            "defaultValue": "Default 默认",
+            "options": [
+              "Default 默认",
+              "Primary 强调"
+            ]
+          }
+        ]
+      }
+    },
+    "segmented-picker": {
+      "id": "segmented-picker",
+      "name": "分段选择器",
+      "category": "Form",
+      "description": "分段选择器控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "params": {
+        "optionsText": {
+          "type": "string",
+          "default": "选项一,选项二",
+          "description": "选项文案"
+        },
+        "value": {
+          "type": "string",
+          "default": "选项一",
+          "description": "选中值"
+        },
+        "width": {
+          "type": "number",
+          "default": 0,
+          "description": "宽度"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "segmented-picker"
+      },
+      "runtime": {
+        "fallback": {
+          "width": 160,
+          "height": 32
+        }
+      },
+      "figmaPropertySnapshot": {
+        "token": "lib-data-input-segmented-picker",
+        "componentKey": "94125fa758354931512313d1bb6ce37aae02b8c7",
+        "inspectedAt": "2026-03-22T10:41:27.872Z",
+        "source": "discover_component_props",
+        "sourceNodeId": "4151:53302",
+        "sourceNodeType": "COMPONENT_SET",
+        "componentName": "Size 尺寸=Default 32, Items 数量=2",
+        "componentSetName": "Segmented Picker 分段选择器",
+        "properties": [
+          {
+            "propertyName": "Items 数量",
+            "displayName": "Items 数量",
+            "type": "VARIANT",
+            "defaultValue": "4",
+            "options": [
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8"
+            ]
+          },
+          {
+            "propertyName": "Size 尺寸",
+            "displayName": "Size 尺寸",
+            "type": "VARIANT",
+            "defaultValue": "Default 32",
+            "options": [
+              "Mini 24",
+              "Small 28",
+              "Default 32",
+              "Large 36"
+            ]
+          }
+        ]
+      }
+    },
     "card": {
       "id": "card",
       "name": "卡片容器",
@@ -4365,6 +5163,14 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         ]
       },
       "params": {
+        "size": {
+          "type": "select",
+          "default": "default",
+          "description": "尺寸",
+          "enumValues": [
+            "default"
+          ]
+        },
         "padding": {
           "type": "number",
           "default": 20,
@@ -4389,8 +5195,6 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
             "text",
             "tag",
             "button",
-            "input",
-            "select",
             "figma-component"
           ],
           "required": false,
@@ -4411,6 +5215,17 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         "nodeType": "FRAME",
         "preferredLayoutMode": "VERTICAL",
         "renderKey": "card"
+      },
+      "runtime": {
+        "sizeMetrics": {
+          "default": {
+            "height": 40,
+            "paddingX": 20,
+            "paddingY": 20,
+            "fontSize": 13,
+            "cornerRadius": 8
+          }
+        }
       },
       "colorVariableBindings": {
         "card-bg": {
