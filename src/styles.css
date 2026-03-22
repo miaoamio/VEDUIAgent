@@ -865,19 +865,11 @@ h2 {
 }
 
 .ai-line-pulse-b {
-  animation: aiLineFloatUpAlt 160ms ease-out;
+  animation: aiLineFloatUp 160ms ease-out;
+  animation-delay: 1ms;
 }
 
 @keyframes aiLineFloatUp {
-  from {
-    transform: translateY(4px);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-@keyframes aiLineFloatUpAlt {
   from {
     transform: translateY(4px);
   }

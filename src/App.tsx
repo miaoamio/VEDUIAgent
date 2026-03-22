@@ -203,6 +203,48 @@ function normalizeComponentSpecLine(text: string): string {
   return text;
 }
 
+const SEARCH_THOUGHT_KEYWORDS_CN = ['规范', '读取', '阅读', '目录', '组件库', '了解规范', '了解组件'];
+const SEARCH_THOUGHT_KEYWORDS_EN = ['spec', 'component', 'figma'];
+const PROPS_THOUGHT_KEYWORDS_CN = ['属性', '探测', '探查', '发现属性'];
+const PROPS_THOUGHT_KEYWORDS_EN = ['props'];
+const FRAME_THOUGHT_KEYWORDS_CN = ['生成', '创建', '绘制'];
+const FRAME_THOUGHT_KEYWORDS_EN = ['generate', 'create', 'draw'];
+
+function includesAny(haystack: string, keywords: string[]): boolean {
+  for (const keyword of keywords) {
+    if (keyword && haystack.includes(keyword)) return true;
+  }
+  return false;
+}
+
+function isSearchThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  if (raw.startsWith('读')) return true;
+  return (
+    includesAny(raw, SEARCH_THOUGHT_KEYWORDS_CN) ||
+    includesAny(lower, SEARCH_THOUGHT_KEYWORDS_EN) ||
+    includesAny(raw, PROPS_THOUGHT_KEYWORDS_CN) ||
+    includesAny(lower, PROPS_THOUGHT_KEYWORDS_EN)
+  );
+}
+
+function isFrameThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (isSearchThoughtText(raw)) return false;
+  const lower = raw.toLowerCase();
+  if (raw.startsWith('生成') || raw.startsWith('创建') || raw.startsWith('绘制')) return true;
+  return includesAny(raw, FRAME_THOUGHT_KEYWORDS_CN) || includesAny(lower, FRAME_THOUGHT_KEYWORDS_EN);
+}
+
+function getThoughtIconKind(text: string): 'search' | 'frame' | 'brain' {
+  if (isSearchThoughtText(text)) return 'search';
+  if (isFrameThoughtText(text)) return 'frame';
+  return 'brain';
+}
+
 function translateSystemLine(text: string): string {
   const normalized = String(text || '').trim();
   let match = normalized.match(/^(draw_form)\s+success\s+\(ID:\s*([^\s,]+),\s*rows=([0-9]+),\s*layout=([^)]+)\)\.?$/i);
@@ -9275,44 +9317,6 @@ StepD:
                           const lastItemIndex = items.length > 0 ? items.length - 1 : -1;
                           const shouldShowAttachmentDots = showBreathingDots && items.length === 0;
                           const lastItemKind = lastItemIndex >= 0 ? items[lastItemIndex]?.kind : null;
-                          const isSearchThoughtText = (text: string) => {
-                            const compact = String(text || '').trim();
-                            const compactLower = compact.toLowerCase();
-                            const isSpecThought =
-                              compact.includes('规范') ||
-                              compactLower.includes('spec') ||
-                              compact.startsWith('读') ||
-                              compact.includes('读取') ||
-                              compact.includes('阅读') ||
-                              compact.includes('目录') ||
-                              compact.includes('组件库') ||
-                              compactLower.includes('component') ||
-                              compactLower.includes('figma') ||
-                              compact.includes('了解规范') ||
-                              compact.includes('了解组件');
-                            const isPropsThought =
-                              compact.includes('属性') ||
-                              compactLower.includes('props') ||
-                              compact.includes('探测') ||
-                              compact.includes('探查') ||
-                              compact.includes('发现属性');
-                            return isSpecThought || isPropsThought;
-                          };
-                          const isFrameThoughtText = (text: string) => {
-                            const compact = String(text || '').trim();
-                            const compactLower = compact.toLowerCase();
-                            const isFrame =
-                              compact.startsWith('绘制') ||
-                              compact.startsWith('创建') ||
-                              compact.startsWith('生成') ||
-                              compact.includes('生成') ||
-                              compact.includes('创建') ||
-                              compact.includes('绘制') ||
-                              compactLower.includes('generate') ||
-                              compactLower.includes('create') ||
-                              compactLower.includes('draw');
-                            return isFrame && !isSearchThoughtText(compact);
-                          };
                           let lastSystemIndex = -1;
                           let lastFrameThoughtIndex = -1;
                           for (let i = 0; i < items.length; i += 1) {
@@ -9407,46 +9411,16 @@ StepD:
                                   );
                                 }
                                 if (item.kind === 'thought') {
-                                  const compact = String(item.text || '').trim();
-                                  const compactLower = compact.toLowerCase();
-                                  const isSpecThought =
-                                    compact.includes('规范') ||
-                                    compactLower.includes('spec') ||
-                                    compact.startsWith('读') ||
-                                    compact.includes('读取') ||
-                                    compact.includes('阅读') ||
-                                    compact.includes('目录') ||
-                                    compact.includes('组件库') ||
-                                    compactLower.includes('component') ||
-                                    compactLower.includes('figma') ||
-                                    compact.includes('了解规范') ||
-                                    compact.includes('了解组件');
-                                  const isPropsThought =
-                                    compact.includes('属性') ||
-                                    compactLower.includes('props') ||
-                                    compact.includes('探测') ||
-                                    compact.includes('探查') ||
-                                    compact.includes('发现属性');
-                                  const isSearchThought = isSpecThought || isPropsThought;
-                                  const isFrameThought =
-                                    compact.startsWith('绘制') ||
-                                    compact.startsWith('创建') ||
-                                    compact.startsWith('生成') ||
-                                    compact.includes('生成') ||
-                                    compact.includes('创建') ||
-                                    compact.includes('绘制') ||
-                                    compactLower.includes('generate') ||
-                                    compactLower.includes('create') ||
-                                    compactLower.includes('draw');
+                                  const iconKind = getThoughtIconKind(item.text);
                                   return (
                                     <IconTextRow
                                       key={`thought_${itemIndex}`}
                                       className="ai-thought"
                                       textClassName="ai-thought-text"
                                       icon={
-                                        isSearchThought ? (
+                                        iconKind === 'search' ? (
                                           <SearchIcon className="ai-thought-icon" />
-                                        ) : isFrameThought ? (
+                                        ) : iconKind === 'frame' ? (
                                           <FrameIcon className="ai-thought-icon" />
                                         ) : (
                                           <ThinkingIcon className="ai-thought-icon" />
