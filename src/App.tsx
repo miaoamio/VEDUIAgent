@@ -1694,7 +1694,11 @@ function App() {
   const composerAttachRef = React.useRef<HTMLDivElement | null>(null);
   const chartDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const [figmaInstanceInfo, setFigmaInstanceInfo] = React.useState<{
-    componentKey: string; componentName: string; componentSetName: string; nodeName: string;
+    componentKey: string;
+    componentName: string;
+    componentSetName: string;
+    nodeName: string;
+    componentNodeId?: string;
   } | null>(null);
   const quickComponentDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const quickComponentMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -1874,7 +1878,7 @@ function App() {
       }
 
       if (type === 'figma-instance-info') {
-        setFigmaInstanceInfo(data?.componentKey ? data : null);
+        setFigmaInstanceInfo(data?.componentKey || data?.componentNodeId ? data : null);
       }
 
     };
@@ -5931,13 +5935,14 @@ StepD:
     }
   };
 
-  const handleInspectByComponentKey = async (componentKey: string) => {
-    if (componentInspectionRunning || loading || !componentKey) return;
+  const handleInspectByComponentKey = async (componentKey: string, componentNodeId?: string) => {
+    if (componentInspectionRunning || loading || (!componentKey && !componentNodeId)) return;
     setComponentInspectionRunning(true);
     setComponentInspectionSummary('反查中…');
     try {
       const inspectResult = await inspectFigmaComponentStructure({
-        keys: [componentKey],
+        keys: componentKey ? [componentKey] : undefined,
+        nodeIds: componentNodeId ? [componentNodeId] : undefined,
         includeErrors: true,
         maxDepth: 6,
         maxChildren: 24
@@ -8367,7 +8372,7 @@ StepD:
                   if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
                 }} style={{ flexShrink: 0 }}>复制 Key</button>
                 <button
-                  onClick={() => handleInspectByComponentKey(figmaInstanceInfo.componentKey)}
+                          onClick={() => handleInspectByComponentKey(figmaInstanceInfo.componentKey, figmaInstanceInfo.componentNodeId)}
                   disabled={componentInspectionRunning || loading}
                   style={{ flexShrink: 0 }}
                 >{componentInspectionRunning ? '…' : '反查属性'}</button>

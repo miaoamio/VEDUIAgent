@@ -412,7 +412,7 @@ function checkSelection() {
           if (key) {
             figma.ui.postMessage({
               type: 'figma-instance-info',
-              data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name }
+              data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
             });
           }
         } else if (componentId === 'figma-component') {
@@ -445,7 +445,7 @@ function checkSelection() {
       : '';
     figma.ui.postMessage({
       type: 'figma-instance-info',
-      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name }
+      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
     });
   }
 }
@@ -8208,15 +8208,17 @@ function toStringList(input: unknown): string[] {
 
 function resolveInspectionTargets(payload: any): Array<{
   token?: string;
-  componentKey: string;
+  componentKey?: string;
+  componentNodeId?: string;
   fallbackName?: string;
 }> {
   const mode = String(payload?.mode || '').trim().toLowerCase();
   const includeAll = payload?.all === true || mode === 'all';
   const requestedTokens = toStringList(payload?.tokens);
   const requestedKeys = toStringList(payload?.keys);
+  const requestedNodeIds = toStringList(payload?.nodeIds);
 
-  const targets: Array<{ token?: string; componentKey: string; fallbackName?: string }> = [];
+  const targets: Array<{ token?: string; componentKey?: string; componentNodeId?: string; fallbackName?: string }> = [];
   const pushToken = (token: string) => {
     const resolved = resolveComponentTokenProfile(token);
     if (!resolved) return;
@@ -8253,15 +8255,20 @@ function resolveInspectionTargets(payload: any): Array<{
         targets.push({ componentKey: normalized });
       }
     });
+    requestedNodeIds.forEach((nodeId) => {
+      const normalized = String(nodeId || '').trim();
+      if (!normalized) return;
+      targets.push({ componentNodeId: normalized });
+    });
   } else {
     Object.entries(BASE_COMPONENT_TOKEN_PACK).forEach(([token]) => pushToken(token));
   }
 
   const dedup = new Set<string>();
-  const uniqueTargets: Array<{ token?: string; componentKey: string; fallbackName?: string }> = [];
+  const uniqueTargets: Array<{ token?: string; componentKey?: string; componentNodeId?: string; fallbackName?: string }> = [];
   targets.forEach((target) => {
-    const key = `${target.token || ''}|${target.componentKey}`;
-    if (!target.componentKey || dedup.has(key)) return;
+    const key = `${target.token || ''}|${target.componentKey || ''}|${target.componentNodeId || ''}`;
+    if ((!target.componentKey && !target.componentNodeId) || dedup.has(key)) return;
     dedup.add(key);
     uniqueTargets.push(target);
   });
@@ -9127,7 +9134,8 @@ figma.ui.onmessage = async (msg) => {
       const target = scanned[index];
       const discovered = await discoverFigmaComponentSchema({
         token: target.token,
-        componentKey: target.componentKey,
+        componentKey: target.componentKey || '',
+        componentNodeId: target.componentNodeId,
         fallbackName: target.fallbackName
       });
 
@@ -9180,7 +9188,8 @@ figma.ui.onmessage = async (msg) => {
       const target = targets[index];
       const discovered = await inspectFigmaComponentStructure({
         token: target.token,
-        componentKey: target.componentKey,
+        componentKey: target.componentKey || '',
+        componentNodeId: target.componentNodeId,
         fallbackName: target.fallbackName,
         variantCriteria: payload.variantCriteria,
         maxDepth,
