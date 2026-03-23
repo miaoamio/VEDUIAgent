@@ -4,3 +4,4 @@ export { basicComponents } from "./basic";
 export { iconComponents } from "./icon";
 export { formComponents } from "./form";
 export { inputComponents } from "./input";
+export { chartComponents } from "./chart";

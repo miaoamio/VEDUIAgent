@@ -170,13 +170,11 @@ export const formComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-radio-group",
-      "componentKey": "360abf928135cb51b513e27732dfc609c0dffe14",
       "inspectedAt": "2026-03-09T12:22:45.030Z",
       "source": "discover_component_props",
       "properties": [
         {
           "propertyName": "Items 数量",
-          "displayName": "Items 数量",
           "type": "VARIANT",
           "defaultValue": "2",
           "options": [
@@ -191,7 +189,6 @@ export const formComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Language",
-          "displayName": "Language",
           "type": "VARIANT",
           "defaultValue": "CN",
           "options": [
@@ -201,7 +198,6 @@ export const formComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Layout 布局",
-          "displayName": "Layout 布局",
           "type": "VARIANT",
           "defaultValue": "Horizontal 横向",
           "options": [
@@ -288,7 +284,7 @@ export const formComponents: ComponentRegistry["components"] = {
       "usage": "## draw_form 使用规则\n\n**创建/新建表单** → `draw_form(payload)`，**修改已有表单** → `apply_scene`（增量改，不要重新生成）\n\n### payload 结构\n```\n{\n  layout?: 'vertical'(默认) | 'horizontal',\n  align?: 'top'(默认) | 'left' | 'right',\n  labelWidthPreset?: 'fill'(默认) | 'default-80' | 'medium-120' | 'large-160',\n  width?: number,          // 0=自动\n  rowSpacing?: number,     // 默认 24\n  rows: FieldItem[][],     // 每行一个子数组；默认每行只放 1 个字段\n  footer?: {               // 按钮区（独立于 rows，不要放进 rows 里）\n    actions: ActionItem[],\n    align?: 'end'(默认) | 'start' | 'center'\n  }\n}\n```\n\n### FieldItem 字段格式\n```\n{ componentId: 'input'|'select'|'checkbox-group'|'radio-group'|'switch'|\n               'datepicker'|'timepicker'|'inputnumber'|'slider'|'textarea'|'upload',\n  label: string, required?: boolean, placeholder?: string,\n  props?: { optionsText?: string, checkedValues?: string, value?: string, ... } }\n```\n\n### 关键规则\n- **默认单列**：每个 rows 子数组只放 1 个字段，除非用户明确要求双列/多列\n- **按钮独立**：提交/重置等操作按钮放 `footer.actions`，不要放进 rows\n- **不要用 form-row 包单字段**：`form-row` 仅在同一行多字段时自动使用\n- 如果用户要\"筛选器/筛选条\"→ 用 `create_node(\"filter-group\")`，不是 draw_form\n- 图片生成场景：必须用 rows[][] 输出所有识别到的字段，不要省略",
       "examples": [
         "## 示例1：纵向登录表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\", \"labelWidthPreset\": \"fill\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"用户名\", \"required\": true, \"placeholder\": \"请输入用户名\" }],\n    [{ \"componentId\": \"input\", \"label\": \"密码\", \"required\": true, \"placeholder\": \"请输入密码\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"登录\", \"variant\": \"primary\" }], \"align\": \"center\" }\n}```",
-        "## 示例2：带下拉/复选的纵向编辑表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"姓名\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"部门\", \"props\": { \"optionsText\": \"产品,研发,设计,运营\" } }],\n    [{ \"componentId\": \"radio-group\", \"label\": \"性别\", \"props\": { \"optionsText\": \"男,女\", \"checkedValues\": \"男\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"入职日期\" }],\n    [{ \"componentId\": \"textarea\", \"label\": \"备注\", \"placeholder\": \"请输入备注\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存\", \"variant\": \"primary\" }, { \"label\": \"取消\" }], \"align\": \"end\" }\n}```",
+        "## 示例2：带下拉/复选的纵向编辑表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"姓名\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"部门\", \"props\": { \"optionsText\": \"产品,研发,设计,运营\" } }],\n    [{ \"componentId\": \"radio-group\", \"label\": \"性别\", \"props\": { \"optionsText\": \"男,女\", \"checkedValues\": \"男\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"入职日期\" }],\n    [{ \"componentId\": \"textarea\", \"label\": \"备注\", \"placeholder\": \"请输入备注\" }],\n    [{ \"componentId\": \"inputnumber\", \"label\": \"数量\", \"disabled\": true }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存\", \"variant\": \"primary\" }, { \"label\": \"取消\" }], \"align\": \"end\" }\n}```",
         "## 示例3：横向筛选表单（双列）\n```json\n{ \"layout\": \"horizontal\", \"labelWidthPreset\": \"default-80\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"关键词\" }, { \"componentId\": \"select\", \"label\": \"状态\", \"props\": { \"optionsText\": \"全部,启用,禁用\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"开始日期\" }, { \"componentId\": \"datepicker\", \"label\": \"结束日期\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"搜索\", \"variant\": \"primary\" }, { \"label\": \"重置\" }], \"align\": \"end\" }\n}```",
         "## 示例4：带分组开关的设置表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"应用名称\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"类型\", \"props\": { \"optionsText\": \"Web应用,移动应用,API\" } }],\n    [{ \"componentId\": \"switch\", \"label\": \"启用通知\" }],\n    [{ \"componentId\": \"checkbox-group\", \"label\": \"权限\", \"props\": { \"optionsText\": \"读取,写入,删除\" } }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存设置\", \"variant\": \"primary\" }], \"align\": \"end\" }\n}```"
       ]
@@ -519,6 +515,7 @@ export const formComponents: ComponentRegistry["components"] = {
       "usage": "通过 draw_form 的 rows 自动生成，不需要手动创建。controlType 决定控件类型。",
       "examples": [
         "输入框: { componentId: 'input', label: '姓名', required: true, placeholder: '请输入' }",
+        "数字输入: { componentId: 'inputnumber', label: '数量', disabled: true }",
         "下拉选: { componentId: 'select', label: '状态', props: { optionsText: '启用,禁用' } }",
         "复选框: { componentId: 'checkbox-group', label: '权限', props: { optionsText: '读,写,删', checkedValues: '读' } }",
         "日期: { componentId: 'datepicker', label: '日期' }",
@@ -606,21 +603,22 @@ export const formComponents: ComponentRegistry["components"] = {
       },
       "controlType": {
         "type": "select",
-        "default": "Input 输入框",
+        "default": "input",
         "description": "控件类型",
         "enumValues": [
-          "Input 输入框",
-          "Select 选择框",
-          "Checkbox 多选",
-          "DatePicker 日期选择",
-          "Inputnumber 数字输入",
-          "Radio 单选",
-          "Segmented Picker 分段选择器",
-          "Slider 滑动",
-          "Switch 开关",
-          "Textarea 多行文本",
-          "TimePicker 时间选择",
-          "Upload 上传"
+          "input",
+          "select",
+          "checkbox-group",
+          "datepicker",
+          "inputnumber",
+          "radio-group",
+          "segmented-picker",
+          "slider",
+          "switch",
+          "textarea",
+          "timepicker",
+          "upload",
+          "text"
         ]
       },
       "placeholder": {
@@ -888,17 +886,12 @@ export const formComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-checkbox-group",
-      "componentKey": "ca3d2f097d5c3a695f6b4b8c8d7455b03d6dcafd",
       "inspectedAt": "2026-03-22T10:44:34.016Z",
       "source": "discover_component_props",
-      "sourceNodeId": "120:46849",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Layout 布局=Horizontal 横向, Items 数量=2",
       "componentSetName": "Checkbox Group 复选框组",
       "properties": [
         {
           "propertyName": "Items 数量",
-          "displayName": "Items 数量",
           "type": "VARIANT",
           "defaultValue": "2",
           "options": [
@@ -913,7 +906,6 @@ export const formComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Layout 布局",
-          "displayName": "Layout 布局",
           "type": "VARIANT",
           "defaultValue": "Horizontal 横向",
           "options": [

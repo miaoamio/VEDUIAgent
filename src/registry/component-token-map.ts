@@ -23,9 +23,9 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'lib-data-input-segmented-picker': ['segmented-picker', 'figma-component'],
   'lib-data-input-radio-group': ['radio-group', 'figma-component'],
   'lib-data-input-button': ['upload', 'button', 'figma-component'],
-  'lib-data-input-form': ['form', 'form-field', 'figma-component', 'radio-group'],
-  'lib-data-input-horizontal-form': ['form', 'form-field', 'figma-component', 'radio-group'],
-  'lib-data-input-vertical-form': ['form', 'form-field', 'figma-component', 'radio-group'],
+  'lib-data-input-form': ['form', 'form-field', 'figma-component'],
+  'lib-data-input-horizontal-form': ['form', 'form-field', 'figma-component'],
+  'lib-data-input-vertical-form': ['form', 'form-field', 'figma-component'],
 
   // Data display
   'lib-data-display-card': ['card', 'figma-component'],
@@ -59,9 +59,9 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'table.rowAction.header': ['table'],
 
   // Charts
-  'lib-data-display-component-piechart': ['figma-component'],
-  'lib-data-display-component-linechart': ['figma-component'],
-  'lib-data-display-component-barchart': ['figma-component'],
-  'lib-data-display-component-areachart': ['figma-component'],
-  'lib-data-display-toplist': ['figma-component'],
+  'lib-data-display-component-piechart': ['chart-pie', 'figma-component'],
+  'lib-data-display-component-linechart': ['chart-line', 'figma-component'],
+  'lib-data-display-component-barchart': ['chart-bar', 'figma-component'],
+  'lib-data-display-component-areachart': ['chart-area', 'figma-component'],
+  'lib-data-display-toplist': ['chart-toplist', 'figma-component'],
 };

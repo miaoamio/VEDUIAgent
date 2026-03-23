@@ -1,4 +1,4 @@
-export type ComponentCategory = "Layout" | "Basic" | "Form" | "Table" | "Data" | "Icon" | "Other";
+export type ComponentCategory = "Layout" | "Basic" | "Form" | "Table" | "Data" | "Icon" | "Other" | "Chart";
 
 export type ParamType =
   | "string"
@@ -79,13 +79,14 @@ export interface FigmaPropertyDefinition {
 export interface FigmaPropertyMap {
   [figmaDisplayName: string]: {
     sourceParam: string;
-    transform?: 'boolean';
+    transform?: 'boolean' | 'string:boolean' | 'number' | 'list:length' | string;
   };
 }
 
 export interface FigmaPropertySnapshot {
   token?: string;
-  componentKey: string;
+  /** @deprecated componentKey 已迁移到 theme/volcengine-design/components.ts，通过 token 字段读取 */
+  componentKey?: string;
   inspectedAt: string;
   source: "discover_component_props" | "inspect_live_instance";
   sourceNodeId?: string;

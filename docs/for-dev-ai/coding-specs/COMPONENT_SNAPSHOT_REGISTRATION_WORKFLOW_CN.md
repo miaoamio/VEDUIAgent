@@ -1,50 +1,149 @@
-# 组件属性快照登记流程（批量维护）
+# 组件快照登记流程
 
-## 1. 目标
-把 Figma `discover_component_props` 结果稳定回填到组件 spec 的 `figmaPropertySnapshot`，并让后续生成阶段可通过 `read_specs` 直接读取。
+> **读者**：开发者 / Claude Code 等开发 AI
+> **前置阅读**：[反查指令参考](INSPECT_COMMANDS_CN.md)
 
-## 2. 当前已补齐能力
-1. spec 字段已支持：`figmaPropertySnapshot`（`src/registry.types.ts`）。
-2. Registry 已统一：`figmaPropertySnapshot` 直接写入 `src/registry.ts`。
-3. `read_specs` 已输出快照信息：`FigmaPropertySnapshotMeta/Properties`。
-4. Patch 映射补齐：`src/spec.component-token-map.ts` 可配置 `token -> componentId[]`。
-5. 回填脚本：`npm run spec:snapshot:apply -- <Spec Patch JSON 路径>`。
-6. 进度巡检脚本：`npm run spec:snapshot:status`。
+---
 
-## 3. 标准登记步骤（每个组件）
+## 登记位置
 
-获取组件的 `figmaPropertySnapshot`（属性快照）只需要轻量的**属性探测**（获取接口和参数），不需要获取包含样式的冗长节点树结构。你有两种操作方式：
+| 组件类别 | 登记文件 | 是否需要 propertyMap |
+|----------|----------|----------------------|
+| 表单控件（input / select / datepicker 等） | `src/registry/components/input.ts` | ✅ 需要 |
+| 基础组件（tag / button） | `src/registry/components/basic.ts` | ✅ 需要 |
+| 图表（chart-pie / chart-toplist 等） | `src/registry/components/chart.ts` | ❌ 不需要 |
+| 布局 / 容器 | `src/registry/components/layout.ts` | ❌ 不适用 |
 
-### 方式一：通过 AI 助手探测（推荐，最轻量）
-1. 在聊天框中告诉 AI 助手：“请帮我探测一下 `[组件名]` 的属性，它的 token 是 `[目标 token]`”。
-2. AI 会调用底层的 `discover_component_props`（属性探测）工具。
-3. 探测完成后，AI 会拿到一份干净的、仅包含属性映射的数据结构，你可以直接让 AI 帮你把这个结构更新到 `src/registry.ts` 的 `figmaPropertySnapshot` 中。
+**严禁**把图表快照挂在 `basic.ts` 的 `figma-component` 条目下——`figma-component` 是通用组件容器，图表必须有自己的独立条目。
 
-### 方式二：通过插件 UI 获取“学习快照”
-1. 打开插件的 `组件库` 标签页。
-2. 在“Figma 属性反查自动化”面板中，输入目标 token，点击 `自动反查`。
-   > **注**：虽然这个按钮底层也会获取结构，但我们不需要看它的全量 JSON。
-3. 等待完成后，向下滚动到 **“已学习组件知识”** 面板。
-4. 点击 **`复制学习快照给 AI`**（这也就是 Spec Patch JSON）。这个快照已经被系统自动“瘦身”，里面**只包含**我们需要的 `figmaPropertySnapshot`，没有冗余的样式信息。
+---
 
-### 拿到快照后的回填步骤
-1. 检查快照中的 `componentId`：
-   - 若有：可直接用于回填。
-   - 若无：先在 `src/spec.component-token-map.ts` 增加 token 映射，再重新探测。
-2. 优先用脚本回填 `src/registry.ts`：
-   - 若快照 JSON 已复制到剪贴板（macOS），在终端执行：`pbpaste | npm run spec:snapshot:apply -- --stdin`
-   - 或者把内容存成文件执行：`npm run spec:snapshot:apply -- /absolute/path/to/patch.json`
-3. 若脚本提示某条 patch 缺少 `componentId`，先补 `src/spec.component-token-map.ts` 后重试。
-4. 运行 `npm run build`。
-5. 在聊天中触发 `read_specs(["组件ID"])`，确认返回包含 `FigmaPropertySnapshotMeta/Properties`。
+## 标准登记步骤
 
-## 4. token 映射维护规则
-1. 一条 token 可映射多个组件：`'token': ['component-a', 'component-b']`。
-2. 同时登记 base token 与 semantic token（例如 `lib-basic-button` + `library.basic.button`）。
-3. 没有稳定 1:1 对应时，不强行映射；先留空并记录为待确认。
+### 第一步：反查属性
 
-## 5. 验收标准
-1. `figmaPropertySnapshot.componentKey` 与反查结果一致。
-2. `properties` 字段数量与反查结果一致。
-3. `read_specs` 可读到快照内容。
-4. `npm run spec:snapshot:status` 中该组件 `hasSnapshot=yes`。
+在 Figma 画布中选中目标组件实例（推荐，能读到子组件暴露属性），发送：
+
+```
+/inspect
+```
+
+或已知 token 时（只读顶层属性）：
+
+```
+/inspect lib-data-input-xxx
+```
+
+输出示例：
+```json
+{
+  "token": "lib-data-input-select",
+  "componentKey": "d124dbe0576b8dfd900897124bd14e888e4db6f3",
+  "componentSetName": "Select 选择框",
+  "inspectedAt": "2026-03-23T10:00:00.000Z",
+  "properties": [
+    { "propertyName": "Size 尺寸", "type": "VARIANT", "defaultValue": "Default 32", "options": ["Mini 24", "Default 32", "Large 36"] },
+    { "propertyName": "Disable 禁用", "type": "VARIANT", "defaultValue": "False", "options": ["False", "True"] }
+  ]
+}
+```
+
+### 第二步：填入 figmaPropertySnapshot
+
+把输出复制到对应文件的 `figmaPropertySnapshot` 字段。
+
+**只保留这些字段**：
+- `token`、`componentKey`、`componentSetName`（可选）、`inspectedAt`、`source`、`properties`
+
+**不要写入**：`sourceNodeId`、`sourceNodeType`、`componentName`（已从所有文件清理）
+
+### 第三步（仅表单控件）：补写 propertyMap
+
+```ts
+"propertyMap": {
+  "Size 尺寸":   { "sourceParam": "size" },
+  "Disable 禁用": { "sourceParam": "disabled", "transform": "boolean" },
+  "Filled 已填":  { "sourceParam": "filled",   "transform": "boolean" }
+}
+```
+
+- `sourceParam`：我方 `params` 里的字段名
+- `transform: "boolean"`：把布尔值转成 `"True"/"False"` 字符串（Figma VARIANT 要求字符串）
+
+**图表组件不写 `propertyMap`**，它的 `params` 字段名直接与 Figma propertyName 对齐，渲染时自动打包成 `variantCriteria`。
+
+### 第四步：同步 params（图表组件）
+
+在图表的 `params` 里添加与 `properties` 对应的字段：
+
+```ts
+"params": {
+  "类型 Type": {
+    "type": "string",
+    "default": "饼图 PieChart",
+    "description": "饼图 PieChart | 环形图 DonutChart",
+    "options": ["饼图 PieChart", "环形图 DonutChart"]
+  },
+  "分类数量 Item": {
+    "type": "number",
+    "default": 2,
+    "description": "分类数量，取值 2–10"
+  }
+}
+```
+
+字段名必须与 Figma `propertyName` 完全一致（含中文和空格），因为它会直接作为 `variantCriteria` 的 key 传给 Figma。
+
+### 第五步：验证
+
+```bash
+npm run build
+```
+
+build 通过即完成。
+
+---
+
+## 新增图表组件完整流程
+
+1. 在 `src/theme/volcengine-design/component-library-tokens.ts` 注册 token
+2. 在 Figma 画布选中目标图表组件，发送 `/inspect`
+3. 在 `src/registry/components/chart.ts` 新增组件条目（参考已有条目格式）
+4. 填写 `figmaPropertySnapshot.properties`（从第 2 步输出复制）
+5. 填写 `params`（字段名与 Figma propertyName 完全一致）
+6. 在 `src/App.tsx` 的 `getChartToken` 函数里添加关键词匹配
+7. `npm run build` 验证
+
+---
+
+## 快照格式速查
+
+```ts
+// 表单控件（有 propertyMap）
+figmaPropertySnapshot: {
+  token: 'lib-data-input-select',
+  componentKey: 'xxx',
+  componentSetName: 'Select 选择框',
+  inspectedAt: '2026-03-23T10:00:00.000Z',
+  source: 'discover_component_props',
+  properties: [
+    { propertyName: 'Size 尺寸', type: 'VARIANT', defaultValue: 'Default 32', options: [...] }
+  ],
+  propertyMap: {
+    'Size 尺寸': { sourceParam: 'size' }
+  }
+}
+
+// 图表（无 propertyMap）
+figmaPropertySnapshot: {
+  token: 'lib-data-display-component-piechart',
+  componentKey: 'yyy',
+  componentSetName: 'Component/PieChart',
+  inspectedAt: '2026-03-23T10:00:00.000Z',
+  source: 'discover_component_props',
+  properties: [
+    { propertyName: '类型 Type', type: 'VARIANT', defaultValue: '饼图 PieChart', options: [...] }
+  ]
+  // 无 propertyMap
+}
+```

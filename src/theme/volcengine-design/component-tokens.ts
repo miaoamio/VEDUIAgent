@@ -135,7 +135,7 @@ const BASE_TABLE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile>
   ),
   'table-cell-icon-more': baseComponentToken(
     'table-cell-icon-more',
-    '1a4450f46c58d5dacd02d9cde1450a5edbf493c4',
+    '27e130c675fe44532f717656d04b2597eb05a67d',
     'legacy/table/packages/figma-plugin/src/code.ts',
     ['MORE_ICON_COMPONENT_KEY']
   ),
@@ -226,7 +226,8 @@ export function resolveComponentTokenProfile(token: string): ResolvedComponentTo
   const normalized = String(token || '').trim();
   if (!normalized) return undefined;
 
-  const baseToken = normalized;
+  const semantic = SEMANTIC_TABLE_COMPONENT_TOKEN_PACK[normalized];
+  const baseToken = semantic?.baseToken || normalized;
   const baseProfile = BASE_COMPONENT_TOKEN_PACK[baseToken];
   if (baseProfile) {
     return {

@@ -16,7 +16,7 @@ import { isObject, toButtonFromItem } from './block.helpers';
 
 export const SECTION_TITLE_COMPONENT_KEY = 'f02c3053469b8fadc3b6113a508e1b7b98330d95';
 export const SEGMENTED_PICKER_COMPONENT_KEY = '94125fa758354931512313d1bb6ce37aae02b8c7';
-export const DELETE_ICON_COMPONENT_TOKEN = 'table.cell.icon.delete';
+export const DELETE_ICON_COMPONENT_TOKEN = 'table-cell-icon-delete';
 
 // ─── 类型 ────────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ const FORM_LIBRARY_CONTROL_RULES: Array<{
   {
     keywords: ['segmented'],
     token: 'lib-data-input-segmented-picker',
-    fieldControlType: 'figma-component',
+    fieldControlType: 'segmented-picker',
     inlineComponentId: 'figma-component'
   },
   {
@@ -432,15 +432,15 @@ export const buildNormalizedFormComponentFromSource = (
   const rows = Array.isArray(body.rows)
     ? body.rows
     : Array.isArray(body.fields)
-      ? [body.fields]
+      ? body.fields.map((item: any) => [item])
       : isObject(body.filters) && Array.isArray((body.filters as any).items)
-        ? [(body.filters as any).items]
+        ? (body.filters as any).items.map((item: any) => [item])
         : Array.isArray(source.rows)
           ? source.rows
           : Array.isArray(source.fields)
-            ? [source.fields]
+            ? source.fields.map((item: any) => [item])
             : isObject(source.filters) && Array.isArray((source.filters as any).items)
-              ? [(source.filters as any).items]
+              ? (source.filters as any).items.map((item: any) => [item])
               : [];
 
   const buildControlComponentFromItem = (item: any, index: number): any | null => {
@@ -465,7 +465,8 @@ export const buildNormalizedFormComponentFromSource = (
       explicitComponentId === 'input' ||
       explicitComponentId === 'select' ||
       explicitComponentId === 'checkbox-group' ||
-      explicitComponentId === 'radio-group'
+      explicitComponentId === 'radio-group' ||
+      explicitComponentId === 'segmented-picker'
     ) {
       return { componentId: explicitComponentId, params: explicitParams };
     }
@@ -497,8 +498,18 @@ export const buildNormalizedFormComponentFromSource = (
       return { componentId: 'radio-group', params: explicitParams };
     }
 
+    if (normalizedControlType === 'segmented-picker') {
+      const optionsText = buildOptionsTextFromValue(
+        explicitParams.optionsText ?? itemObj.optionsText ?? itemObj.options
+      );
+      const hasOptionsText = explicitParams.optionsText !== undefined;
+      return {
+        componentId: 'segmented-picker',
+        params: hasOptionsText ? explicitParams : { ...explicitParams, optionsText }
+      };
+    }
+
     if (
-      normalizedControlType === 'figma-component' ||
       normalizedControlType === 'switch' ||
       normalizedControlType === 'datepicker' ||
       normalizedControlType === 'inputnumber' ||
@@ -507,6 +518,10 @@ export const buildNormalizedFormComponentFromSource = (
       normalizedControlType === 'timepicker' ||
       normalizedControlType === 'upload'
     ) {
+      return { componentId: normalizedControlType, params: explicitParams };
+    }
+
+    if (normalizedControlType === 'figma-component') {
       const fallbackToken = canonicalToken || resolveFormLibraryControlRule(rawType)?.token || '';
       if (fallbackToken) {
         const nextComponentKey = String(explicitParams.componentKey || itemObj.componentKey || '').trim();
@@ -644,6 +659,23 @@ export const buildNormalizedFormComponentFromSource = (
       };
     }
 
+    if (normalizedControlType === 'segmented-picker') {
+      const widthRaw = Number(props.width ?? itemObj.width);
+      return {
+        componentId: 'form-field',
+        params: {
+          ...fieldBaseParams,
+          controlType: 'segmented-picker',
+          optionsText,
+          value: String(props.value || itemObj.value || '选项一'),
+          size: String(props.size || itemObj.size || 'Default 32'),
+          disabled: Boolean(props.disabled ?? itemObj.disabled),
+          ...(Number.isFinite(widthRaw) && widthRaw > 0 ? { width: widthRaw } : {})
+        },
+        children: inputLayout ? [inputLayout] : undefined
+      };
+    }
+
     if (normalizedControlType === 'input') {
       return {
         componentId: 'form-field',
@@ -667,7 +699,12 @@ export const buildNormalizedFormComponentFromSource = (
     ) {
       return {
         componentId: 'form-field',
-        params: { ...fieldBaseParams, controlType: normalizedControlType },
+        params: {
+          ...fieldBaseParams,
+          controlType: normalizedControlType,
+          ...buildInputParamsFromSource(props, itemObj),
+          ...(props.checked !== undefined || itemObj.checked !== undefined ? { checked: Boolean(props.checked ?? itemObj.checked) } : {})
+        },
         children: inputLayout ? [inputLayout] : undefined
       };
     }

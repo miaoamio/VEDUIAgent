@@ -262,17 +262,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-input",
-      "componentKey": "f04bea11a4ef73f626b7402aac670a94ad32faf0",
       "inspectedAt": "2026-03-22T10:31:28.107Z",
       "source": "discover_component_props",
-      "sourceNodeId": "78:32025",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "State 状态=Default 默认, Size 尺寸=Default 32, Filled 已填=False, Error 错误=False, Disable 禁用=False, Prefix 前缀=False, Suffix 后缀=False",
       "componentSetName": "Input 输入框",
       "properties": [
         {
           "propertyName": "Disable 禁用",
-          "displayName": "Disable 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -282,7 +277,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Error 错误",
-          "displayName": "Error 错误",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -292,7 +286,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Filled 已填",
-          "displayName": "Filled 已填",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -302,7 +295,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Prefix 前缀",
-          "displayName": "Prefix 前缀",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -312,7 +304,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -324,7 +315,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -335,7 +325,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Suffix 后缀",
-          "displayName": "Suffix 后缀",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -464,29 +453,22 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-select",
-      "componentKey": "d124dbe0576b8dfd900897124bd14e888e4db6f3",
       "inspectedAt": "2026-03-22T10:48:03.940Z",
       "source": "discover_component_props",
-      "sourceNodeId": "111:33695",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Type 类型=Default 默认, Size 尺寸=Default 32, State 状态=Default 默认, Filled 填写=False, Multiple 多选=False, Disabled 禁用=False",
       "componentSetName": "Select 选择器",
       "properties": [
         {
           "propertyName": "Placeholder 占位符#115960:0",
-          "displayName": "Placeholder 占位符",
           "type": "TEXT",
           "defaultValue": "请选择"
         },
         {
           "propertyName": "Value#115960:55",
-          "displayName": "Value",
           "type": "TEXT",
           "defaultValue": "北京"
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -496,7 +478,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Filled 填写",
-          "displayName": "Filled 填写",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -506,7 +487,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Multiple 多选",
-          "displayName": "Multiple 多选",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -516,7 +496,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -528,7 +507,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -539,7 +517,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Type 类型",
-          "displayName": "Type 类型",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -632,17 +609,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-checkbox",
-      "componentKey": "51a9e035c762059b3c592e77aadbbe5b22dcb04e",
       "inspectedAt": "2026-03-22T10:50:16.017Z",
       "source": "discover_component_props",
-      "sourceNodeId": "120:48461",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "State 状态=Default 默认, Disabled 禁用=False, Indeterminate 中间态=False",
       "componentSetName": "Checkbox 复选框",
       "properties": [
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -652,7 +624,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Indeterminate 中间态",
-          "displayName": "Indeterminate 中间态",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -662,7 +633,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -788,17 +758,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-switch",
-      "componentKey": "d6017b9a513cbd53d6963d768259bbe0fcb8ddde",
       "inspectedAt": "2026-03-22T10:49:33.734Z",
       "source": "discover_component_props",
-      "sourceNodeId": "105:27662",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Size 尺寸=Default 22, State 状态=Default 默认, Disabled 禁用=False",
       "componentSetName": "Switch 开关",
       "properties": [
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -808,7 +773,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 22",
           "options": [
@@ -818,7 +782,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -903,17 +866,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-datepicker",
-      "componentKey": "75d61442da83762c096571de0f34f56012bea78d",
       "inspectedAt": "2026-03-22T10:51:23.062Z",
       "source": "discover_component_props",
-      "sourceNodeId": "91:8403",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Format 格式=YYYY-MM-DD, Size 尺寸=Default 32, State 状态=Default 默认, Filled 填写=False, Disabled 禁用=False",
       "componentSetName": "Datepicker 日期选择器",
       "properties": [
         {
           "propertyName": "Filled 填写",
-          "displayName": "Filled 填写",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -923,7 +881,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -935,7 +892,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -946,7 +902,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -956,7 +911,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Format 格式",
-          "displayName": "Format 格式",
           "type": "VARIANT",
           "defaultValue": "YYYY-MM-DD",
           "options": [
@@ -1043,17 +997,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-timepicker",
-      "componentKey": "b6eadcc611e8d23cea25b9799bc317154a718322",
       "inspectedAt": "2026-03-22T10:52:05.217Z",
       "source": "discover_component_props",
-      "sourceNodeId": "88:16934",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Size 尺寸=Default 32, State 状态=Default 默认, Disabled 禁用=False, Filled 填写=False",
       "componentSetName": "Timepicker 时间选择器",
       "properties": [
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -1065,7 +1014,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1076,7 +1024,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1086,7 +1033,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Filled 填写",
-          "displayName": "Filled 填写",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1178,17 +1124,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-inputnumber",
-      "componentKey": "207e734d854bc8d664b0218f431761c985ecccf1",
       "inspectedAt": "2026-03-22T10:52:48.671Z",
       "source": "discover_component_props",
-      "sourceNodeId": "93:18149",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Size 尺寸=Default 32, State 状态=Default 默认, Filled 填写=False, Disabled 禁用=False",
       "componentSetName": "InputNumber 数字输入框",
       "properties": [
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -1200,7 +1141,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1211,7 +1151,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Filled 填写",
-          "displayName": "Filled 填写",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1221,7 +1160,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1299,23 +1237,17 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-slider",
-      "componentKey": "cc707c07037cc48e0551dcd72feae6dabe9ed484",
       "inspectedAt": "2026-03-22T10:54:06.255Z",
       "source": "discover_component_props",
-      "sourceNodeId": "96:20111",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Value 数值=50, ShowLabel 展示数值=False, Disabled 禁用=False",
       "componentSetName": "Slider 滑动输入",
       "properties": [
         {
           "propertyName": "Value 数值",
-          "displayName": "Value 数值",
           "type": "TEXT",
           "defaultValue": "50"
         },
         {
           "propertyName": "ShowLabel 展示数值",
-          "displayName": "ShowLabel 展示数值",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1325,7 +1257,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1409,17 +1340,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-textarea",
-      "componentKey": "acba4b2ca240bc5a54672107c78235f4f82fd419",
       "inspectedAt": "2026-03-22T10:55:06.713Z",
       "source": "discover_component_props",
-      "sourceNodeId": "86:6230",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "State 状态=Default 默认, Disable 禁用=False, Rows 行数=3",
       "componentSetName": "TextArea 文本域",
       "properties": [
         {
           "propertyName": "Rows 行数",
-          "displayName": "Rows 行数",
           "type": "VARIANT",
           "defaultValue": "3",
           "options": [
@@ -1431,7 +1357,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1442,7 +1367,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disable 禁用",
-          "displayName": "Disable 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -1508,17 +1432,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-image",
-      "componentKey": "85ba2a0764a9485d4b07cdd6420a44292b8f4fcc",
       "inspectedAt": "2026-03-22T10:56:06.057Z",
       "source": "discover_component_props",
-      "sourceNodeId": "124:40151",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Type 类型=Button 按钮上传, State 状态=Default 默认",
       "componentSetName": "Image 图片上传",
       "properties": [
         {
           "propertyName": "Type 类型",
-          "displayName": "Type 类型",
           "type": "VARIANT",
           "defaultValue": "Button 按钮上传",
           "options": [
@@ -1528,7 +1447,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1606,17 +1524,12 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-segmented-picker",
-      "componentKey": "94125fa758354931512313d1bb6ce37aae02b8c7",
       "inspectedAt": "2026-03-22T10:56:59.417Z",
       "source": "discover_component_props",
-      "sourceNodeId": "104:26869",
-      "sourceNodeType": "COMPONENT_SET",
-      "componentName": "Items 数量=2, Size 尺寸=Default 32, State 状态=Default 默认, Disabled 禁用=False",
       "componentSetName": "Segmented Picker 分段选择器",
       "properties": [
         {
           "propertyName": "Items 数量",
-          "displayName": "Items 数量",
           "type": "VARIANT",
           "defaultValue": "2",
           "options": [
@@ -1628,7 +1541,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -1640,7 +1552,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1651,7 +1562,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [

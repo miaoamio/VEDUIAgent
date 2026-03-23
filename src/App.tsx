@@ -27,6 +27,7 @@ import { BASE_COMPONENT_TOKEN_PACK } from './theme/volcengine-design/component-t
 import { SPEC_COMPONENT_TOKEN_MAP } from './registry/component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
 import { buildFormComponentFromPayload as buildFormComponentFromPayloadSkill } from './engine/skills/form.skill';
+import { getChartToken, buildChartBlockComponentFromPayload } from './engine/skills/chart.skill';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 const isEnabledComponent = (def: ComponentDefinition) => (
@@ -71,7 +72,11 @@ const MAX_TABLE_CONTEXT_ROWS = 10;
 const MAX_ATTACHMENT_IMAGES_PER_TURN = 4;
 const STREAM_TABLE_PREFIX = '@@table_stream';
 const TABLE_SPEC_IDS = ['table', 'table-column', 'table-header-cell', 'table-cell'];
+const CHART_SPEC_IDS = ['chart-toplist', 'chart-pie', 'chart-line', 'chart-bar', 'chart-area'];
+const FORM_SPEC_IDS = ['form', 'form-field', 'input', 'select', 'checkbox', 'checkbox-group', 'radio-group', 'switch', 'date-picker', 'time-picker', 'input-number', 'input-tag', 'textarea'];
 const TABLE_PROMPT_REGEX = /(表格|table)/i;
+const CHART_PROMPT_REGEX = /(图表|chart|饼图|环形图|折线图|柱状图|条形图|面积图)/i;
+const FORM_PROMPT_REGEX = /(表单|筛选|form|input|输入框|选择器|单选|多选)/i;
 
 type XlsxWorkbook = {
   SheetNames: string[];
@@ -168,10 +173,11 @@ function toSeriesSpecText(raw: string, redo = false): string {
 }
 
 type AiDisplayItem = {
-  kind: 'thought' | 'spec_hint' | 'action_json' | 'system' | 'streaming' | 'raw' | 'text';
+  kind: 'thought' | 'spec_hint' | 'action_json' | 'system' | 'streaming' | 'raw' | 'text' | 'code_block';
   text: string;
   actionType?: string;
   payloadText?: string;
+  language?: string;
 };
 
 function parseSeriesSpecLine(text: string): { kind: string; redo: boolean } | null {
@@ -600,8 +606,29 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
   const lines = text.split('\n');
   const items: AiDisplayItem[] = [];
 
+  let inCodeBlock = false;
+  let codeLanguage = '';
+  let codeBuffer: string[] = [];
+
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
+
+    if (!inCodeBlock && line.trimStart().startsWith('```')) {
+      inCodeBlock = true;
+      codeLanguage = line.trimStart().slice(3).trim();
+      continue;
+    }
+    if (inCodeBlock) {
+      if (line.trimStart().startsWith('```')) {
+        inCodeBlock = false;
+        items.push({ kind: 'code_block', text: codeBuffer.join('\n'), language: codeLanguage });
+        codeBuffer = [];
+      } else {
+        codeBuffer.push(rawLine);
+      }
+      continue;
+    }
+
     if (line.trim() === '') continue;
     const trimmedStart = line.trimStart();
     const isSpecHintLine = (input: string) => {
@@ -697,6 +724,10 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       }
     }
     items.push(nextItem);
+  }
+
+  if (inCodeBlock && codeBuffer.length > 0) {
+    items.push({ kind: 'code_block', text: codeBuffer.join('\n'), language: codeLanguage });
   }
 
   return items;
@@ -1570,6 +1601,14 @@ function compactStructureNode(node: any, depth = 0): any {
   const groupedChildren = Array.isArray(node?.children) ? groupCompactChildren(node.children) : [];
   const canExpandChildren = groupedChildren.length > 0 && depth < MAX_EXPAND_DEPTH_IN_STRUCTURE_JSON;
 
+  // Further compact deeply nested text/shape nodes
+  if (!canExpandChildren && node.nodeType === 'TEXT') {
+    return pruneCompactValue({ type: 'TEXT', name: node.name, text: node.characters });
+  }
+
+  // Optimize properties layout for nested variants by dropping verbose properties array if they match tree variants
+  const shouldOmitStyles = depth > 2;
+
   return pruneCompactValue({
     type: node?.nodeType,
     name: node?.name,
@@ -1581,22 +1620,19 @@ function compactStructureNode(node: any, depth = 0): any {
           })
         : undefined,
     componentProperties,
-    size:
-      depth <= 1 && (typeof node?.width === 'number' || typeof node?.height === 'number')
-        ? [Number(node?.width || 0), Number(node?.height || 0)]
-        : undefined,
-    visible: node?.visible === false ? false : undefined,
-    text: node?.characters,
-    variantProperties: depth === 0 ? node?.variantProperties : undefined,
-    layout: compactLayout(node),
-    styles: collectStyleRefs(node),
+    layout: pruneCompactValue({
+      mode: node?.layoutMode !== 'NONE' ? node?.layoutMode : undefined,
+      gap: typeof node?.itemSpacing === 'number' && node?.itemSpacing > 0 ? node?.itemSpacing : undefined
+    }),
+    styles: shouldOmitStyles ? undefined : ((collectStyleRefs(node) || []).length > 0 ? collectStyleRefs(node) : undefined),
     children: canExpandChildren
-      ? groupedChildren.map(({ node: child, count }) =>
-          pruneCompactValue({
+      ? groupedChildren.map(({ node: child, count }) => {
+          const compactedChild = compactStructureNode(child, depth + 1) || {};
+          return pruneCompactValue({
             count: count > 1 ? count : undefined,
-            ...compactStructureNode(child, depth + 1)
-          })
-        )
+            ...compactedChild
+          });
+        })
       : undefined,
     childSummary: !canExpandChildren ? summarizeCollapsedChildren(node?.children) : undefined,
     truncatedChildren:
@@ -1612,10 +1648,10 @@ function compactStructureProperty(property: any): any {
     : [];
 
   return pruneCompactValue({
-    name: stripFigmaRuntimeSuffix(property?.propertyName),
+    name: stripFigmaRuntimeSuffix(property?.propertyName || property?.name), // handle both structure API formats
     type: property?.type,
-    default: property?.defaultValue,
-    options
+    default: property?.defaultValue || property?.default,
+    options: options.length > 0 ? options : property?.options
   });
 }
 
@@ -1669,6 +1705,8 @@ function App() {
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
+  const [chartExtraOptions, setChartExtraOptions] = React.useState<Record<string, string>>({});
+  const [activeOptionMenu, setActiveOptionMenu] = React.useState<string | null>(null);
   const [chartMenuOpen, setChartMenuOpen] = React.useState(false);
   const [quickComponentMenuOpen, setQuickComponentMenuOpen] = React.useState(false);
   const chartUiHtml = React.useMemo(
@@ -1746,7 +1784,7 @@ function App() {
       observer?.disconnect();
       window.removeEventListener('resize', updateWidth);
     };
-  }, [chartShortcutActive]);
+  }, [chartShortcutActive, chartExtraOptions]);
 
   React.useEffect(() => {
     const handleDocumentClick = (event: MouseEvent) => {
@@ -1757,6 +1795,7 @@ function App() {
       }
       if (chartDropdownRef.current && !chartDropdownRef.current.contains(target)) {
         setChartMenuOpen(false);
+        setActiveOptionMenu(null);
       }
       if (quickComponentDropdownRef.current && !quickComponentDropdownRef.current.contains(target)) {
         setQuickComponentMenuOpen(false);
@@ -1789,7 +1828,7 @@ function App() {
   const [formFieldTextMode, setFormFieldTextMode] = React.useState<'value' | 'placeholder'>('placeholder');
 
   // Tab state
-  const [activeTab, setActiveTab] = React.useState<'chat' | 'docs' | 'selection'>('chat');
+  const [activeTab, setActiveTab] = React.useState<'chat' | 'selection'>('chat');
   const [showInheritedParams, setShowInheritedParams] = React.useState(false);
   const [componentInspectionRunning, setComponentInspectionRunning] = React.useState(false);
   const [componentInspectionSummary, setComponentInspectionSummary] = React.useState<string | null>(null);
@@ -2237,8 +2276,27 @@ function App() {
 
   const resolveSystemTone = React.useCallback((text: string) => {
     const normalized = String(text || '').toLowerCase();
+    
+    // Check for success first to prevent "failed=0" from triggering error
+    const successTokens = [
+      'success',
+      'succeeded',
+      '完成',
+      '成功',
+      'done',
+      'applied',
+      'created'
+    ];
+    // if the message is explicitly reporting a failure but includes "failed=0" (e.g. "success=0, failed=1") 
+    // it will be caught by errorTokens later. 
+    // If it says "success=1, failed=0" we want to count it as success.
+    if (successTokens.some((token) => normalized.includes(token))) {
+       if (!normalized.includes('失败') && !(normalized.includes('failed') && !normalized.includes('failed=0'))) {
+         return 'success';
+       }
+    }
+
     const errorTokens = [
-      'failed',
       'error',
       'invalid',
       'unknown action',
@@ -2250,17 +2308,11 @@ function App() {
       '中断',
       'abort'
     ];
-    const successTokens = [
-      'success',
-      'succeeded',
-      '完成',
-      '成功',
-      'done',
-      'applied',
-      'created'
-    ];
     if (errorTokens.some((token) => normalized.includes(token))) return 'error';
-    if (successTokens.some((token) => normalized.includes(token))) return 'success';
+    
+    // Fallback logic for 'failed' if not explicitly caught by the 'failed=0' logic above
+    if (normalized.includes('failed') && !normalized.includes('failed=0')) return 'error';
+    
     return 'neutral';
   }, []);
 
@@ -2347,11 +2399,12 @@ function App() {
 
     prompt += `
 工作流 (Workflow):
-1. 若用户输入包含”图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息。**注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。创建表单（Form）时，请直接使用 draw_form，无需读取 spec。**
+1. **注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。创建表单（Form）时，请直接使用 draw_form，无需读取 spec。创建图表（Chart）时，直接使用对应组件（如 chart-pie）生成，无需读取 spec。**
 2. 其他情况先分析用户需求，**必须**从 Component Index 里选择可用组件，再决定需要使用哪些组件。
 3. 当存在自定义组件注册表时，**必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
    - ⚠️ **例外：表格组件（table/table-column等）无需读取 spec，直接使用 draw_table 即可。**
    - ⚠️ **例外：表单（form/draw_form）无需读取 spec，直接使用 draw_form 即可。**
+   - ⚠️ **例外：图表组件（chart-pie/chart-line等）无需读取 spec，直接生成即可。**
    - 禁止在未读取 spec 的情况下直接猜测组件参数（表格和表单除外）。
    - read_specs 会返回组件的 params 定义和使用示例。
    - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
@@ -2620,13 +2673,13 @@ StepD:
     const promptKinds = new Set<string>();
     if (/(表格|table)/i.test(promptHintText)) promptKinds.add('表格');
     if (/(表单|form)/i.test(promptHintText)) promptKinds.add('表单');
-    if (/(图表|chart)/i.test(promptHintText)) promptKinds.add('图表');
+    if (CHART_PROMPT_REGEX.test(promptHintText)) promptKinds.add('图表');
     const inferredFromPrompt = promptKinds.size === 1 ? Array.from(promptKinds)[0] : null;
     const inferredFromIds = ids.some((id) => id === 'table' || id.startsWith('table-'))
       ? '表格'
       : ids.some((id) => id === 'form' || id.startsWith('form-'))
         ? '表单'
-        : ids.some((id) => id === 'chart' || id.startsWith('chart-'))
+        : ids.some((id) => CHART_SPEC_IDS.includes(id) || id === 'chart' || id.startsWith('chart-'))
           ? '图表'
           : null;
     const inferredKind = inferredFromPrompt || inferredFromIds;
@@ -3706,7 +3759,7 @@ StepD:
 
   const SECTION_TITLE_COMPONENT_KEY = 'f02c3053469b8fadc3b6113a508e1b7b98330d95';
   const SEGMENTED_PICKER_COMPONENT_KEY = '94125fa758354931512313d1bb6ce37aae02b8c7';
-  const DELETE_ICON_COMPONENT_TOKEN = 'table.cell.icon.delete';
+  const DELETE_ICON_COMPONENT_TOKEN = 'table-cell-icon-delete';
 
   const resolveGroupLabelMode = (value: unknown): 'all' | 'first' => {
     if (value === false) return 'first';
@@ -4646,122 +4699,9 @@ StepD:
     return buildNormalizedFormComponentFromSource(source, { defaultWidth: 720 });
   };
 
-  const getChartToken = (hint: string, fallbackToken = ''): string => {
-    const normalized = String(hint || '').replace(/\s+/g, '').toLowerCase();
-    if (!normalized) return fallbackToken;
-    if (normalized.includes('面积图') || normalized.includes('area')) return 'lib-data-display-component-areachart';
-    if (
-      normalized.includes('折线图') ||
-      normalized.includes('linechart') ||
-      normalized.includes('line-chart') ||
-      normalized.includes('line')
-    ) {
-      return 'lib-data-display-component-linechart';
-    }
-    if (normalized.includes('柱状图') || normalized.includes('barchart') || normalized.includes('bar-chart') || normalized === 'bar') {
-      return 'lib-data-display-component-barchart';
-    }
-    if (normalized.includes('条形图') || normalized.includes('toplist')) return 'lib-data-display-toplist';
-    if (
-      normalized.includes('饼图') ||
-      normalized.includes('环形图') ||
-      normalized.includes('pie') ||
-      normalized.includes('donut') ||
-      normalized.includes('piechart')
-    ) {
-      return 'lib-data-display-component-piechart';
-    }
-    return fallbackToken;
-  };
-
-  const buildChartBlockComponentFromPayload = (payload: any, fallbackTitle: string): any | null => {
-    const source = getBlockSource(payload);
-    if (!source) return null;
-    const body = getBlockBody(source);
-
-    const blockChildren: any[] = [];
-    const rowChildren = buildHeaderSectionChildren(source.header);
-    if (rowChildren.length > 0) {
-      blockChildren.push({
-        componentId: 'layout',
-        params: { direction: 'horizontal', spacing: 12, paddingBottom: 8 },
-        children: rowChildren
-      });
-    }
-
-    const charts = Array.isArray(body.charts)
-      ? body.charts
-      : isObject(body.chart)
-        ? [body.chart]
-        : Array.isArray(source.charts)
-          ? source.charts
-          : isObject(source.chart)
-            ? [source.chart]
-            : [];
-
-    const chartNodes: any[] = [];
-    charts.forEach((chart: any, index: number) => {
-      const chartObj = isObject(chart) ? chart : {};
-      const props = isObject(chartObj.props) ? chartObj.props : {};
-      const heightRaw = Number(props.height ?? chartObj.height);
-      const tokenHint = String(props.type ?? chartObj.type ?? props.chartType ?? chartObj.chartType ?? '').trim();
-      const token = getChartToken(tokenHint, 'lib-data-display-toplist');
-      chartNodes.push({
-        componentId: 'figma-component',
-        params: {
-          componentToken: token,
-          fallbackName: `图表 ${index + 1}`,
-          height: Number.isFinite(heightRaw) && heightRaw > 0 ? heightRaw : 220
-        }
-      });
-    });
-
-    if (chartNodes.length === 0) {
-      chartNodes.push({
-        componentId: 'figma-component',
-        params: {
-          componentToken: 'lib-data-display-toplist',
-          fallbackName: String(source.chartTitle || '趋势'),
-          height: Number(source.height) > 0 ? Number(source.height) : 220
-        }
-      });
-    }
-
-    blockChildren.push({
-      componentId: 'layout',
-      params: {
-        direction: 'vertical',
-        spacing: 8
-      },
-      children: chartNodes
-    });
-
-    const footer = isObject(source.footer) ? source.footer : {};
-    const notes = typeof footer.notes === 'string'
-      ? footer.notes
-      : typeof (body as any).notes === 'string'
-        ? (body as any).notes
-        : '';
-    if (notes) {
-      blockChildren.push({
-        componentId: 'text',
-        params: {
-          text: notes
-        }
-      });
-    }
-
-    const { title, width } = resolveBlockContainerMeta(source, fallbackTitle || '图表区块', 980);
-
-    return {
-      componentId: 'card',
-      params: {
-        title,
-        width
-      },
-      children: blockChildren
-    };
-  };
+  // @deprecated → 已迁移到 engine/skills/chart.skill.ts
+  // const getChartToken = ...
+  // const buildChartBlockComponentFromPayload = ...
 
   const buildTabsBlockComponentFromPayload = (payload: any, fallbackTitle: string): any | null => {
     const source = getBlockSource(payload);
@@ -5916,8 +5856,8 @@ StepD:
       const inspectResult = await inspectFigmaComponentStructure({
         tokens,
         includeErrors: true,
-        maxDepth: 6,
-        maxChildren: 24
+        maxDepth: 20,
+        maxChildren: 200
       });
       const summary = inspectResult?.summary || {};
       const success = Number(summary.success || 0);
@@ -5939,22 +5879,43 @@ StepD:
     if (componentInspectionRunning || loading || (!componentKey && !componentNodeId)) return;
     setComponentInspectionRunning(true);
     setComponentInspectionSummary('反查中…');
+    const label = componentKey || componentNodeId || '';
+    setUiMessages((prev) => [
+      ...prev,
+      { role: 'user', content: `/inspect-style ${label}` },
+      { role: 'ai', content: `[System]: 正在反查组件结构 ${label}…` }
+    ]);
     try {
       const inspectResult = await inspectFigmaComponentStructure({
         keys: componentKey ? [componentKey] : undefined,
         nodeIds: componentNodeId ? [componentNodeId] : undefined,
         includeErrors: true,
-        maxDepth: 6,
-        maxChildren: 24
+        maxDepth: 20,
+        maxChildren: 200
       });
       const summary = inspectResult?.summary || {};
       const success = Number(summary.success || 0);
       const failed = Number(summary.failed || 0);
       const summaryText = `反查完成：success=${success}, failed=${failed}`;
       setComponentInspectionSummary(summaryText);
-      setComponentInspectJson(buildComponentInspectJson(inspectResult));
+      const json = buildComponentInspectJson(inspectResult);
+      setComponentInspectJson(json);
+      setUiMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: 'ai',
+          content: `[System]: ${summaryText}\n\`\`\`json\n${json}\n\`\`\``
+        };
+        return next;
+      });
     } catch (e) {
-      setComponentInspectionSummary(`反查失败: ${String(e)}`);
+      const errText = `反查失败: ${String(e)}`;
+      setComponentInspectionSummary(errText);
+      setUiMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: 'ai', content: `[System]: ${errText}` };
+        return next;
+      });
     } finally {
       setComponentInspectionRunning(false);
     }
@@ -6120,8 +6081,130 @@ StepD:
     };
   };
 
+  // Compact formatter for /inspect — outputs only what's needed for figmaPropertySnapshot registration
+  const buildInspectPropsJson = (inspectResult: any): string => {
+    const now = new Date().toISOString();
+    const results = Array.isArray(inspectResult?.results) ? inspectResult.results : [];
+    const items = results
+      .filter((item: any) => item?.status === 'ok')
+      .map((item: any) => {
+        const props = Array.isArray(item.properties) ? item.properties : [];
+        return {
+          token: item.token || undefined,
+          componentKey: String(item.componentKey || ''),
+          componentSetName: item.componentSetName || item.componentName || undefined,
+          inspectedAt: now,
+          properties: props.map((p: any) => {
+            const entry: any = {
+              propertyName: String(p.propertyName || ''),
+              type: String(p.type || '')
+            };
+            if (p.defaultValue !== undefined) entry.defaultValue = p.defaultValue;
+            if (Array.isArray(p.variantOptions) && p.variantOptions.length > 0) {
+              entry.options = p.variantOptions.map(String);
+            }
+            return entry;
+          })
+        };
+      });
+    return JSON.stringify(items.length === 1 ? items[0] : items, null, 2);
+  };
+
+  const handleInspectCommand = async (tokens: string[]) => {
+    if (componentInspectionRunning) return;
+    setComponentInspectionRunning(true);
+    const displayTokens = tokens.length > 0 ? tokens.join(', ') : '当前选中元素';
+    setUiMessages((prev) => [
+      ...prev,
+      { role: 'user', content: tokens.length > 0 ? `/inspect ${displayTokens}` : '/inspect' },
+      { role: 'ai', content: `[System]: 正在反查 ${displayTokens}…` }
+    ]);
+    try {
+      const inspectResult = await inspectFigmaComponentProps({ 
+        tokens: tokens.length > 0 ? tokens : undefined, 
+        maxCount: tokens.length > 0 ? tokens.length : 1 
+      });
+      const summary = inspectResult?.summary || {};
+      const success = Number(summary.success || 0);
+      const failed = Number(summary.failed || 0);
+      const json = buildInspectPropsJson(inspectResult);
+      setComponentInspectJson(json);
+      const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
+      setUiMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+        return next;
+      });
+    } catch (e) {
+      const errLine = `[System]: /inspect 失败: ${String(e)}`;
+      setUiMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: 'ai', content: errLine };
+        return next;
+      });
+    } finally {
+      setComponentInspectionRunning(false);
+    }
+  };
+
   const onSend = async () => {
     if (!canSend) return;
+
+    // Developer commands — bypass AI, run directly
+    const trimmedInput = userInput.trim();
+    if (trimmedInput === '/inspect-style' || trimmedInput.startsWith('/inspect-style ')) {
+      const arg = trimmedInput.slice('/inspect-style'.length).trim();
+      const key = arg || figmaInstanceInfo?.componentKey || '';
+      const nodeId = arg ? undefined : figmaInstanceInfo?.componentNodeId;
+      setUserInput('');
+      await handleInspectByComponentKey(key, nodeId);
+      return;
+    }
+    if (trimmedInput === '/inspect' || trimmedInput.startsWith('/inspect ')) {
+      const arg = trimmedInput.slice('/inspect'.length).trim();
+      if (arg) {
+        const tokens = arg.split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
+        setUserInput('');
+        await handleInspectCommand(tokens);
+      } else if (figmaInstanceInfo?.componentKey || figmaInstanceInfo?.componentNodeId) {
+        setUserInput('');
+        if (componentInspectionRunning) return;
+        setComponentInspectionRunning(true);
+        setUiMessages((prev) => [
+          ...prev,
+          { role: 'user', content: '/inspect' },
+          { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
+        ]);
+        try {
+          const inspectResult = await inspectFigmaComponentProps({
+            keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
+            nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
+            maxCount: 1
+          });
+          const summary = inspectResult?.summary || {};
+          const success = Number(summary.success || 0);
+          const failed = Number(summary.failed || 0);
+          const json = buildInspectPropsJson(inspectResult);
+          setComponentInspectJson(json);
+          const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
+          setUiMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+            return next;
+          });
+        } catch (e) {
+          const errLine = `[System]: /inspect 失败: ${String(e)}`;
+          setUiMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: 'ai', content: errLine };
+            return next;
+          });
+        } finally {
+          setComponentInspectionRunning(false);
+        }
+      }
+      return;
+    }
 
     stopRequestedRef.current = false;
     llmAbortRef.current?.abort();
@@ -6137,10 +6220,19 @@ StepD:
     setResponse(null); // Clear previous response
     setAttachmentError(null);
 
-    const turnInput = userInput.trim()
-      ? userInput
-      : chartShortcutActive
-        ? `生成一个${chartShortcutActive}`
+    const extraOptionsText = (CHART_EXTRA_OPTIONS[chartShortcutActive || ''] || [])
+      .map(opt => {
+        const val = chartExtraOptions[opt.key] || opt.defaultValue;
+        return `${opt.label}为${val}`;
+      })
+      .join('，');
+    const baseChartText = chartShortcutActive 
+      ? `生成一个${chartShortcutActive}${extraOptionsText ? `，其中${extraOptionsText}` : ''}`
+      : '';
+    const turnInput = (baseChartText && userInput.trim())
+      ? `${baseChartText}。${userInput}`
+      : baseChartText
+        ? baseChartText
         : userInput;
     const chartTokenOverride = getChartToken(turnInput, '');
     const turnImages = uploadedImages;
@@ -6161,6 +6253,8 @@ StepD:
     setChartPromptMode(false);
     setChartOverlayOpen(false);
     setChartShortcutActive(null);
+    setChartExtraOptions({});
+    setActiveOptionMenu(null);
     setChartMenuOpen(false);
     setUploadedImages([]);
     setUploadedTables([]);
@@ -6319,25 +6413,42 @@ StepD:
           executeTaskByType(task, payload, runtimePlan);
 
         const trimmedTurnInput = String(turnInput || '').trim();
+        const allowInspect = /(^|\s)\/inspect(\s|$)/i.test(trimmedTurnInput);
         const hasTablePrompt = TABLE_PROMPT_REGEX.test(trimmedTurnInput);
-        const hasChartPrompt = /(图表|chart)/i.test(trimmedTurnInput);
+        const hasChartPrompt = CHART_PROMPT_REGEX.test(trimmedTurnInput);
         const hasTableAttachment = turnTables.some((table) => !table.parseError && table.headers.length > 0);
-        const shouldPrefetchTableSpecs =
-          (hasTablePrompt || hasTableAttachment) && !(hasChartPrompt && !hasTablePrompt);
+        const shouldPrefetchTableSpecs = hasTablePrompt || hasTableAttachment;
+        const shouldPrefetchChartSpecs = hasChartPrompt;
+
+        const inspectActionCache = new Map<string, any>();
+        const inspectStructureCache = new Map<string, any>();
+
+        let combinedSpecsInfo = '';
+        let combinedIds: string[] = [];
+        let combinedIdsToLoad: string[] = [];
+
         if (shouldPrefetchTableSpecs) {
-            const { specsInfo, uniqueIds, idsToLoad } = buildSpecsInfo(
-              TABLE_SPEC_IDS,
-              readSpecsCacheRef.current,
-              true
-            );
+            const tableSpecs = buildSpecsInfo(TABLE_SPEC_IDS, readSpecsCacheRef.current, true);
+            combinedSpecsInfo += (combinedSpecsInfo ? '\n\n' : '') + tableSpecs.specsInfo;
+            combinedIds.push(...tableSpecs.uniqueIds);
+            combinedIdsToLoad.push(...tableSpecs.idsToLoad);
+        }
+        if (shouldPrefetchChartSpecs) {
+            const chartSpecs = buildSpecsInfo(CHART_SPEC_IDS, readSpecsCacheRef.current, true);
+            combinedSpecsInfo += (combinedSpecsInfo ? '\n\n' : '') + chartSpecs.specsInfo;
+            combinedIds.push(...chartSpecs.uniqueIds);
+            combinedIdsToLoad.push(...chartSpecs.idsToLoad);
+        }
+
+        if (combinedIds.length > 0) {
             const sysMsg = buildSpecsSystemMessage(
               currentTurnText,
-              uniqueIds,
-              idsToLoad.length === 0 && uniqueIds.length > 0
+              combinedIds,
+              combinedIdsToLoad.length === 0 && combinedIds.length > 0
             );
             accumulatedLog += (accumulatedLog ? '\n\n' : '') + sysMsg;
             setResponse(accumulatedLog);
-            messages.push({ role: "user", content: `Here are the specs you requested:\n\n${specsInfo}` });
+            messages.push({ role: "user", content: `Here are the specs you requested:\n\n${combinedSpecsInfo}` });
         }
 
         while (loopCount < MAX_LOOPS) {
@@ -6701,6 +6812,65 @@ StepD:
               action.type === 'crawl_component_props'
             ) {
                 const payload = isObject(action.payload) ? action.payload : {};
+                if (!allowInspect) {
+                    messages.push({
+                      role: "user",
+                      content: "System: inspect disabled unless user includes /inspect. Use registry specs and avoid discover_component_props."
+                    });
+                    if (runtimePlan && actionTaskId) {
+                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', 'inspect disabled');
+                    }
+                    continue;
+                }
+                const tokens = Array.isArray((payload as any).tokens) ? (payload as any).tokens : [];
+                const componentKeys = Array.isArray((payload as any).componentKeys) ? (payload as any).componentKeys : [];
+                const nodeIds = Array.isArray((payload as any).nodeIds) ? (payload as any).nodeIds : [];
+                const targets = Array.isArray((payload as any).targets) ? (payload as any).targets : [];
+                const hasTargets = Boolean((payload as any).token || (payload as any).componentKey || (payload as any).nodeId) ||
+                  tokens.length > 0 || componentKeys.length > 0 || nodeIds.length > 0 || targets.length > 0;
+                if (!hasTargets) {
+                    messages.push({
+                      role: "user",
+                      content: "System: discover_component_props skipped because no targets were provided."
+                    });
+                    if (runtimePlan && actionTaskId) {
+                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', 'no inspect targets');
+                    }
+                    continue;
+                }
+                const payloadKey = (() => {
+                  try {
+                    return JSON.stringify(payload);
+                  } catch {
+                    return '';
+                  }
+                })();
+                const cacheKey = `props:${payloadKey}`;
+                if (inspectActionCache.has(cacheKey)) {
+                    const cached = inspectActionCache.get(cacheKey);
+                    if (cached?.inspectJson) {
+                        setComponentInspectJson(cached.inspectJson);
+                    }
+                    if (cached?.sysMsg) {
+                        accumulatedLog += '\n\n' + cached.sysMsg;
+                        setResponse(accumulatedLog);
+                    }
+                    if (cached?.modelPayload) {
+                        messages.push({
+                          role: "user",
+                          content: `Discovered figma component properties:\n\n${cached.modelPayload}`
+                        });
+                    }
+                    if (runtimePlan && actionTaskId) {
+                        runtimePlan = updateTaskStatus(
+                          runtimePlan,
+                          actionTaskId,
+                          cached?.success > 0 ? 'done' : 'failed',
+                          cached?.success > 0 ? undefined : 'no component properties discovered'
+                        );
+                    }
+                    continue;
+                }
                 try {
                     const inspectResult = await inspectFigmaComponentProps(payload);
                     const summary = inspectResult?.summary || {};
@@ -6711,8 +6881,13 @@ StepD:
                     const truncated = Boolean(inspectResult?.truncated);
 
                     const sysMsg = `[System]: discover_component_props done. success=${success}, failed=${failed}, processed=${processed}/${requested}${truncated ? ' (truncated)' : ''}.`;
-                    accumulatedLog += '\n\n' + sysMsg;
-                    setResponse(accumulatedLog);
+                    const inspectJson = buildComponentInspectJson(inspectResult);
+                    if (allowInspect) {
+                        accumulatedLog += '\n\n' + sysMsg;
+                        setComponentInspectJson(inspectJson);
+                        accumulatedLog += '\n\n```json\n' + inspectJson + '\n```';
+                        setResponse(accumulatedLog);
+                    }
 
                     const rawResults = Array.isArray(inspectResult?.results) ? inspectResult.results : [];
                     const maxComponentsForModel = 30;
@@ -6749,9 +6924,16 @@ StepD:
                       components: compactForModel
                     };
 
+                    const modelPayloadText = JSON.stringify(modelPayload, null, 2);
                     messages.push({
                       role: "user",
-                      content: `Discovered figma component properties:\n\n${JSON.stringify(modelPayload, null, 2)}`
+                      content: `Discovered figma component properties:\n\n${modelPayloadText}`
+                    });
+                    inspectActionCache.set(cacheKey, {
+                      inspectJson,
+                      sysMsg,
+                      modelPayload: modelPayloadText,
+                      success
                     });
 
                     if (runtimePlan && actionTaskId) {
@@ -6764,8 +6946,10 @@ StepD:
                     }
                 } catch (e) {
                     const errorMsg = `[System]: discover_component_props failed: ${e}`;
-                    accumulatedLog += '\n\n' + errorMsg;
-                    setResponse(accumulatedLog);
+                    if (allowInspect) {
+                        accumulatedLog += '\n\n' + errorMsg;
+                        setResponse(accumulatedLog);
+                    }
                     messages.push({ role: "user", content: errorMsg });
                     if (runtimePlan && actionTaskId) {
                         runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
@@ -6778,18 +6962,66 @@ StepD:
               action.type === 'discover_component_structure'
             ) {
                 const payload = isObject(action.payload) ? action.payload : {};
+                if (!allowInspect) {
+                    messages.push({
+                      role: "user",
+                      content: "System: inspect disabled unless user includes /inspect. Use registry specs and avoid inspect_component_structure."
+                    });
+                    if (runtimePlan && actionTaskId) {
+                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', 'inspect disabled');
+                    }
+                    continue;
+                }
+                const payloadKey = (() => {
+                  try {
+                    return JSON.stringify(payload);
+                  } catch {
+                    return '';
+                  }
+                })();
+                const cacheKey = `structure:${payloadKey}`;
+                if (inspectStructureCache.has(cacheKey)) {
+                    const cached = inspectStructureCache.get(cacheKey);
+                    if (cached?.sysMsg) {
+                        accumulatedLog += '\n\n' + cached.sysMsg;
+                        setResponse(accumulatedLog);
+                    }
+                    if (cached?.modelPayload) {
+                        messages.push({
+                          role: "user",
+                          content: `Inspected figma component structure:\n\n${cached.modelPayload}`
+                        });
+                    }
+                    if (runtimePlan && actionTaskId) {
+                        runtimePlan = updateTaskStatus(
+                          runtimePlan,
+                          actionTaskId,
+                          cached?.success > 0 ? 'done' : 'failed',
+                          cached?.success > 0 ? undefined : 'no component structure inspected'
+                        );
+                    }
+                    continue;
+                }
                 try {
                     const inspectResult = await inspectFigmaComponentStructure(payload);
                     const summary = inspectResult?.summary || {};
                     const success = Number(summary.success || 0);
                     const failed = Number(summary.failed || 0);
                     const sysMsg = `[System]: inspect_component_structure done. success=${success}, failed=${failed}.`;
-                    accumulatedLog += '\n\n' + sysMsg;
-                    setResponse(accumulatedLog);
+                    const inspectJson = buildComponentInspectJson(inspectResult);
+                    if (allowInspect) {
+                        accumulatedLog += '\n\n' + sysMsg;
+                        setResponse(accumulatedLog);
+                    }
 
                     messages.push({
                       role: "user",
-                      content: `Inspected figma component structure:\n\n${buildComponentInspectJson(inspectResult)}`
+                      content: `Inspected figma component structure:\n\n${inspectJson}`
+                    });
+                    inspectStructureCache.set(cacheKey, {
+                      sysMsg,
+                      modelPayload: inspectJson,
+                      success
                     });
 
                     if (runtimePlan && actionTaskId) {
@@ -6802,8 +7034,10 @@ StepD:
                     }
                 } catch (e) {
                     const errorMsg = `[System]: inspect_component_structure failed: ${e}`;
-                    accumulatedLog += '\n\n' + errorMsg;
-                    setResponse(accumulatedLog);
+                    if (allowInspect) {
+                        accumulatedLog += '\n\n' + errorMsg;
+                        setResponse(accumulatedLog);
+                    }
                     messages.push({ role: "user", content: errorMsg });
                     if (runtimePlan && actionTaskId) {
                         runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
@@ -7164,6 +7398,38 @@ StepD:
     { label: '条形图', prompt: '生成一个条形图' },
     { label: '面积图', prompt: '生成一个面积图' }
   ];
+
+  const CHART_EXTRA_OPTIONS: Record<string, {
+    key: string;
+    label: string;
+    options: string[];
+    defaultValue: string;
+  }[]> = {
+    '环形图': [
+      { key: 'categoryCount', label: '分类数量', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ],
+    '饼图': [
+      { key: 'categoryCount', label: '分类数量', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ],
+    '柱状图': [
+      { key: 'categoryCount', label: '数据组数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ],
+    '条形图': [
+      { key: 'categoryCount', label: '数据组数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ],
+    '折线图': [
+      { key: 'categoryCount', label: '数据点数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ],
+    '面积图': [
+      { key: 'categoryCount', label: '数据点数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
+      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+    ]
+  };
   const buildQuickComponentName = (displayName: string, token: string) => {
     const baseName = String(displayName || '').trim();
     const tokenLabel = token
@@ -7355,20 +7621,20 @@ StepD:
   const getFormSelectOptionLabel = (key: string, option: string) => {
     const normalized = normalizeFormOption(option);
     if (key === 'controlType') {
-      if (normalized.includes('checkbox') || normalized.includes('多选')) return 'Checkbox 多选';
-      if (normalized.includes('radio') || normalized.includes('单选')) return 'Radio 单选';
-      if (normalized.includes('datepicker') || normalized.includes('日期')) return 'DatePicker 日期选择';
-      if (normalized.includes('inputnumber') || normalized.includes('数字')) return 'Inputnumber 数字输入';
-      if (normalized.includes('slider') || normalized.includes('滑动')) return 'Slider 滑动';
-      if (normalized.includes('switch') || normalized.includes('开关')) return 'Switch 开关';
-      if (normalized.includes('textarea') || normalized.includes('多行')) return 'Textarea 多行文本';
-      if (normalized.includes('timepicker') || normalized.includes('时间')) return 'TimePicker 时间选择';
-      if (normalized.includes('segmented') || normalized.includes('分段')) return 'Segmented Picker 分段选择器';
-      if (normalized.includes('select') || normalized.includes('选择')) return 'Select 选择框';
-      if (normalized.includes('upload') || normalized.includes('上传')) return 'Upload 上传';
-      if (normalized.includes('button') || normalized.includes('按钮')) return 'Button 按钮';
-      if (normalized.includes('figma')) return 'Figma 组件';
-      if (normalized.includes('text') || normalized.includes('文本')) return 'Text 文本';
+      if (normalized === 'checkbox-group' || normalized.includes('多选')) return 'Checkbox 多选';
+      if (normalized === 'radio-group' || normalized.includes('单选')) return 'Radio 单选';
+      if (normalized === 'datepicker' || normalized.includes('日期')) return 'DatePicker 日期选择';
+      if (normalized === 'inputnumber' || normalized.includes('数字')) return 'Inputnumber 数字输入';
+      if (normalized === 'slider' || normalized.includes('滑动')) return 'Slider 滑动';
+      if (normalized === 'switch' || normalized.includes('开关')) return 'Switch 开关';
+      if (normalized === 'textarea' || normalized.includes('多行')) return 'Textarea 多行文本';
+      if (normalized === 'timepicker' || normalized.includes('时间')) return 'TimePicker 时间选择';
+      if (normalized === 'segmented-picker' || normalized.includes('分段')) return 'Segmented Picker 分段选择器';
+      if (normalized === 'select' || normalized.includes('选择')) return 'Select 选择框';
+      if (normalized === 'upload' || normalized.includes('上传')) return 'Upload 上传';
+      if (normalized === 'button' || normalized.includes('按钮')) return 'Button 按钮';
+      if (normalized === 'figma-component' || normalized.includes('figma')) return 'Figma 组件';
+      if (normalized === 'text' || normalized.includes('文本')) return 'Text 文本';
       return 'Input 输入框';
     }
     if (key === 'layout') {
@@ -7608,6 +7874,7 @@ StepD:
   };
 
   const resolveOptionLabel = (def: ComponentDefinition, key: string, value: string): string => {
+    if (isFormComponent(def.id) && key === 'controlType') return getFormSelectOptionLabel(key, value);
     if (OPTION_LABEL_MAP[value]) return OPTION_LABEL_MAP[value];
     if (isFormComponent(def.id)) return getFormSelectOptionLabel(key, value);
     return value;
@@ -8372,7 +8639,42 @@ StepD:
                   if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
                 }} style={{ flexShrink: 0 }}>复制 Key</button>
                 <button
-                          onClick={() => handleInspectByComponentKey(figmaInstanceInfo.componentKey, figmaInstanceInfo.componentNodeId)}
+                  onClick={async () => {
+                    if (componentInspectionRunning || loading || (!figmaInstanceInfo?.componentKey && !figmaInstanceInfo?.componentNodeId)) return;
+                    setComponentInspectionRunning(true);
+                    setUiMessages((prev) => [
+                      ...prev,
+                      { role: 'user', content: '/inspect' },
+                      { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
+                    ]);
+                    try {
+                      const inspectResult = await inspectFigmaComponentProps({ 
+                        keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
+                        nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
+                        maxCount: 1 
+                      });
+                      const summary = inspectResult?.summary || {};
+                      const success = Number(summary.success || 0);
+                      const failed = Number(summary.failed || 0);
+                      const json = buildInspectPropsJson(inspectResult);
+                      setComponentInspectJson(json);
+                      const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
+                      setUiMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+                        return next;
+                      });
+                    } catch (e) {
+                      const errLine = `[System]: /inspect 失败: ${String(e)}`;
+                      setUiMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { role: 'ai', content: errLine };
+                        return next;
+                      });
+                    } finally {
+                      setComponentInspectionRunning(false);
+                    }
+                  }}
                   disabled={componentInspectionRunning || loading}
                   style={{ flexShrink: 0 }}
                 >{componentInspectionRunning ? '…' : '反查属性'}</button>
@@ -8699,29 +9001,6 @@ StepD:
         activeTab === 'chat' ? 'container-chat' : ''
       }`}
     >
-      {activeTab !== 'selection' && (
-        <div className="tabs">
-          <button 
-            className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
-            onClick={() => setActiveTab('chat')}
-          >
-            对话 & 编辑
-          </button>
-          <button
-            className="tab-button"
-            onClick={() => setActiveTab('selection')}
-          >
-            选中属性
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'docs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('docs')}
-          >
-            组件库
-          </button>
-        </div>
-      )}
-
       {activeTab === 'chat' ? (
         <div className="chat-layout">
           <div className="chat-scroll" ref={chatScrollRef}>
@@ -8912,6 +9191,52 @@ StepD:
                                     </div>
                                   );
                                 }
+                                if (item.kind === 'code_block') {
+                                  return (
+                                    <div key={`code_${itemIndex}`} className="ai-code-block">
+                                      <div className="ai-code-block-header">
+                                        <span className="ai-code-block-lang">{item.language || 'json'}</span>
+                                      </div>
+                                      <pre className="ai-code-block-pre">
+                                        <code>{item.text}</code>
+                                      </pre>
+                                      <div className="ai-code-block-footer">
+                                        <button 
+                                          className="ai-code-block-copy" 
+                                          onClick={async (e) => {
+                                            try {
+                                              // navigator.clipboard is sometimes not fully available or needs specific context in Figma iframe
+                                              // Using the custom copyTextToClipboard helper or a fallback text area
+                                              let success = false;
+                                              if (navigator.clipboard && navigator.clipboard.writeText) {
+                                                await navigator.clipboard.writeText(item.text);
+                                                success = true;
+                                              } else {
+                                                const textArea = document.createElement("textarea");
+                                                textArea.value = item.text;
+                                                document.body.appendChild(textArea);
+                                                textArea.select();
+                                                success = document.execCommand("copy");
+                                                document.body.removeChild(textArea);
+                                              }
+                                              
+                                              if (success) {
+                                                const btn = e.currentTarget;
+                                                const t = btn.innerText;
+                                                btn.innerText = '已复制';
+                                                setTimeout(() => { btn.innerText = t; }, 1500);
+                                              }
+                                            } catch (err) {
+                                              console.error("Copy failed", err);
+                                            }
+                                          }}
+                                        >
+                                          复制
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                }
                                 if (item.kind === 'raw') {
                                   return (
                                     <div key={`raw_${itemIndex}`} className="ai-raw-line">
@@ -9083,7 +9408,10 @@ StepD:
                         className="composer-chart-tag"
                         onClick={() => {
                           setAttachmentMenuOpen(false);
-                          setChartMenuOpen((prev) => !prev);
+                          setChartMenuOpen((prev) => {
+                            if (!prev) setActiveOptionMenu(null);
+                            return !prev;
+                          });
                         }}
                         disabled={loading}
                       >
@@ -9110,6 +9438,8 @@ StepD:
                             onClick={() => {
                               setUserInput('');
                               setChartShortcutActive(shortcut.label);
+                              setChartExtraOptions({});
+                              setActiveOptionMenu(null);
                               if (shortcut.label === '折线图') {
                                 setChartOverlayOpen(true);
                               } else {
@@ -9129,6 +9459,52 @@ StepD:
                         ))}
                       </div>
                     </div>
+                    {CHART_EXTRA_OPTIONS[chartShortcutActive]?.map(opt => {
+                      const value = chartExtraOptions[opt.key] || opt.defaultValue;
+                      const isOpen = activeOptionMenu === opt.key;
+                      return (
+                        <div className="composer-chart-tag-wrap" key={opt.key}>
+                          <button
+                            type="button"
+                            className="composer-chart-tag"
+                            onClick={() => {
+                              setChartMenuOpen(false);
+                              setActiveOptionMenu(isOpen ? null : opt.key);
+                            }}
+                            disabled={loading}
+                          >
+                            <span className="composer-chart-tag-text">{opt.label}: {value}</span>
+                            <span className="composer-chart-tag-icon" aria-hidden="true">
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                  fillRule="evenodd"
+                                  clipRule="evenodd"
+                                  d="M3.46129 3.67509C3.22783 3.44164 2.84933 3.44164 2.61587 3.67509L2.19316 4.0978C1.9597 4.33126 1.9597 4.70977 2.19316 4.94322L5.57484 8.32491C5.6922 8.44226 5.8462 8.50062 6.00001 8.49999C6.15382 8.50062 6.30782 8.44226 6.42518 8.32491L9.80686 4.94322C10.0403 4.70977 10.0403 4.33126 9.80686 4.0978L9.38415 3.67509C9.15069 3.44164 8.77219 3.44164 8.53873 3.67509L6.00001 6.21381L3.46129 3.67509Z"
+                                  fill="currentColor"
+                                />
+                              </svg>
+                            </span>
+                          </button>
+                          <div className={`composer-chart-dropdown ${isOpen ? 'open' : ''}`}>
+                            {opt.options.map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                className={`composer-chart-dropdown-item ${value === val ? 'active' : ''}`}
+                                onClick={() => {
+                                  setChartExtraOptions(prev => ({ ...prev, [opt.key]: val }));
+                                  setActiveOptionMenu(null);
+                                  composerTextareaRef.current?.focus();
+                                }}
+                                disabled={loading}
+                              >
+                                <span className="composer-chart-dropdown-label">{val}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="composer-textarea-wrap">
@@ -9138,12 +9514,8 @@ StepD:
                     onChange={(e) => {
                       const nextValue = e.target.value;
                       setUserInput(nextValue);
-                      if (nextValue.trim()) {
-                        setChartShortcutActive(null);
-                      }
-                      if (!nextValue.trim()) {
+                      if (!nextValue.trim() && !chartShortcutActive) {
                         setChartPromptMode(false);
-                        setChartShortcutActive(null);
                       }
                     }}
                     onKeyDown={(e) => {
@@ -9160,11 +9532,13 @@ StepD:
                       }
                       if (
                         (e.key === 'Backspace' || e.key === 'Delete') &&
-                        !userInput.trim() &&
+                        userInput === '' &&
                         chartShortcutActive
                       ) {
                         e.preventDefault();
                         setChartShortcutActive(null);
+                        setChartExtraOptions({});
+                        setActiveOptionMenu(null);
                         setChartPromptMode(false);
                         setChartMenuOpen(false);
                       }
@@ -9282,6 +9656,8 @@ StepD:
                           replaceQuickPrompt('生成一个表格');
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
+                          setChartExtraOptions({});
+                          setActiveOptionMenu(null);
                           setAttachmentMenuOpen(false);
                           setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
@@ -9314,6 +9690,8 @@ StepD:
                           replaceQuickPrompt('生成一个表单');
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
+                          setChartExtraOptions({});
+                          setActiveOptionMenu(null);
                           setAttachmentMenuOpen(false);
                           setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
@@ -9351,6 +9729,8 @@ StepD:
                           replaceQuickPrompt('生成一个图表');
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
+                          setChartExtraOptions({});
+                          setActiveOptionMenu(null);
                           setAttachmentMenuOpen(false);
                           setQuickComponentMenuOpen(false);
                           setChartMenuOpen((prev) => !prev);
@@ -9387,6 +9767,8 @@ StepD:
                               onClick={() => {
                                 setUserInput('');
                                 setChartShortcutActive(shortcut.label);
+                                setChartExtraOptions({});
+                                setActiveOptionMenu(null);
                                 if (shortcut.label === '折线图') {
                                   setChartOverlayOpen(true);
                                 } else {
@@ -9418,6 +9800,8 @@ StepD:
                         onClick={() => {
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
+                          setChartExtraOptions({});
+                          setActiveOptionMenu(null);
                           setAttachmentMenuOpen(false);
                           setChartMenuOpen(false);
                           setQuickComponentMenuOpen((prev) => !prev);
@@ -9519,10 +9903,8 @@ StepD:
             </div>
           </div>
         </div>
-      ) : activeTab === 'selection' ? (
-        renderSelectionPage()
       ) : (
-        renderDocs()
+        renderSelectionPage()
       )}
       {chartOverlayOpen && (
         <div className="chart-overlay">
