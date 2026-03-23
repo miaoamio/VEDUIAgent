@@ -209,6 +209,12 @@ const PROPS_THOUGHT_KEYWORDS_CN = ['属性', '探测', '探查', '发现属性']
 const PROPS_THOUGHT_KEYWORDS_EN = ['props'];
 const FRAME_THOUGHT_KEYWORDS_CN = ['生成', '创建', '绘制'];
 const FRAME_THOUGHT_KEYWORDS_EN = ['generate', 'create', 'draw'];
+const PLAN_THOUGHT_KEYWORDS_CN = ['任务', '计划'];
+const PLAN_THOUGHT_VERBS_CN = ['初始化', '建立', '建', '创建', '更新', '追加', '添加', '修改', '设置', '设定'];
+const PLAN_THOUGHT_KEYWORDS_EN = ['task', 'plan'];
+const PLAN_THOUGHT_VERBS_EN = ['init', 'initialize', 'create', 'update', 'append', 'add', 'set'];
+const EXEC_THOUGHT_KEYWORDS_CN = ['执行', '下一步'];
+const EXEC_THOUGHT_KEYWORDS_EN = ['execute', 'run', 'next'];
 
 function includesAny(haystack: string, keywords: string[]): boolean {
   for (const keyword of keywords) {
@@ -239,8 +245,38 @@ function isFrameThoughtText(text: string): boolean {
   return includesAny(raw, FRAME_THOUGHT_KEYWORDS_CN) || includesAny(lower, FRAME_THOUGHT_KEYWORDS_EN);
 }
 
-function getThoughtIconKind(text: string): 'search' | 'frame' | 'brain' {
+function isPlanThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  const hasPlanNoun =
+    includesAny(raw, PLAN_THOUGHT_KEYWORDS_CN) ||
+    includesAny(lower, PLAN_THOUGHT_KEYWORDS_EN) ||
+    includesAny(lower, ['set_plan', 'init_plan', 'update_plan', 'plan_update']);
+  if (!hasPlanNoun) return false;
+  return (
+    includesAny(raw, PLAN_THOUGHT_VERBS_CN) ||
+    includesAny(lower, PLAN_THOUGHT_VERBS_EN) ||
+    includesAny(lower, ['set_plan', 'init_plan', 'update_plan', 'plan_update'])
+  );
+}
+
+function isExecuteThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (isSearchThoughtText(raw)) return false;
+  const lower = raw.toLowerCase();
+  if (includesAny(raw, EXEC_THOUGHT_KEYWORDS_CN) || includesAny(lower, EXEC_THOUGHT_KEYWORDS_EN)) {
+    if (includesAny(raw, PLAN_THOUGHT_KEYWORDS_CN) || includesAny(lower, PLAN_THOUGHT_KEYWORDS_EN)) return true;
+    if (includesAny(lower, ['execute_task', 'run_task', 'plan_next', 'next_task'])) return true;
+  }
+  return false;
+}
+
+function getThoughtIconKind(text: string): 'search' | 'plan' | 'frame' | 'brain' {
   if (isSearchThoughtText(text)) return 'search';
+  if (isPlanThoughtText(text)) return 'plan';
+  if (isExecuteThoughtText(text)) return 'frame';
   if (isFrameThoughtText(text)) return 'frame';
   return 'brain';
 }
@@ -415,6 +451,31 @@ function CircleCheckIcon({ className }: { className?: string }) {
   );
 }
 
+function CircleDashedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray="2 3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function CircleXIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -466,6 +527,64 @@ function FrameIcon({ className }: { className?: string }) {
       <line x1="22" x2="2" y1="18" y2="18" />
       <line x1="6" x2="6" y1="2" y2="22" />
       <line x1="18" x2="18" y1="2" y2="22" />
+    </svg>
+  );
+}
+
+function PlanFrameIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M2 3.33337H2.00667"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 8H2.00667"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 12.6666H2.00667"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.33325 3.33337H13.9999"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.33325 8H13.9999"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.33325 12.6666H13.9999"
+        stroke="currentColor"
+        strokeWidth="1.33333"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -697,6 +816,38 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       }
     }
     items.push(nextItem);
+  }
+
+  if (items.length >= 2) {
+    let lastIndex = items.length - 1;
+    while (lastIndex >= 0 && items[lastIndex]?.kind === 'action_json') lastIndex -= 1;
+    if (lastIndex >= 0 && items[lastIndex]?.kind === 'system') {
+      const lastSystemText = String(items[lastIndex]?.text || '').trim();
+      const isPlanSummaryReceipt =
+        lastSystemText.includes('任务全部完成') ||
+        lastSystemText.includes('完成被阻止') ||
+        lastSystemText.includes('计划中没有待处理任务') ||
+        lastSystemText.includes('暂无可执行任务');
+      if (isPlanSummaryReceipt) {
+        const isAllTasksSummaryThought = (input: string) => {
+          const s = String(input || '').trim();
+          if (!s) return false;
+          return (
+            /任务状态/.test(s) ||
+            /任务.*(全部|所有).*(完成|结束|已完成)/.test(s) ||
+            /(全部|所有).*(任务|计划).*(完成|结束|已完成)/.test(s) ||
+            /(完成|结束).*(全部|所有).*(任务|计划)/.test(s)
+          );
+        };
+        let prevIndex = lastIndex - 1;
+        while (prevIndex >= 0 && items[prevIndex]?.kind === 'action_json') prevIndex -= 1;
+        if (prevIndex >= 0 && items[prevIndex]?.kind === 'thought') {
+          if (isAllTasksSummaryThought(items[prevIndex].text)) {
+            items.splice(prevIndex, 1);
+          }
+        }
+      }
+    }
   }
 
   return items;
@@ -1687,7 +1838,7 @@ function App() {
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [agentPlan, setAgentPlan] = React.useState<AgentPlanState | null>(null);
   const [manualTaskRunner, setManualTaskRunner] = React.useState(false);
-  const [planIslandOpen, setPlanIslandOpen] = React.useState(false);
+  const [planTasksCollapsed, setPlanTasksCollapsed] = React.useState(false);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const tableInputRef = React.useRef<HTMLInputElement | null>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false);
@@ -1975,19 +2126,6 @@ function App() {
   React.useEffect(() => {
     parent.postMessage({ pluginMessage: { type: 'ui-ready' } }, '*');
   }, []);
-
-  React.useEffect(() => {
-    if (!agentPlan) {
-      setPlanIslandOpen(false);
-      return;
-    }
-    const hasAttentionTask = agentPlan.tasks.some(
-      (task) => task.status === 'failed' || task.status === 'blocked'
-    );
-    if (hasAttentionTask) {
-      setPlanIslandOpen(true);
-    }
-  }, [agentPlan]);
 
   React.useEffect(() => {
     if (!chatScrollRef.current) return;
@@ -2636,11 +2774,9 @@ StepD:
         : `[AI]: ${toSeriesSpecText(inferredKind)}`;
     }
     if (ids.length === 0) {
-      return `[System]: read_specs received empty ids.`;
+      return `[System]: 读取规范失败：未提供规范标识。`;
     }
-    return isCachedRead
-      ? `[System]: Specs already loaded for ${ids.join(', ')}`
-      : `[System]: Loaded specs for ${ids.join(', ')}`;
+    return isCachedRead ? `[System]: 规范已加载，跳过重复读取。` : `[System]: 规范读取完成。`;
   };
 
   const normalizeSpecIdsFromPayload = (payload: any) => {
@@ -5986,7 +6122,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: execute_task ${task.taskId} success (create_shell, ID: ${nodeId}${parentId ? `, parent=${parentId}` : ''}).`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
       };
     }
 
@@ -6010,14 +6146,14 @@ StepD:
       if (!block) {
         return {
           ok: false,
-          message: `[System]: execute_task ${task.taskId} failed: invalid table block payload.`
+          message: `[System]: 任务执行失败：表格区参数无效。`
         };
       }
       const nodeId = await createComponentNode(block, parentId);
       return {
         ok: true,
         nodeId,
-        message: `[System]: execute_task ${task.taskId} success (expand_table_block, ID: ${nodeId}${parentId ? `, parent=${parentId}` : ''}).`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
       };
     }
 
@@ -6038,14 +6174,14 @@ StepD:
       if (!block) {
         return {
           ok: false,
-          message: `[System]: execute_task ${task.taskId} failed: invalid chart block payload.`
+          message: `[System]: 任务执行失败：图表区参数无效。`
         };
       }
       const nodeId = await createComponentNode(block, parentId);
       return {
         ok: true,
         nodeId,
-        message: `[System]: execute_task ${task.taskId} success (expand_chart_block, ID: ${nodeId}${parentId ? `, parent=${parentId}` : ''}).`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
       };
     }
 
@@ -6071,14 +6207,14 @@ StepD:
       if (!block) {
         return {
           ok: false,
-          message: `[System]: execute_task ${task.taskId} failed: invalid form block payload.`
+          message: `[System]: 任务执行失败：表单区参数无效。`
         };
       }
       const nodeId = await createComponentNode(block, parentId);
       return {
         ok: true,
         nodeId,
-        message: `[System]: execute_task ${task.taskId} success (expand_form_block, ID: ${nodeId}${parentId ? `, parent=${parentId}` : ''}).`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
       };
     }
 
@@ -6103,20 +6239,20 @@ StepD:
       if (!block) {
         return {
           ok: false,
-          message: `[System]: execute_task ${task.taskId} failed: invalid tabs block payload.`
+          message: `[System]: 任务执行失败：标签切换区参数无效。`
         };
       }
       const nodeId = await createComponentNode(block, parentId);
       return {
         ok: true,
         nodeId,
-        message: `[System]: execute_task ${task.taskId} success (expand_tabs_block, ID: ${nodeId}${parentId ? `, parent=${parentId}` : ''}).`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
       };
     }
 
     return {
       ok: false,
-      message: `[System]: execute_task ${task.taskId} failed: unsupported task type '${task.type}'.`
+      message: `[System]: 任务执行失败：不支持的任务类型。`
     };
   };
 
@@ -6224,7 +6360,7 @@ StepD:
                     }
                     
                     // Show error in UI immediately if it's the first attempt or if the user wants to see it
-                    setResponse(prev => (prev ? prev + '\n' : '') + `[System]: Rate limited (429): ${errorMsg}. Retrying...`);
+                    setResponse(prev => (prev ? prev + '\n' : '') + `[System]: 请求过于频繁（429）：${errorMsg}。正在重试…`);
 
                     const retryAfter = res.headers.get('Retry-After');
                     const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 2000 * Math.pow(2, attempt); 
@@ -6308,7 +6444,7 @@ StepD:
             if (inferredPlan) {
                 runtimePlan = inferredPlan;
                 const summary = summarizePlan(runtimePlan);
-                const autoMsg = `[System]: Auto plan initialized (${runtimePlan.tasks.length} tasks) for complex request.`;
+                const autoMsg = `[System]: 已自动生成执行计划（${runtimePlan.tasks.length} 个任务）。`;
                 accumulatedLog += autoMsg + '\n' + summary;
                 setResponse(accumulatedLog);
                 messages.push({ role: "user", content: `System: Auto plan initialized.\n${summary}` });
@@ -6420,7 +6556,12 @@ StepD:
             }
 
             if (!actionData || !actionData.action) {
-                break;
+                const missingActionMsg =
+                  `[System]: 未返回可执行动作。请按约定的动作协议继续输出。`;
+                accumulatedLog += (accumulatedLog ? '\n\n' : '') + missingActionMsg;
+                setResponse(accumulatedLog);
+                messages.push({ role: "user", content: missingActionMsg });
+                continue;
             }
 
             const action = actionData.action;
@@ -6435,21 +6576,21 @@ StepD:
 
             if (runtimePlan && actionTaskId && !isPlanControlAction) {
                 runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'in_progress');
+                setAgentPlan(runtimePlan);
             }
 
             if (action.type === 'set_plan' || action.type === 'init_plan') {
                 const nextPlan = normalizePlanPayload(action.payload, userInput);
                 if (!nextPlan) {
-                    const invalidMsg = `[System]: Invalid set_plan payload.`;
+                    const invalidMsg = `[System]: 计划数据无效。`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
                 } else {
                     runtimePlan = nextPlan;
+                    setAgentPlan(runtimePlan);
+                    setPlanTasksCollapsed(false);
                     const summary = summarizePlan(runtimePlan);
-                    const okMsg = `[System]: Plan initialized (${runtimePlan.tasks.length} tasks).`;
-                    accumulatedLog += '\n\n' + okMsg + '\n' + summary;
-                    setResponse(accumulatedLog);
                     messages.push({ role: "user", content: `System: Plan initialized.\n${summary}` });
                 }
                 continue;
@@ -6457,7 +6598,7 @@ StepD:
 
             if (action.type === 'plan_next' || action.type === 'next_task') {
                 if (!runtimePlan) {
-                    const missingMsg = `[System]: plan_next failed: no active plan. Use set_plan first.`;
+                    const missingMsg = `[System]: 无法获取下一步：当前没有执行计划，请先初始化计划。`;
                     accumulatedLog += '\n\n' + missingMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: missingMsg });
@@ -6467,15 +6608,16 @@ StepD:
                 const nextTask = getNextExecutableTask(runtimePlan);
                 if (nextTask) {
                     runtimePlan = updateTaskStatus(runtimePlan, nextTask.taskId, 'in_progress');
-                    const msg = `[System]: Next task -> ${nextTask.taskId} (${nextTask.title}).`;
+                    setAgentPlan(runtimePlan);
+                    const msg = `[System]: 下一步任务：${nextTask.title}`;
                     accumulatedLog += '\n\n' + msg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: `System: Next task: ${JSON.stringify(nextTask)}` });
                 } else {
                     const unfinished = getUnfinishedTasks(runtimePlan);
                     const msg = unfinished.length === 0
-                      ? `[System]: Plan has no pending tasks.`
-                      : `[System]: No executable task now (waiting dependencies).`;
+                      ? `[System]: 计划中没有待处理任务。`
+                      : `[System]: 暂无可执行任务（等待依赖完成）。`;
                     accumulatedLog += '\n\n' + msg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: msg });
@@ -6485,7 +6627,7 @@ StepD:
 
             if (action.type === 'update_plan' || action.type === 'plan_update') {
                 if (!runtimePlan) {
-                    const missingMsg = `[System]: update_plan failed: no active plan. Use set_plan first.`;
+                    const missingMsg = `[System]: 更新计划失败：当前没有执行计划，请先初始化计划。`;
                     accumulatedLog += '\n\n' + missingMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: missingMsg });
@@ -6555,16 +6697,14 @@ StepD:
                 }
 
                 if (!changed) {
-                    const invalidMsg = `[System]: update_plan ignored: no valid updates.`;
+                    const invalidMsg = `[System]: 更新计划已忽略：没有有效更新。`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
                 } else {
                     runtimePlan = nextPlan;
+                    setAgentPlan(runtimePlan);
                     const summary = summarizePlan(runtimePlan);
-                    const okMsg = `[System]: Plan updated.`;
-                    accumulatedLog += '\n\n' + okMsg + '\n' + summary;
-                    setResponse(accumulatedLog);
                     messages.push({ role: "user", content: `System: Plan updated.\n${summary}` });
                 }
                 continue;
@@ -6572,7 +6712,7 @@ StepD:
 
             if (action.type === 'execute_task' || action.type === 'run_task') {
                 if (!runtimePlan) {
-                    const missingMsg = `[System]: execute_task failed: no active plan. Use set_plan first.`;
+                    const missingMsg = `[System]: 执行任务失败：当前没有执行计划，请先初始化计划。`;
                     accumulatedLog += '\n\n' + missingMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: missingMsg });
@@ -6590,7 +6730,7 @@ StepD:
                   : getNextExecutableTask(runtimePlan);
 
                 if (!chosenTask) {
-                    const noneMsg = `[System]: execute_task skipped: no matching executable task.`;
+                    const noneMsg = `[System]: 执行任务已跳过：没有可执行任务。`;
                     accumulatedLog += '\n\n' + noneMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: noneMsg });
@@ -6602,16 +6742,18 @@ StepD:
                     return !dep || dep.status !== 'done';
                 });
                 if (depNotDone) {
-                    const depMsg = `[System]: execute_task blocked: dependency '${depNotDone}' not done for '${chosenTask.taskId}'.`;
+                    const depTitle = findTaskById(runtimePlan, depNotDone)?.title || depNotDone;
+                    const depMsg = `[System]: 执行任务被阻塞：依赖任务未完成（依赖：${depTitle}）`;
                     accumulatedLog += '\n\n' + depMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: depMsg });
                     runtimePlan = updateTaskStatus(runtimePlan, chosenTask.taskId, 'blocked', depMsg);
+                    setAgentPlan(runtimePlan);
                     continue;
                 }
 
                 if (!forceRun && chosenTask.status === 'done' && chosenTask.targetNodeId) {
-                    const skipMsg = `[System]: execute_task skipped: '${chosenTask.taskId}' already done (target=${chosenTask.targetNodeId}). Use payload.force=true to rerun.`;
+                    const skipMsg = `[System]: 任务已完成，已跳过（${chosenTask.title}）。如需重新执行请开启强制执行。`;
                     accumulatedLog += '\n\n' + skipMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: skipMsg });
@@ -6619,6 +6761,7 @@ StepD:
                 }
 
                 runtimePlan = updateTaskStatus(runtimePlan, chosenTask.taskId, 'in_progress');
+                setAgentPlan(runtimePlan);
                 try {
                     const result = await executePlannedTask(chosenTask, payload);
                     accumulatedLog += '\n\n' + result.message;
@@ -6633,12 +6776,14 @@ StepD:
                     } else {
                         runtimePlan = updateTaskStatus(runtimePlan, chosenTask.taskId, 'failed', result.message);
                     }
+                    setAgentPlan(runtimePlan);
                 } catch (e) {
-                    const errMsg = `[System]: execute_task ${chosenTask.taskId} failed: ${e}`;
+                    const errMsg = `[System]: 任务执行失败：${e}`;
                     accumulatedLog += '\n\n' + errMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: errMsg });
                     runtimePlan = updateTaskStatus(runtimePlan, chosenTask.taskId, 'failed', String(e));
+                    setAgentPlan(runtimePlan);
                 }
                 continue;
             }
@@ -6648,18 +6793,14 @@ StepD:
                 if (runtimePlan) {
                     const unfinished = getUnfinishedTasks(runtimePlan);
                     if (unfinished.length > 0) {
-                        const pending = unfinished
-                          .slice(0, 6)
-                          .map((task) => `${task.taskId}:${task.status}`)
-                          .join(', ');
-                        const blockedMsg = `[System]: finish blocked. Unfinished tasks=${unfinished.length} (${pending}).`;
+                        const blockedMsg = `[System]: 完成被阻止：仍有未完成任务 ${unfinished.length} 个。`;
                         accumulatedLog += '\n\n' + blockedMsg;
                         setResponse(accumulatedLog);
                         messages.push({ role: "user", content: blockedMsg });
                         continue;
                     }
                 }
-                accumulatedLog += '\n\n' + `[System]: Task Completed.`;
+                accumulatedLog += '\n\n' + `[System]: 任务全部完成。`;
                 setResponse(accumulatedLog);
                 break;
             }
@@ -6692,7 +6833,9 @@ StepD:
                       uniqueIds.length > 0 ? 'done' : 'failed',
                       uniqueIds.length > 0 ? undefined : 'read_specs returned empty ids'
                     );
+                    setAgentPlan(runtimePlan);
                 }
+                continue;
             }
 
             else if (
@@ -6710,7 +6853,7 @@ StepD:
                     const requested = Number(inspectResult?.requested || 0);
                     const truncated = Boolean(inspectResult?.truncated);
 
-                    const sysMsg = `[System]: discover_component_props done. success=${success}, failed=${failed}, processed=${processed}/${requested}${truncated ? ' (truncated)' : ''}.`;
+                    const sysMsg = `[System]: 组件属性探测完成（成功=${success}，失败=${failed}，处理=${processed}/${requested}${truncated ? '，已截断' : ''}）。`;
                     accumulatedLog += '\n\n' + sysMsg;
                     setResponse(accumulatedLog);
 
@@ -6763,7 +6906,7 @@ StepD:
                         );
                     }
                 } catch (e) {
-                    const errorMsg = `[System]: discover_component_props failed: ${e}`;
+                    const errorMsg = `[System]: 组件属性探测失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: errorMsg });
@@ -6783,7 +6926,7 @@ StepD:
                     const summary = inspectResult?.summary || {};
                     const success = Number(summary.success || 0);
                     const failed = Number(summary.failed || 0);
-                    const sysMsg = `[System]: inspect_component_structure done. success=${success}, failed=${failed}.`;
+                    const sysMsg = `[System]: 组件结构探测完成（成功=${success}，失败=${failed}）。`;
                     accumulatedLog += '\n\n' + sysMsg;
                     setResponse(accumulatedLog);
 
@@ -6801,7 +6944,7 @@ StepD:
                         );
                     }
                 } catch (e) {
-                    const errorMsg = `[System]: inspect_component_structure failed: ${e}`;
+                    const errorMsg = `[System]: 组件结构探测失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: errorMsg });
@@ -6831,8 +6974,8 @@ StepD:
                     if (tableComponent) {
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
-                            const rerouteMsg = `[System]: apply_scene(table) rerouted to draw_table one-shot.`;
-                            const successMsg = `[System]: draw_table success (ID: ${rootNodeId}, cols=${tableComponent.params.columnCount}, rows=${tableComponent.params.rowCount}).`;
+                            const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
+                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -6844,7 +6987,7 @@ StepD:
                             }
                             continue;
                         } catch (e) {
-                            const errorMsg = `[System]: draw_table reroute failed: ${e}`;
+                            const errorMsg = `[System]: 表格创建重试失败：${e}`;
                             accumulatedLog += '\n\n' + errorMsg;
                             setResponse(accumulatedLog);
                             messages.push({ role: "user", content: errorMsg });
@@ -6891,7 +7034,7 @@ StepD:
                 })();
 
                 if (!envelope || typeof envelope !== 'object') {
-                    const invalidMsg = `[System]: Invalid apply_scene payload.`;
+                    const invalidMsg = `[System]: 场景参数无效。`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
@@ -6902,7 +7045,7 @@ StepD:
                     try {
                         const result = await applySceneEnvelope(patchedEnvelope, mode, resolvedParentId);
                         if (result?.ok) {
-                            const summary = `[System]: Applied scene successfully (intent=${result.intent}, root=${result.rootNodeId || 'N/A'}, ops=${result.appliedOperations ?? 0}).`;
+                            const summary = `[System]: 场景应用成功（根节点=${result.rootNodeId || '无'}，操作数=${result.appliedOperations ?? 0}）。`;
                             accumulatedLog += '\n\n' + summary;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -6913,7 +7056,7 @@ StepD:
                                 runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                             }
                         } else {
-                            const failed = `[System]: apply_scene failed: ${JSON.stringify(result?.errors || [])}`;
+                            const failed = `[System]: 场景应用失败：${JSON.stringify(result?.errors || [])}`;
                             accumulatedLog += '\n\n' + failed;
                             setResponse(accumulatedLog);
                             messages.push({ role: "user", content: failed });
@@ -6927,7 +7070,7 @@ StepD:
                             }
                         }
                     } catch (e) {
-                        const errorMsg = `[System]: Error applying scene: ${e}`;
+                        const errorMsg = `[System]: 场景应用异常：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
                         messages.push({ role: "user", content: errorMsg });
@@ -6948,7 +7091,7 @@ StepD:
                 const tableComponent = buildTableComponentFromPayload(payload?.table ?? payload, { minRowCount: 10 });
 
                 if (!tableComponent) {
-                    const invalidMsg = `[System]: Invalid draw_table payload. Required: { headers: string[], rows: (string[]|object[])[], columnTypes?: string[], columnWidths?: number[], rowHeight?: { header?: number, body?: number } }.`;
+                    const invalidMsg = `[System]: 表格参数无效。`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
@@ -6958,7 +7101,7 @@ StepD:
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
-                        const successMsg = `[System]: draw_table success (ID: ${rootNodeId}, cols=${tableComponent.params.columnCount}, rows=${tableComponent.params.rowCount}).`;
+                        const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -6969,7 +7112,7 @@ StepD:
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
-                        const errorMsg = `[System]: draw_table failed: ${e}`;
+                        const errorMsg = `[System]: 表格创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
                         messages.push({ role: "user", content: errorMsg });
@@ -6990,7 +7133,7 @@ StepD:
                 const formComponent = buildFormComponentFromPayloadSkill(payload?.form ?? payload);
 
                 if (!formComponent) {
-                    const invalidMsg = `[System]: Invalid draw_form payload. Required: { rows?: any[][], fields?: any[], layout?: string, footer?: { actions?: any[] } }.`;
+                    const invalidMsg = `[System]: 表单参数无效。`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
@@ -7001,7 +7144,7 @@ StepD:
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
                         const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
-                        const successMsg = `[System]: draw_form success (ID: ${rootNodeId}, rows=${rowCount}, layout=${formComponent.params.layout}).`;
+                        const successMsg = `[System]: 表单创建成功（节点=${rootNodeId}，行数=${rowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -7012,7 +7155,7 @@ StepD:
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
-                        const errorMsg = `[System]: draw_form failed: ${e}`;
+                        const errorMsg = `[System]: 表单创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
                         messages.push({ role: "user", content: errorMsg });
@@ -7042,8 +7185,8 @@ StepD:
                     if (tableComponent) {
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
-                            const rerouteMsg = `[System]: create_node(table subtree) rerouted to draw_table one-shot.`;
-                            const successMsg = `[System]: draw_table success (ID: ${rootNodeId}, cols=${tableComponent.params.columnCount}, rows=${tableComponent.params.rowCount}).`;
+                            const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
+                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -7055,7 +7198,7 @@ StepD:
                             }
                             continue;
                         } catch (e) {
-                            const errorMsg = `[System]: draw_table reroute failed: ${e}`;
+                            const errorMsg = `[System]: 表格创建重试失败：${e}`;
                             accumulatedLog += '\n\n' + errorMsg;
                             setResponse(accumulatedLog);
                             messages.push({ role: "user", content: errorMsg });
@@ -7077,7 +7220,7 @@ StepD:
                       resolvedParentId
                     );
 
-                    accumulatedLog += '\n\n' + `[System]: Created ${componentId} (ID: ${rootNodeId})`;
+                    accumulatedLog += '\n\n' + `[System]: 组件创建成功（节点=${rootNodeId}）`;
                     setResponse(accumulatedLog);
 
                     // Add result to history for next turn
@@ -7090,7 +7233,7 @@ StepD:
                     }
 
                 } catch (e) {
-                    const errorMsg = `[System]: Error creating ${componentId}: ${e}`;
+                    const errorMsg = `[System]: 组件创建失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: errorMsg });
@@ -7100,7 +7243,7 @@ StepD:
                 }
             }
             else {
-                const unknownMsg = `[System]: Unknown action type '${String(action.type)}'.`;
+                const unknownMsg = `[System]: 未知动作类型：${String(action.type)}。`;
                 accumulatedLog += '\n\n' + unknownMsg;
                 setResponse(accumulatedLog);
                 messages.push({ role: "user", content: unknownMsg });
@@ -8464,7 +8607,7 @@ StepD:
       }
 
       if (task.status === 'done' && task.targetNodeId) {
-        const doneMsg = `[System]: 手动执行跳过，任务已完成：${task.taskId} (target=${task.targetNodeId})`;
+        const doneMsg = `[System]: 手动执行跳过，任务已完成：${task.taskId}（节点=${task.targetNodeId}）`;
         setResponse((prev) => (prev ? `${prev}\n\n${doneMsg}` : doneMsg));
         return;
       }
@@ -8500,91 +8643,47 @@ StepD:
   const renderPlanPanel = () => {
     if (!agentPlan) return null;
 
-    const counts = agentPlan.tasks.reduce(
-      (acc, task) => {
-        acc[task.status] += 1;
-        return acc;
-      },
-      {
-        pending: 0,
-        in_progress: 0,
-        done: 0,
-        failed: 0,
-        blocked: 0
-      } as Record<PlanTaskStatus, number>
-    );
-    const nextTask = getNextExecutableTask(agentPlan);
+    const totalCount = agentPlan.tasks.length;
+    const doneCount = agentPlan.tasks.reduce((acc, task) => (task.status === 'done' ? acc + 1 : acc), 0);
 
     return (
-      <div className="plan-panel">
+      <div className="plan-panel plan-panel-inline">
         <div className="plan-header">
-          <div>
-            <div className="plan-title">执行计划</div>
-            <div className="plan-meta">{agentPlan.planId} | {agentPlan.rootGoal}</div>
-          </div>
-          <div className="plan-header-actions">
-            <button
-              className="plan-clear-btn"
-              onClick={handleNudgeNextTask}
-              disabled={loading || manualTaskRunner || !nextTask}
-            >
-              {manualTaskRunner ? '执行中...' : '执行下一步'}
-            </button>
-            <button className="plan-clear-btn" onClick={handleClearPlan} disabled={loading}>清空计划</button>
-          </div>
+          <button
+            type="button"
+            className="plan-header-summary plan-header-summary-btn"
+            onClick={() => setPlanTasksCollapsed((prev) => !prev)}
+            aria-expanded={!planTasksCollapsed}
+          >
+            {planTasksCollapsed ? (
+              <ChevronRightIcon className="plan-header-summary-icon" />
+            ) : (
+              <ChevronDownIcon className="plan-header-summary-icon" />
+            )}
+            <div className="plan-header-summary-text">{doneCount}/{totalCount} 已完成</div>
+          </button>
         </div>
 
-        <div className="plan-counts">
-          <span className="plan-chip pending">pending: {counts.pending}</span>
-          <span className="plan-chip in_progress">in_progress: {counts.in_progress}</span>
-          <span className="plan-chip done">done: {counts.done}</span>
-          <span className="plan-chip failed">failed: {counts.failed}</span>
-          <span className="plan-chip blocked">blocked: {counts.blocked}</span>
-        </div>
-
-        <div className="plan-next">
-          {nextTask
-            ? `Next: ${nextTask.taskId} - ${nextTask.title}`
-            : 'Next: 无可执行任务'}
-        </div>
-
-        <div className="plan-task-list">
-          {agentPlan.tasks.map((task) => (
-            <div key={task.taskId} className={`plan-task plan-task-${task.status}`}>
-              <div className="plan-task-main">
-                <div className="plan-task-line">
-                  <span className="plan-task-id">{task.taskId}</span>
-                  <span className={`plan-task-status ${task.status}`}>
-                    {task.status === 'in_progress' ? (
-                      <SpinnerIcon className="plan-status-icon spin" />
-                    ) : task.status === 'done' ? (
-                      <CheckIcon className="plan-status-icon" />
-                    ) : null}
-                    {task.status}
-                  </span>
-                </div>
-                <div className="plan-task-title">{task.title}</div>
-                <div className="plan-task-meta">
-                  type={task.type}
-                  {task.targetNodeId ? ` | target=${task.targetNodeId}` : ''}
-                  {task.dependsOn.length > 0 ? ` | dependsOn=${task.dependsOn.join(',')}` : ''}
-                  {task.retries > 0 ? ` | retries=${task.retries}` : ''}
-                </div>
-                {task.notes && <div className="plan-task-notes">notes: {task.notes}</div>}
-                {task.requiredSpecs.length > 0 && (
-                  <div className="plan-task-specs">specs: {task.requiredSpecs.join(', ')}</div>
+        {!planTasksCollapsed && (
+          <div className="plan-task-list">
+            {agentPlan.tasks.map((task) => (
+              <div key={task.taskId} className={`plan-task plan-task-${task.status}`}>
+                {task.status === 'failed' ? (
+                  <CircleXIcon className="plan-task-icon plan-task-icon-error" />
+                ) : task.status === 'done' ? (
+                  <CircleCheckIcon className="plan-task-icon plan-task-icon-done" />
+                ) : task.status === 'in_progress' ? (
+                  <SpinnerIcon className="plan-task-icon plan-task-icon-running spin" />
+                ) : (
+                  <CircleDashedIcon className="plan-task-icon plan-task-icon-pending" />
                 )}
+                <div className="plan-task-title" title={task.title}>
+                  {task.title}
+                </div>
               </div>
-              <div className="plan-task-actions">
-                <button className="plan-mini-btn" onClick={() => handleManualTaskStatus(task.taskId, 'pending')} disabled={loading}>待处理</button>
-                <button className="plan-mini-btn" onClick={() => handleManualTaskStatus(task.taskId, 'in_progress')} disabled={loading}>进行中</button>
-                <button className="plan-mini-btn success" onClick={() => handleManualTaskStatus(task.taskId, 'done')} disabled={loading}>完成</button>
-                <button className="plan-mini-btn danger" onClick={() => handleManualTaskStatus(task.taskId, 'failed')} disabled={loading}>失败</button>
-                <button className="plan-mini-btn" onClick={() => handleManualTaskStatus(task.taskId, 'blocked')} disabled={loading}>阻塞</button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -8752,11 +8851,17 @@ StepD:
                             ? buildAttachmentParseText(attachmentImages, attachmentTables)
                             : '';
                           const showBreathingDots = isLast && loading;
-                          const lastItemIndex = items.length > 0 ? items.length - 1 : -1;
-                          const hasThoughtItem = items.some((item) => item.kind === 'thought');
-                          const shouldShowAttachmentDots = showBreathingDots && !hasThoughtItem;
+                          let lastRenderableIndex = -1;
+                          for (let i = items.length - 1; i >= 0; i -= 1) {
+                            if (items[i]?.kind !== 'action_json') {
+                              lastRenderableIndex = i;
+                              break;
+                            }
+                          }
+                          const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
+                          const shouldShowAttachmentDots = showBreathingDots && !hasProcessItem;
                           const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
-                          const lastItemKind = lastItemIndex >= 0 ? items[lastItemIndex]?.kind : null;
+                          const lastItemKind = lastRenderableIndex >= 0 ? items[lastRenderableIndex]?.kind : null;
                           let lastSystemIndex = -1;
                           let lastFrameThoughtIndex = -1;
                           for (let i = 0; i < items.length; i += 1) {
@@ -8767,7 +8872,7 @@ StepD:
                           const dotsTargetIndex =
                             showBreathingDots && lastFrameThoughtIndex > lastSystemIndex
                               ? lastFrameThoughtIndex
-                              : lastItemIndex;
+                              : lastRenderableIndex;
                           const shouldShowIdleThinking =
                             isLast && loading && lastItemKind === 'system';
                           return (
@@ -8832,7 +8937,7 @@ StepD:
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
-                                const shouldShowLineDots = showBreathingDots && hasThoughtItem && itemIndex === dotsTargetIndex;
+                                const shouldShowLineDots = showBreathingDots && hasProcessItem && itemIndex === dotsTargetIndex;
                                 if (item.kind === 'spec_hint') {
                                   return (
                                     <IconTextRow
@@ -8860,6 +8965,8 @@ StepD:
                                       icon={
                                         iconKind === 'search' ? (
                                           <SearchIcon className="ai-thought-icon" />
+                                        ) : iconKind === 'plan' ? (
+                                          <PlanFrameIcon className="ai-thought-icon" />
                                         ) : iconKind === 'frame' ? (
                                           <FrameIcon className="ai-thought-icon" />
                                         ) : (
@@ -8949,22 +9056,6 @@ StepD:
               ))}
             </div>
 
-            {agentPlan && (
-              <button
-                className="plan-island-toggle"
-                onClick={() => setPlanIslandOpen((prev) => !prev)}
-                title={planIslandOpen ? '收起执行计划' : '展开执行计划'}
-                disabled={loading}
-              >
-                {planIslandOpen ? '收起计划' : '计划岛台'}
-              </button>
-            )}
-
-            {agentPlan && planIslandOpen && (
-              <div className="plan-island">
-                {renderPlanPanel()}
-              </div>
-            )}
           </div>
           <div className="input-section">
             <input
@@ -8989,6 +9080,9 @@ StepD:
                 event.currentTarget.value = '';
               }}
             />
+            {agentPlan && agentPlan.tasks.some((task) => task.status !== 'done') && (
+              <div className="plan-inline">{renderPlanPanel()}</div>
+            )}
             <div className="chat-selection-bar">
               {selectionCount <= 0 ? (
                 <span className="chat-selection-label">未选中画布内任何元素</span>
@@ -9151,7 +9245,7 @@ StepD:
                         e.key === 'Enter' &&
                         !e.shiftKey &&
                         !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
-                        uploadedImages.length > 0 &&
+                        canSend &&
                         !loading
                       ) {
                         e.preventDefault();

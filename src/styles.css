@@ -1410,6 +1410,7 @@ div#react-page > div.container {
 div#react-page > div.container > div.chat-layout > div.input-section > div.composer {
   padding-left: 0px;
   padding-right: 0px;
+  padding-top: 0px;
   padding-bottom: 0px;
 }
 
@@ -2620,6 +2621,42 @@ button:disabled {
   gap: 10px;
 }
 
+.plan-inline {
+  margin: 0;
+}
+
+.plan-panel-inline {
+  border-radius: 4px;
+  border-color: var(--color-border-default, #E4E4E7);
+  background: var(--color-progress-bar-bg, #F4F4F5);
+  padding: 0;
+  gap: 0;
+  width: 100%;
+}
+
+.plan-panel-inline .plan-header {
+  padding: 0 8px 0 12px;
+  height: 32px;
+}
+
+.plan-panel-inline .plan-task-list {
+  padding: 0 12px 8px 12px;
+  max-height: 109px;
+  overflow-y: hidden;
+}
+
+.plan-panel-inline .plan-task {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  height: 17px;
+}
+
+.plan-panel-inline:hover .plan-task-list {
+  overflow-y: auto;
+}
+
 .plan-island-toggle {
   position: fixed;
   right: 16px;
@@ -2658,6 +2695,41 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.plan-header-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ved-text-secondary, #6B7280);
+  font-weight: 500;
+}
+
+.plan-header-summary-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.plan-header-summary-btn:disabled {
+  cursor: default;
+}
+
+.plan-header-summary-icon {
+  display: block;
+  flex: 0 0 auto;
+  color: var(--ved-text-secondary, #6B7280);
+  width: 16px;
+  height: 16px;
+}
+
+.plan-header-summary-text {
+  font-size: 13px;
+  line-height: 16px;
+  padding: 8px 0;
 }
 
 .plan-header-actions {
@@ -2744,7 +2816,7 @@ button:disabled {
 .plan-task-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   max-height: 240px;
   overflow: auto;
 }
@@ -2754,8 +2826,10 @@ button:disabled {
   border-radius: 6px;
   padding: 8px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
 }
 
 .chart-overlay {
@@ -2835,35 +2909,27 @@ button:disabled {
   border-color: #FDBA74;
 }
 
-.plan-task-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.plan-task-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: 0 0 auto;
 }
 
-.plan-task-id {
-  font-family: monospace;
-  font-size: 11px;
-  color: #6B7280;
+.plan-task-icon-done {
+  color: var(--ved-status-success, #22C55E);
 }
 
-.plan-task-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  text-transform: lowercase;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid #D1D5DB;
-  color: #4B5563;
-  background: #F9FAFB;
+.plan-task-icon-error {
+  color: var(--ved-status-error, #EF4444);
 }
 
-.plan-status-icon {
-  width: 12px;
-  height: 12px;
+.plan-task-icon-running {
+  color: var(--ved-status-running, #2563EB);
+}
+
+.plan-task-icon-pending {
+  color: var(--ved-status-pending, #9CA3AF);
 }
 
 .plan-task-status.in_progress {
@@ -2892,8 +2958,13 @@ button:disabled {
 
 .plan-task-title {
   font-size: 12px;
-  color: #111827;
-  font-weight: 500;
+  color: var(--ved-text-primary, #111827);
+  font-weight: 400;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .plan-task-meta {

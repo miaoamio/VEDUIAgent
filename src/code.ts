@@ -8721,8 +8721,9 @@ async function drawAiChart(data: any, options: any) {
     for (let s = 1; s < count; s++) {
       // 计算步长间距
       let currentStepDistance = 0;
-      if (s < count) {
-        currentStepDistance = Math.abs(labelPositions[Math.min(s, count - 1)] - labelPositions[0]);
+      if (labelPositions.length > 1) {
+        const stepIndex = Math.min(s, labelPositions.length - 1);
+        currentStepDistance = Math.abs(labelPositions[stepIndex] - labelPositions[0]);
       }
       
       const limitW = (currentStepDistance > 0 ? currentStepDistance : drawW) - minGap;
