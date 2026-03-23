@@ -43,7 +43,7 @@ export const basicComponents: ComponentRegistry["components"] = {
     "schemaVersion": "2.0.0",
     "prompts": {
       "description": "通过 componentToken 或 componentKey 导入并创建指定的 Figma 组件或变体",
-      "usage": "当你需要直接复用设计系统中的已发布 Figma 组件时使用。优先传入 componentToken（来自 theme.component-tokens），也可直接传 componentKey。可选 fallbackName 和 variantCriteria（JSON 字符串或 key=value 形式）。",
+      "usage": "当你需要直接复用设计系统中的已发布 Figma 组件时使用。优先传入 componentToken（来自 theme/volcengine-design/component-tokens），也可直接传 componentKey。可选 fallbackName 和 variantCriteria（JSON 字符串或 key=value 形式）。",
       "examples": [
         "按 token 导入表头组件: { \"componentId\": \"figma-component\", \"params\": { \"componentToken\": \"table.header.main\" } }",
         "按 key 导入指定变体: { \"componentId\": \"figma-component\", \"params\": { \"componentKey\": \"YOUR_COMPONENT_SET_KEY\", \"variantCriteria\": \"{\\\"Size\\\":\\\"Large\\\",\\\"State\\\":\\\"Default\\\"}\" } }"
@@ -66,7 +66,7 @@ export const basicComponents: ComponentRegistry["components"] = {
       "componentToken": {
         "type": "string",
         "default": "",
-        "description": "组件 token（推荐，来自 theme.component-tokens）"
+        "description": "组件 token（推荐，来自 theme/volcengine-design/component-tokens）"
       },
       "componentKey": {
         "type": "string",
@@ -357,7 +357,7 @@ export const basicComponents: ComponentRegistry["components"] = {
     "schemaVersion": "2.0.0",
     "prompts": {
       "description": "通用标签组件，统一覆盖 lib-data-display-tag、lib-data-display-other-tag、lib-data-display-status-tag 三套标签族；默认优先导入原始 Figma 组件做高保真复刻，支持默认/营销/标签组/状态标签样式",
-      "usage": "用于展示轻量状态、分类、营销标记、一组短标签或状态标签。`tagType` 统一选择默认/营销/标签组/状态类型；当选择 MarketingTag/TagGroup 时会自动切换 `componentToken` 到 `lib-data-display-other-tag`（或语义别名 `library.data-display.other-tag`），当选择 StatusTag 时切换到 `lib-data-display-status-tag`（或语义别名 `library.data-display.status-tag`），再配合 colorScheme/groupTexts/statusTheme/statusType/statusState。默认标签仍使用 size/state/showIcon/showDot/showDropdown/closable/disabled 控制变体。仅在原始 Figma 组件不可用时回退本地渲染。",
+      "usage": "用于展示轻量状态、分类、营销标记、一组短标签或状态标签。`tagType` 统一选择默认/营销/标签组/状态类型；当选择 MarketingTag/TagGroup 时会自动切换 `componentToken` 到 `lib-data-display-other-tag`，当选择 StatusTag 时切换到 `lib-data-display-status-tag`，再配合 colorScheme/groupTexts/statusTheme/statusType/statusState。默认标签仍使用 size/state/showIcon/showDot/showDropdown/closable/disabled 控制变体。仅在原始 Figma 组件不可用时回退本地渲染。",
       "examples": [
         "基础标签: { \"componentId\": \"tag\", \"params\": { \"text\": \"标签\" } }",
         "可关闭标签: { \"componentId\": \"tag\", \"params\": { \"text\": \"处理中\", \"closable\": true } }",

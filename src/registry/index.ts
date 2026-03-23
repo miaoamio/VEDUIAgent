@@ -1,1 +1,1 @@
-export { COMPONENT_REGISTRY } from "./components";
+export { COMPONENT_REGISTRY } from "../registry";

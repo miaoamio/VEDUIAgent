@@ -24,7 +24,7 @@ import {
 } from './ui/PropertyControls';
 import { Tooltip } from './ui/Tooltip';
 import { BASE_COMPONENT_TOKEN_PACK } from './theme/volcengine-design/component-tokens';
-import { SPEC_COMPONENT_TOKEN_MAP } from './spec.component-token-map';
+import { SPEC_COMPONENT_TOKEN_MAP } from './registry/component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
 import { buildFormComponentFromPayload as buildFormComponentFromPayloadSkill } from './engine/skills/form.skill';
 
@@ -1812,7 +1812,7 @@ function App() {
     setCanvasHint('mixed');
     setSelectedComponent({
       componentId: 'figma-component',
-      params: { componentToken: 'library.navigation.header' },
+      params: { componentToken: 'lib-navigation-header' },
       nodeName: 'Mock Selection'
     });
   }, [
@@ -2343,11 +2343,12 @@ function App() {
 
     prompt += `
 工作流 (Workflow):
-1. 若用户输入包含“表单 / 筛选 / 图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息。**注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。**
+1. 若用户输入包含”图表”等明确组件关键词，直接调用 read_specs 获取对应组件信息。**注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。创建表单（Form）时，请直接使用 draw_form，无需读取 spec。**
 2. 其他情况先分析用户需求，**必须**从 Component Index 里选择可用组件，再决定需要使用哪些组件。
 3. 当存在自定义组件注册表时，**必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
    - ⚠️ **例外：表格组件（table/table-column等）无需读取 spec，直接使用 draw_table 即可。**
-   - 禁止在未读取 spec 的情况下直接猜测组件参数（表格除外）。
+   - ⚠️ **例外：表单（form/draw_form）无需读取 spec，直接使用 draw_form 即可。**
+   - 禁止在未读取 spec 的情况下直接猜测组件参数（表格和表单除外）。
    - read_specs 会返回组件的 params 定义和使用示例。
    - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
    - 当要复用 Figma 设计系统组件时，先 read_specs([\"figma-component\"]) 获取 ComponentTokenCatalog，再使用 params.componentToken 调用。
@@ -2425,7 +2426,7 @@ function App() {
      }
    - 若参考图里出现标准复选框/单选框/开关/勾选列表，不要手工画 vector/svg/path/text 勾号。
    - 多选项优先使用 checkbox-group；若是零散多选项行，也可以直接组合多个 checkbox。
-   - 这类视觉敏感控件优先复用真实 Figma component（checkbox / checkbox-group / radio-group / figma-component + library.data-input.checkbox*）。
+   - 这类视觉敏感控件优先复用真实 Figma component（checkbox / checkbox-group / radio-group / figma-component + lib-data-input-checkbox*）。
 5. 当需要复刻设计系统组件内部结构时，先调用 inspect_component_structure / discover_component_structure 获取内部层级、文本、颜色/变量绑定和嵌套控件。
 6. 对于非表格复杂结构或增量编辑，优先调用 apply_scene(payload)。
    - payload 建议是 Scene Envelope：
@@ -2480,9 +2481,9 @@ Step2:
 
 Figma组件属性探测示例:
 StepA:
-{"thought":"探测Header属性","action":{"type":"discover_component_props","payload":{"tokens":["library.navigation.header"],"maxCount":1}}}
+{"thought":"探测Header属性","action":{"type":"discover_component_props","payload":{"tokens":["lib-navigation-header"],"maxCount":1}}}
 StepB:
-{"thought":"先摆组件本体","action":{"type":"create_node","payload":{"componentId":"figma-component","params":{"componentToken":"library.navigation.header","width":1440}}}}
+{"thought":"先摆组件本体","action":{"type":"create_node","payload":{"componentId":"figma-component","params":{"componentToken":"lib-navigation-header","width":1440}}}}
 
 计划队列示例:
 StepA:
@@ -3760,31 +3761,31 @@ StepD:
   }> = [
     {
       keywords: ['timepicker-menu'],
-      token: 'library.data-input.timepicker-menu',
+      token: 'lib-data-input-timepicker-menu',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['checkbox-group'],
-      token: 'library.data-input.checkbox-group',
+      token: 'lib-data-input-checkbox-group',
       fieldControlType: 'checkbox-group',
       inlineComponentId: 'checkbox-group'
     },
     {
       keywords: ['radio-group'],
-      token: 'library.data-input.radio-group',
+      token: 'lib-data-input-radio-group',
       fieldControlType: 'radio-group',
       inlineComponentId: 'radio-group'
     },
     {
       keywords: ['tree-select', 'treeselect'],
-      token: 'library.data-input.treeselect',
+      token: 'lib-data-input-treeselect',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['input-number', 'inputnumber'],
-      token: 'library.data-input.inputnumber',
+      token: 'lib-data-input-inputnumber',
       fieldControlType: 'inputnumber',
       inlineComponentId: 'figma-component'
     },
@@ -3796,103 +3797,103 @@ StepD:
     },
     {
       keywords: ['datepicker', 'datepick', '日期'],
-      token: 'library.data-input.datepicker',
+      token: 'lib-data-input-datepicker',
       fieldControlType: 'datepicker',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['autocomplete'],
-      token: 'library.data-input.autocomplete',
+      token: 'lib-data-input-autocomplete',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['cascader'],
-      token: 'library.data-input.cascader',
+      token: 'lib-data-input-cascader',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['checkbox', '多选'],
-      token: 'library.data-input.checkbox',
+      token: 'lib-data-input-checkbox',
       fieldControlType: 'checkbox-group',
       inlineComponentId: 'checkbox-group'
     },
     {
       keywords: ['drag'],
-      token: 'library.data-input.drag',
+      token: 'lib-data-input-drag',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['image'],
-      token: 'library.data-input.image',
+      token: 'lib-data-input-image',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['radio', '单选'],
-      token: 'library.data-input.radio',
+      token: 'lib-data-input-radio',
       fieldControlType: 'radio-group',
       inlineComponentId: 'radio-group'
     },
     {
       keywords: ['search'],
-      token: 'library.data-input.search',
+      token: 'lib-data-input-search',
       fieldControlType: 'input',
       inlineComponentId: 'input'
     },
     {
       keywords: ['segmented'],
-      token: 'library.data-input.segmented-picker',
+      token: 'lib-data-input-segmented-picker',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['slider', '滑动'],
-      token: 'library.data-input.slider',
+      token: 'lib-data-input-slider',
       fieldControlType: 'slider',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['switch', '开关'],
-      token: 'library.data-input.switch',
+      token: 'lib-data-input-switch',
       fieldControlType: 'switch',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['textarea', '多行'],
-      token: 'library.data-input.textarea',
+      token: 'lib-data-input-textarea',
       fieldControlType: 'textarea',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['timepicker', '时间'],
-      token: 'library.data-input.timepicker',
+      token: 'lib-data-input-timepicker',
       fieldControlType: 'timepicker',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['transfer'],
-      token: 'library.data-input.transfer',
+      token: 'lib-data-input-transfer',
       fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['upload', '上传'],
-      token: 'library.data-input.button',
+      token: 'lib-data-input-button',
       fieldControlType: 'upload',
       inlineComponentId: 'figma-component'
     },
     {
       keywords: ['select', 'dropdown', '选择'],
-      token: 'library.data-input.select',
+      token: 'lib-data-input-select',
       fieldControlType: 'select',
       inlineComponentId: 'select'
     },
     {
       keywords: ['input', '搜索'],
-      token: 'library.data-input.input',
+      token: 'lib-data-input-input',
       fieldControlType: 'input',
       inlineComponentId: 'input'
     }
@@ -5793,7 +5794,7 @@ StepD:
           token: token || undefined,
           componentKey: snapshot.componentKey,
           figmaPropertySnapshot: snapshot,
-          note: 'no token->componentId mapping found; add mapping in src/spec.component-token-map.ts'
+          note: 'no token->componentId mapping found; add mapping in src/registry/component-token-map.ts'
         });
         return;
       }

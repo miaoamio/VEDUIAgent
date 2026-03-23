@@ -10,44 +10,52 @@
 
 ```
 src/
-├── registry.ts                ← Layer 1（当前）：所有组件定义在单一文件（5300 行）
+├── registry.ts                ← Layer 1 入口（18 行）：汇总各组件模块
+├── registry.types.ts          ← ComponentRegistry / ComponentDefinition 类型定义
 │
-├── registry/                  ← 目录骨架已建，但尚未拆分组件定义
-│   ├── index.ts               ← 仅转发 export，指向 registry.ts
-│   ├── registry.types.ts      ← 占位文件（空）
-│   ├── registry.loader.ts     ← 占位文件（空）
-│   ├── registry.helpers.ts    ← 占位文件（空）
+├── registry/                  ← Layer 1 组件定义（按领域拆分）
+│   ├── index.ts               ← 转发 export
+│   ├── registry.types.ts      ← 类型占位/扩展
+│   ├── registry.loader.ts     ← 运行时加载工具
+│   ├── registry.helpers.ts    ← registry 工具函数
+│   ├── component-token-map.ts ← Figma library token → componentId 映射（Docs 反查用）
 │   └── components/
-│       └── index.ts           ← 占位文件（空），各组件文件尚未创建
+│       ├── index.ts           ← 汇总 export
+│       ├── basic.ts           ← button / tag / icon 等基础组件
+│       ├── form.ts            ← form / form-field / form-group 等表单容器
+│       ├── icon.ts            ← icon 组件
+│       ├── input.ts           ← input / select / datepicker 等输入控件
+│       ├── layout.ts          ← layout / divider 等布局组件
+│       └── table.ts           ← table / table-header / table-cell 等表格组件
 │
-├── theme/                     ← ✅ Layer 2: 主题包（已完成）
-│   ├── types.ts                  Theme / ColorTheme / SpacingTheme / ComponentsTheme 类型
-│   ├── active.ts                 当前激活主题导出（换主题改这一行）
-│   └── volcengine-design/        VOLCENGINE DESIGN 主题（当前默认）
-│       ├── index.ts               合并导出
-│       ├── colors.ts              color token → variableRef + fallbackHex
-│       ├── spacing.ts             圆角/间距/字体尺寸（SpacingTheme 结构）
-│       ├── typography.ts          字体 token
-│       └── components.ts          Figma 组件 key（ComponentsTheme，125+ 组件）
+├── theme/                     ← Layer 2: 主题包
+│   ├── types.ts               ← Theme / ColorTheme / SpacingTheme / ComponentsTheme 类型
+│   ├── active.ts              ← 当前激活主题导出（换主题改这一行）
+│   └── volcengine-design/     ← VOLCENGINE DESIGN 主题（当前默认）
+│       ├── index.ts           ← 合并导出
+│       ├── colors.ts          ← color token → variableRef + fallbackHex
+│       ├── spacing.ts         ← 圆角/间距/字体尺寸（SpacingTheme 结构）
+│       ├── typography.ts      ← 字体 token
+│       ├── components.ts      ← Figma 组件 key（ComponentsTheme，125+ 组件）
+│       ├── component-tokens.ts          ← 表格系列 component token 映射
+│       ├── component-library-tokens.ts  ← library 系列 component token 映射（97+ 条目）
+│       ├── color-tokens.ts    ← 颜色变量 token
+│       └── tag-fallback.ts    ← Tag 降级渲染配置
 │
 ├── engine/
 │   ├── applyCreate.ts / applyEnvelope.ts / applyPatch.ts
 │   ├── operationExecutor.ts / renderSceneNode.ts / ...
-│   └── skills/                ← ✅ 执行层 Skill 目录（已建立）
-│       ├── block.helpers.ts   ← ✅ 共用 E0 Utils（isObject / getBlockSource / toButtonFromItem / ...）
-│       ├── form.skill.ts      ← ✅ E2 Skill: buildFormComponentFromPayload()
-│       ├── table.skill.ts     ← ✅ E2 Skill: buildTableComponentFromPayload()
-│       └── resolve/           ← ✅ 细粒度 E0 Utils
+│   └── skills/                ← Layer 3: 执行层 Skill 目录
+│       ├── block.helpers.ts   ← E0 共用 Utils（isObject / getBlockSource / toButtonFromItem / ...）
+│       ├── form.skill.ts      ← E2 Skill: buildFormComponentFromPayload()
+│       ├── table.skill.ts     ← E2 Skill: buildTableComponentFromPayload()
+│       └── resolve/           ← E0 细粒度 Utils
 │           ├── size.ts        ← getSizeMetrics(componentId, size)
 │           ├── color.ts       ← applyColorVariable(node, token)（调用 Figma API）
 │           └── layout.ts      ← setFillWidth(node), setFixedWidth(node, w)（调用 Figma API）
 │
-├── App.tsx                    ← draw_form/draw_tabl handler 已改为调用 skills；原闭包函数已清除
+├── App.tsx                    ← draw_form/draw_table handler 调用 skills；action dispatch 入口
 ├── code.ts                    ← 插件主线程（Figma API 调用）；applyFigmaComponentProps() 在此
-│
-├── theme.color-tokens.ts      ← 已被 theme/volcengine-design/colors.ts 取代，待清理
-├── theme.component-tokens.ts  ← 已被 theme/volcengine-design/components.ts 取代，待清理
-├── theme.component-library-tokens.ts ← 已合并入 components.ts，待清理
 │
 ├── protocol/ / ui/ / metadata.ts / figmaComponent.ts / ...（不变）
 └── ui.html / ui.tsx / ai-chart-ui.html
@@ -55,7 +63,7 @@ src/
 
 ---
 
-## 二、Layer 1 — registry.ts（结构规范）
+## 二、Layer 1 — registry（组件规范）
 
 ### 每个组件定义包含的字段
 
@@ -91,8 +99,6 @@ runtime: {
   }
 }
 ```
-
-`code.ts` 里的 `TABLE_DEFAULT_HEADER_HEIGHT = 40` 等常量目标是从 registry 读取，尚未完成。
 
 ---
 
@@ -138,16 +144,19 @@ export const volcengineDesignComponents: ComponentsTheme = {
 };
 ```
 
-### 旧 theme.*.ts 文件清理状态
+### Token 命名规范
 
-| 文件 | 状态 |
-|------|------|
-| `theme.color-tokens.ts` | ✅ 已迁移到 `theme/volcengine-design/colors.ts`，旧文件待清理 |
-| `theme.component-tokens.ts` | ✅ 已迁移；渲染引擎和 form.skill.ts 均已改用 `activeTheme.components`，旧文件待清理 |
-| `theme.component-library-tokens.ts` | ✅ 已合并入 components.ts，旧文件待清理 |
-| `theme.typography-tokens.ts` | ✅ 已迁移到 `theme/volcengine-design/typography.ts` |
-| `tag.fallback.ts` | 🔲 待迁移到 `theme/volcengine-design/tag-fallback.ts` |
-| `spec.component-token-map.ts` | 🔲 待迁移到 `registry/component-token-map.ts` |
+所有 Figma library 组件 token 统一使用 `lib-{category}-{name}` 格式：
+
+```
+lib-data-input-input        ← 输入框
+lib-data-input-datepicker   ← 日期选择器
+lib-data-display-status-tag ← 状态标签
+lib-navigation-header       ← 页头
+lib-basic-button            ← 按钮
+```
+
+> 代码中禁止使用 `library.xxx.yyy` 点分格式的 token 字符串（figmaComponent.ts 中的向下兼容别名除外）。
 
 ---
 
@@ -173,28 +182,26 @@ buildSpecsInfo(ids: string[], options?: {
 
 ## 五、执行层（Engine）— E0–E3 概念与文件映射
 
-> 完整定义见 [NORTH_STAR.md 第五节](NORTH_STAR.md)。下面只列文件归属。
+> 完整定义见 [NORTH_STAR.md 第四节](NORTH_STAR.md)。下面只列文件归属。
 
-### 当前状态
-
-| 层级 | 概念 | 文件位置 | 状态 |
-|------|------|---------|------|
-| E0 | Utils / Helpers | `engine/skills/block.helpers.ts`, `engine/skills/resolve/*.ts` | ✅ 已就位 |
-| E1 | Tool / Action | `App.tsx` action dispatch switch/case | ✅ 已精简为只做 dispatch |
-| E2 | Skill | `engine/skills/form.skill.ts`, `engine/skills/table.skill.ts` | ✅ 已完成 |
-| E3 | Agentic Recovery | `registry.ts` 各组件 `renderNotes.commonErrors` | ✅ 已覆盖主要组件 |
+| 层级 | 概念 | 文件位置 |
+|------|------|---------|
+| E0 | Utils / Helpers | `engine/skills/block.helpers.ts`, `engine/skills/resolve/*.ts` |
+| E1 | Tool / Action | `App.tsx` action dispatch switch/case |
+| E2 | Skill | `engine/skills/form.skill.ts`, `engine/skills/table.skill.ts` |
+| E3 | Agentic Recovery | `registry.ts` 各组件 `renderNotes.commonErrors` |
 
 ### engine/skills/ 目录
 
 ```
 engine/skills/
-├── block.helpers.ts       ← ✅ E0 共用 Utils
-├── form.skill.ts          ← ✅ E2 Skill: buildFormComponentFromPayload()
-├── table.skill.ts         ← ✅ E2 Skill: buildTableComponentFromPayload()
+├── block.helpers.ts       ← E0 共用 Utils
+├── form.skill.ts          ← E2 Skill: buildFormComponentFromPayload()
+├── table.skill.ts         ← E2 Skill: buildTableComponentFromPayload()
 └── resolve/
-    ├── size.ts            ← ✅ E0: getSizeMetrics(componentId, size)
-    ├── color.ts           ← ✅ E0: applyColorVariable（调用 Figma API，主线程使用）
-    └── layout.ts          ← ✅ E0: setFillWidth / setFixedWidth（调用 Figma API）
+    ├── size.ts            ← E0: getSizeMetrics(componentId, size)
+    ├── color.ts           ← E0: applyColorVariable（调用 Figma API，主线程使用）
+    └── layout.ts          ← E0: setFillWidth / setFixedWidth（调用 Figma API）
 ```
 
 ### 各层的文件职责边界
@@ -204,7 +211,7 @@ engine/skills/
 | `engine/skills/resolve/*.ts`（E0 Utils） | 读 registry + theme，返回解析值；color/layout 可调 Figma API | 暴露给 AI |
 | `engine/skills/*.skill.ts`（E2 Skill） | 调用 Utils + 构造 scene 树，完成完整任务 | 硬编码数字/颜色；直接调用 Figma API |
 | `App.tsx` action dispatch（E1 Tool 实现） | 调用 Skill，返回结果给 AI | 写 payload 解析逻辑（迁到 Skill） |
-| `registry.ts` renderNotes（E3 素材） | 写常见错误、判断规则 | 写 Figma API 调用；写实际渲染逻辑 |
+| `registry` renderNotes（E3 素材） | 写常见错误、判断规则 | 写 Figma API 调用；写实际渲染逻辑 |
 
 ---
 
@@ -212,7 +219,7 @@ engine/skills/
 
 | 文件 | 允许 | 禁止 |
 |------|------|------|
-| `registry.ts` | 定义组件结构、runtime、renderNotes | 引入 Figma API；写 variableRef 实际值 |
+| `registry/components/*.ts` | 定义组件结构、runtime、renderNotes | 引入 Figma API；写 variableRef 实际值 |
 | `theme/volcengine-design/colors.ts` | 写 token → variableRef + fallbackHex | 写组件结构；写业务逻辑 |
 | `theme/volcengine-design/spacing.ts` | 写全局设计 token（圆角/间距/字体） | 写颜色；写组件映射 |
 | `theme/volcengine-design/components.ts` | 写 Figma componentKey 映射 | 写颜色；写 runtime |
@@ -222,31 +229,16 @@ engine/skills/
 
 ---
 
-## 七、过渡期的文件共存规则
+## 七、新增一个组件的标准流程
 
-1. **新增规范只在新位置写**。不要在 `code.ts` 里再加新的硬编码数字。
-2. **旧文件不要删，先引用新位置**。旧常量标注 `// @deprecated → registry.ts runtime 字段`。
-3. **完成迁移后再删旧代码**。删之前确认没有其他地方引用。
-
----
-
-## 八、新增一个组件的标准流程
-
-1. 在 `registry.ts` 添加组件 `ComponentDefinition`（含 `runtime` 和 `renderNotes`）。
+1. 在 `registry/components/*.ts` 添加组件 `ComponentDefinition`（含 `runtime` 和 `renderNotes`），并在 `registry.ts` 汇总。
 2. 如果有颜色 token，在 `theme/volcengine-design/colors.ts` 添加对应 token。
-3. 如果有 Figma 组件 key，在 `theme/volcengine-design/components.ts` 添加对应条目。
+3. 如果有 Figma 组件 key，在 `theme/volcengine-design/components.ts` 添加对应条目（`lib-{category}-{name}` 格式）。
 4. 如果是 Figma library 组件，在 `figmaPropertySnapshot.propertyMap` 声明属性映射。
 5. 如果有 draw_xxx 动作，在 `engine/skills/` 新增对应 `xxx.skill.ts`，再在 `App.tsx` 的 action dispatch 里 import 并调用。
 
 ---
 
-## 九、待执行工作
+## 八、待执行工作
 
-| 优先级 | 工作项 | 说明 |
-|--------|--------|------|
-| 🔲 进行中 | `renderNotes` 持续填充 | 每次发现 AI 犯错模式立刻写入；当前已覆盖 table/form/form-field 等主要组件 |
-| 🔲 低 | 旧 `theme.*.ts` 文件清理 | `theme.color-tokens.ts` / `theme.component-tokens.ts` / `theme.component-library-tokens.ts` 均已迁移，可删除 |
-| 🔲 低 | `tag.fallback.ts` 迁移 | 迁入 `theme/volcengine-design/tag-fallback.ts` |
-| 🔲 低 | `registry/` 骨架文件实现 | `registry.types.ts`、`registry.loader.ts`、`registry.helpers.ts` 当前为空占位 |
-| 🔲 低 | `registry/components/` 组件拆分 | 将 `registry.ts`（5300 行）按组件拆分为独立文件 |
-| 🔲 低 | `code.ts` 硬编码常量迁入 registry | `TABLE_DEFAULT_HEADER_HEIGHT` 等常量改为从 `registry.runtime` 读取 |
+暂无。

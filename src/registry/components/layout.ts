@@ -1,5 +1,38 @@
 import type { ComponentRegistry } from "../../registry.types";
 
+const pageRenderNotes = {
+  actionHint: "用于整页布局的根容器，包含顶部与侧边导航。",
+  paramRules: [
+    "默认尺寸即可，除非用户明确指定宽高。",
+    "内容区域优先放 layout/card/table 等组件。"
+  ],
+  commonErrors: [
+    "不要把 page 当作普通卡片容器使用。"
+  ]
+};
+
+const layoutRenderNotes = {
+  actionHint: "通用布局容器，用于水平/垂直堆叠。",
+  paramRules: [
+    "direction 控制布局方向。",
+    "padding/spacing 控制内边距和间距。"
+  ],
+  commonErrors: [
+    "不要在布局中手动对齐子节点位置。"
+  ]
+};
+
+const cardRenderNotes = {
+  actionHint: "卡片容器用于包裹内容，默认带背景和圆角。",
+  paramRules: [
+    "padding 控制内容内边距。",
+    "title 仅用于标题展示。"
+  ],
+  commonErrors: [
+    "不要把 card 当作 layout 使用时省略 padding。"
+  ]
+};
+
 export const layoutComponents: ComponentRegistry["components"] = {
   "page": {
     "id": "page",
@@ -87,7 +120,8 @@ export const layoutComponents: ComponentRegistry["components"] = {
           "Text/Title"
         ]
       }
-    }
+    },
+    "renderNotes": pageRenderNotes
   },
   "layout": {
     "id": "layout",
@@ -235,7 +269,8 @@ export const layoutComponents: ComponentRegistry["components"] = {
           "color-border-1"
         ]
       }
-    }
+    },
+    "renderNotes": layoutRenderNotes
   },
   "card": {
     "id": "card",
@@ -373,6 +408,7 @@ export const layoutComponents: ComponentRegistry["components"] = {
           "Text/Title"
         ]
       }
-    }
+    },
+    "renderNotes": cardRenderNotes
   }
 };

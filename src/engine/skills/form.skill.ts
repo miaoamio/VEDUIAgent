@@ -47,31 +47,31 @@ const FORM_LIBRARY_CONTROL_RULES: Array<{
 }> = [
   {
     keywords: ['timepicker-menu'],
-    token: 'library.data-input.timepicker-menu',
+    token: 'lib-data-input-timepicker-menu',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['checkbox-group'],
-    token: 'library.data-input.checkbox-group',
+    token: 'lib-data-input-checkbox-group',
     fieldControlType: 'checkbox-group',
     inlineComponentId: 'checkbox-group'
   },
   {
     keywords: ['radio-group'],
-    token: 'library.data-input.radio-group',
+    token: 'lib-data-input-radio-group',
     fieldControlType: 'radio-group',
     inlineComponentId: 'radio-group'
   },
   {
     keywords: ['tree-select', 'treeselect'],
-    token: 'library.data-input.treeselect',
+    token: 'lib-data-input-treeselect',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['input-number', 'inputnumber'],
-    token: 'library.data-input.inputnumber',
+    token: 'lib-data-input-inputnumber',
     fieldControlType: 'inputnumber',
     inlineComponentId: 'figma-component'
   },
@@ -83,103 +83,103 @@ const FORM_LIBRARY_CONTROL_RULES: Array<{
   },
   {
     keywords: ['datepicker', 'datepick', '日期'],
-    token: 'library.data-input.datepicker',
+    token: 'lib-data-input-datepicker',
     fieldControlType: 'datepicker',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['autocomplete'],
-    token: 'library.data-input.autocomplete',
+    token: 'lib-data-input-autocomplete',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['cascader'],
-    token: 'library.data-input.cascader',
+    token: 'lib-data-input-cascader',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['checkbox', '多选'],
-    token: 'library.data-input.checkbox',
+    token: 'lib-data-input-checkbox',
     fieldControlType: 'checkbox-group',
     inlineComponentId: 'checkbox-group'
   },
   {
     keywords: ['drag'],
-    token: 'library.data-input.drag',
+    token: 'lib-data-input-drag',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['image'],
-    token: 'library.data-input.image',
+    token: 'lib-data-input-image',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['radio', '单选'],
-    token: 'library.data-input.radio',
+    token: 'lib-data-input-radio',
     fieldControlType: 'radio-group',
     inlineComponentId: 'radio-group'
   },
   {
     keywords: ['search'],
-    token: 'library.data-input.search',
+    token: 'lib-data-input-search',
     fieldControlType: 'input',
     inlineComponentId: 'input'
   },
   {
     keywords: ['segmented'],
-    token: 'library.data-input.segmented-picker',
+    token: 'lib-data-input-segmented-picker',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['slider', '滑动'],
-    token: 'library.data-input.slider',
+    token: 'lib-data-input-slider',
     fieldControlType: 'slider',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['switch', '开关'],
-    token: 'library.data-input.switch',
+    token: 'lib-data-input-switch',
     fieldControlType: 'switch',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['textarea', '多行'],
-    token: 'library.data-input.textarea',
+    token: 'lib-data-input-textarea',
     fieldControlType: 'textarea',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['timepicker', '时间'],
-    token: 'library.data-input.timepicker',
+    token: 'lib-data-input-timepicker',
     fieldControlType: 'timepicker',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['transfer'],
-    token: 'library.data-input.transfer',
+    token: 'lib-data-input-transfer',
     fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['upload', '上传'],
-    token: 'library.data-input.button',
+    token: 'lib-data-input-button',
     fieldControlType: 'upload',
     inlineComponentId: 'figma-component'
   },
   {
     keywords: ['select', 'dropdown', '选择'],
-    token: 'library.data-input.select',
+    token: 'lib-data-input-select',
     fieldControlType: 'select',
     inlineComponentId: 'select'
   },
   {
     keywords: ['input', '搜索'],
-    token: 'library.data-input.input',
+    token: 'lib-data-input-input',
     fieldControlType: 'input',
     inlineComponentId: 'input'
   }

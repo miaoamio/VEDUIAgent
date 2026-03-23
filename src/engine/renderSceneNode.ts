@@ -7,7 +7,7 @@ import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
 import { resolveComponentDefinition, toUnknownComponentError } from "./registryResolver";
 import type { ApplyContext } from "./types";
 
-/** token → Figma componentKey。支持 'lib-data-input-input' 和 'library.data-input.input' 两种格式。 */
+/** token → Figma componentKey。使用 'lib-data-input-input' 格式。 */
 function resolveComponentKey(token: string): string {
   const normalized = String(token || "").trim();
   if (!normalized) return "";
@@ -236,10 +236,10 @@ function normalizeTagStateVariant(value: unknown): "Default 默认" | "Hover 悬
 function resolveTagComponentFamily(componentToken: unknown): TagComponentFamily {
   const normalized = String(componentToken ?? "").trim();
   const lower = normalized.toLowerCase();
-  if (lower.includes("status-tag") || lower.includes("status_tag") || lower === "library.data-display.status-tag") {
+  if (lower.includes("status-tag") || lower.includes("status_tag") || lower === "lib-data-display-status-tag") {
     return "status";
   }
-  if (lower.includes("other-tag") || lower.includes("other_tag") || lower === "library.data-display.other-tag") {
+  if (lower.includes("other-tag") || lower.includes("other_tag") || lower === "lib-data-display-other-tag") {
     return "other";
   }
   return "default";

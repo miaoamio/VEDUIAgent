@@ -15,10 +15,10 @@ const tableHeaderCellRenderNotes = {
   actionHint: "用于表格表头单元格，通常与 table-column 对应。",
   paramRules: [
     "不要在表体中使用。",
-    "文本或图标优先用 params 控制。"
+    "表头高度与表体高度应一致。"
   ],
   commonErrors: [
-    "表头与表体高度不一致会导致错位。"
+    "不要手工绘制表头样式，复用表头组件。"
   ]
 };
 
@@ -26,212 +26,1189 @@ const tableColumnRenderNotes = {
   actionHint: "表格列容器，承载表头与单元格。",
   paramRules: [
     "只在 table 内使用。",
-    "子节点应为 table-header-cell 与 table-cell 变体。"
+    "children 必须显式提供表头和单元格。"
   ],
   commonErrors: [
-    "列宽未设置会导致布局抖动。"
+    "不要只传 rowCount 又手动塞 children。"
   ]
 };
 
 export const tableComponents: ComponentRegistry["components"] = {
   "table-cell": {
     "id": "table-cell",
-    "name": "表格单元格",
+    "name": "Text 文字",
     "category": "Table",
-    "description": "表格单元格, 文本内容",
+    "description": "标准表格单元格",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于表格中的文本内容展示",
-      "usage": "适用于表格中的文本字段，如姓名、标题等",
+      "description": "标准表格单元格",
+      "usage": "用于表格内的普通数据单元格。通常作为 table-column 的子项。支持文本内容、背景色、边框等配置。",
       "examples": [
-        "单元格文本: { \"componentId\": \"table-cell\", \"params\": { \"text\": \"张三\" } }"
+        "普通单元格: { \"componentId\": \"table-cell\", \"params\": { \"text\": \"Content\" } }",
+        "带背景色: { \"componentId\": \"table-cell\", \"params\": { \"backgroundColor\": \"#F9F9F9\" } }"
       ]
     },
     "params": {
       "text": {
         "type": "string",
-        "default": "单元格",
-        "description": "单元格文本内容"
+        "default": "内容",
+        "description": "文本内容"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "left",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell"
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-cell-text-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
+        "keyCandidates": [
+          "178115a8c3bc7983da5bc10e637208895750dbfd"
+        ],
+        "idCandidates": [
+          "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-cell-text-style-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
       }
     },
     "renderNotes": tableCellRenderNotes
   },
   "table-cell-tag": {
     "id": "table-cell-tag",
-    "name": "表格标签单元格",
+    "name": "Tag 标签",
     "category": "Table",
-    "description": "表格单元格, 标签内容",
+    "description": "包含标签(Tag)的表格单元格（支持 StatusTag/TypeTag；状态标签默认使用 L2 二级标签）",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于显示标签",
-      "usage": "适用于表格中的状态标签",
+      "description": "包含标签(Tag)的表格单元格（支持 StatusTag/TypeTag；状态标签默认使用 L2 二级标签）",
+      "usage": "用于在表格中显示标签，支持两类：1) 状态标签（StatusTag）：默认复用 figma token `lib-data-display-status-tag`，并默认使用 `statusType=L2 二级标签`；建议用 `statusTheme` 区分不同状态颜色。2) 类型/分类标签（TypeTag）：默认使用 `lib-data-display-tag`，用 `tagType` 控制样式（如 Outline）。仅当 Figma 组件不可用时回退本地渲染。",
       "examples": [
-        "状态标签: { \"componentId\": \"table-cell-tag\", \"params\": { \"text\": \"已完成\", \"tagType\": \"default\" } }"
+        "状态标签: { \"componentId\": \"table-cell-tag\", \"params\": { \"tagKind\": \"status\", \"tagText\": \"启用\", \"statusTheme\": \"Success 成功\", \"statusType\": \"L2 二级标签\" } }",
+        "类型标签: { \"componentId\": \"table-cell-tag\", \"params\": { \"tagKind\": \"type\", \"tagText\": \"企业\", \"tagType\": \"Outline 线型标签\" } }"
       ]
     },
     "params": {
       "text": {
         "type": "string",
-        "default": "标签",
+        "default": "内容",
+        "description": "文本内容"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "left",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      },
+      "tagKind": {
+        "type": "select",
+        "default": "type",
+        "description": "标签类型：status=状态标签，type=类型/分类标签",
+        "enumValues": [
+          "status",
+          "type"
+        ]
+      },
+      "componentToken": {
+        "type": "string",
+        "default": "lib-data-display-tag",
+        "description": "Figma 组件 token；status 默认 Status Tag，type 默认 Tag（可留空由系统按 tagKind 推断）"
+      },
+      "tagText": {
+        "type": "string",
+        "default": "Tag",
         "description": "标签文本"
       },
+      "statusTheme": {
+        "type": "select",
+        "default": "Success 成功",
+        "description": "状态标签主题（颜色/语义）",
+        "enumValues": [
+          "Success 成功",
+          "Warning 告警",
+          "Error 错误",
+          "Stop 停止",
+          "Processing 等待中",
+          "Loading 加载中",
+          "Waiting 待启用"
+        ]
+      },
+      "statusType": {
+        "type": "select",
+        "default": "L2 二级标签",
+        "description": "状态标签层级",
+        "enumValues": [
+          "L1 一级标签",
+          "L2 二级标签",
+          "L3 三级标签"
+        ]
+      },
+      "statusState": {
+        "type": "select",
+        "default": "Default 默认",
+        "description": "状态标签交互状态",
+        "enumValues": [
+          "Default 默认",
+          "Hover 悬浮",
+          "Active 点击"
+        ]
+      },
       "tagType": {
-        "type": "string",
-        "enum": ["default", "outline", "solid"],
-        "default": "default",
-        "description": "标签样式类型"
+        "type": "select",
+        "default": "Solid 面型标签",
+        "description": "类型/分类标签样式",
+        "enumValues": [
+          "Default 默认标签",
+          "Solid 面型标签",
+          "Outline 线型标签",
+          "Text 文字标签"
+        ]
+      },
+      "tagColor": {
+        "type": "select",
+        "default": "green",
+        "description": "兼容字段：可作为 statusTheme 的简写或用于 fallback 渲染",
+        "enumValues": [
+          "blue",
+          "green",
+          "red",
+          "orange",
+          "gray"
+        ]
       }
     },
-    "colorVariableBindings": [
-      {
-        "token": "tag.text.success",
-        "keyCandidates": ["tag-text-success-key"],
-        "idCandidates": ["VariableID:461f81c5b91b69cce7b91610ae14e5f10ee555cc/298:7"]
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-tag"
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
       },
-      {
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "tag-bg-key": {
+        "enabled": true,
         "token": "tag.bg.success",
-        "keyCandidates": ["tag-bg-success-key"],
-        "idCandidates": ["VariableID:1429f95224ac7f6f899d8887413fc1d8437af71d/298:6"]
+        "nameCandidates": [
+          "green-1",
+          "success-1"
+        ]
+      },
+      "tag-text-key": {
+        "enabled": true,
+        "token": "tag.text.success",
+        "nameCandidates": [
+          "green-6",
+          "success-6"
+        ]
       }
-    ],
+    },
+    "typographyBindings": {
+      "tag-text-style-key": {
+        "enabled": true,
+        "token": "tag.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
+      }
+    },
     "renderNotes": tableCellRenderNotes
   },
   "table-cell-avatar": {
     "id": "table-cell-avatar",
-    "name": "表格头像单元格",
+    "name": "Avatar 头像",
     "category": "Table",
-    "description": "表格单元格, 头像+文本",
+    "description": "包含头像和文本的表格单元格",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于显示头像和文本",
-      "usage": "适用于表格中的用户信息列",
+      "description": "包含头像和文本的表格单元格",
+      "usage": "用于在表格中显示用户头像和名称。text 参数为用户名。",
       "examples": [
-        "用户信息: { \"componentId\": \"table-cell-avatar\", \"params\": { \"name\": \"李四\", \"avatar\": \"avatar.png\" } }"
+        "用户列: { \"componentId\": \"table-cell-avatar\", \"params\": { \"text\": \"John Doe\" } }"
       ]
     },
     "params": {
-      "name": {
+      "text": {
         "type": "string",
-        "default": "用户名",
-        "description": "用户名称"
+        "default": "内容",
+        "description": "文本内容"
       },
-      "avatar": {
-        "type": "string",
-        "default": "",
-        "description": "头像图片URL"
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "left",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-avatar"
+    },
+    "runtime": {
+      "spacing": {
+        "avatarSize": 20
+      }
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-cell-text-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
+        "keyCandidates": [
+          "178115a8c3bc7983da5bc10e637208895750dbfd"
+        ],
+        "idCandidates": [
+          "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-cell-text-style-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
       }
     },
     "renderNotes": tableCellRenderNotes
   },
   "table-cell-input": {
     "id": "table-cell-input",
-    "name": "表格输入单元格",
+    "name": "Input 输入",
     "category": "Table",
-    "description": "表格单元格, 输入框",
+    "description": "包含输入框的表格单元格",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于显示输入框",
-      "usage": "适用于表格中的可编辑字段",
+      "description": "包含输入框的表格单元格",
+      "usage": "用于在表格中进行行内编辑。",
       "examples": [
-        "可编辑字段: { \"componentId\": \"table-cell-input\", \"params\": { \"placeholder\": \"请输入\" } }"
+        "编辑列: { \"componentId\": \"table-cell-input\", \"params\": { \"value\": \"Editable\" } }"
       ]
     },
     "params": {
-      "placeholder": {
+      "text": {
         "type": "string",
-        "default": "请输入",
-        "description": "占位符文本"
+        "default": "内容",
+        "description": "文本内容"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "left",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
       },
       "value": {
         "type": "string",
         "default": "",
-        "description": "输入值"
+        "description": "输入框值"
+      },
+      "placeholder": {
+        "type": "string",
+        "default": "已输入",
+        "description": "占位符"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-input"
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-cell-text-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
+        "keyCandidates": [
+          "178115a8c3bc7983da5bc10e637208895750dbfd"
+        ],
+        "idCandidates": [
+          "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
+        ]
+      },
+      "text-secondary-key": {
+        "enabled": true,
+        "token": "table.placeholder.text",
+        "variableRef": "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562",
+        "keyCandidates": [
+          "a7442f0ba4f4f027d86e03f335df11c38232c0ce"
+        ],
+        "idCandidates": [
+          "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-cell-text-style-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
       }
     },
     "renderNotes": tableCellRenderNotes
   },
   "table-cell-select": {
     "id": "table-cell-select",
-    "name": "表格选择单元格",
+    "name": "Select 选择器",
     "category": "Table",
-    "description": "表格单元格, 下拉选择",
+    "description": "包含选择器(Select)的表格单元格",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于显示下拉选择器",
-      "usage": "适用于表格中的选择字段",
+      "description": "包含选择器(Select)的表格单元格",
+      "usage": "用于在表格中显示下拉选择器，通常用于允许用户在表格内直接修改某些状态或选项。",
       "examples": [
-        "选择字段: { \"componentId\": \"table-cell-select\", \"params\": { \"value\": \"选项1\" } }"
-      ]
-    },
-    "params": {
-      "placeholder": {
-        "type": "string",
-        "default": "请选择",
-        "description": "占位符文本"
-      },
-      "value": {
-        "type": "string",
-        "default": "",
-        "description": "当前选中值"
-      }
-    },
-    "renderNotes": tableCellRenderNotes
-  },
-  "table-cell-action-text": {
-    "id": "table-cell-action-text",
-    "name": "表格操作文本单元格",
-    "category": "Table",
-    "description": "表格单元格, 操作文本按钮",
-    "schemaVersion": "2.0.0",
-    "prompts": {
-      "description": "表格单元格, 用于显示操作文本按钮",
-      "usage": "适用于表格中的操作列",
-      "examples": [
-        "操作按钮: { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"编辑\" } }"
+        "选择器单元格: { \"componentId\": \"table-cell-select\", \"params\": { \"text\": \"选项一\" } }"
       ]
     },
     "params": {
       "text": {
         "type": "string",
-        "default": "编辑",
-        "description": "操作文本"
+        "default": "请选择",
+        "description": "选择器显示文本"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-select"
+    },
+    "renderNotes": tableCellRenderNotes
+  },
+  "table-cell-action-text": {
+    "id": "table-cell-action-text",
+    "name": "ActionText 操作文字",
+    "category": "Table",
+    "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
+    "schemaVersion": "2.0.0",
+    "family": "table-cell",
+    "prompts": {
+      "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
+      "usage": "用于表格“操作/Action”列：用文字链接样式展示多个操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除 …”），**严禁使用斜杠/分割**。当包含“…”/“...”/“更多”或操作数 > 3 时，默认只显示前 2 个操作并在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
+      "examples": [
+        "操作列(文字): { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"编辑 删除 …\", \"width\": 0 } }"
+      ]
+    },
+    "params": {
+      "text": {
+        "type": "string",
+        "default": "编辑 删除 …",
+        "description": "操作文案（空格分隔，严禁使用/）；包含“…”/“...”/“更多”会触发更多图标"
+      },
+      "width": {
+        "type": "number",
+        "default": 0,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "right",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-action-text"
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-action-primary-key": {
+        "enabled": true,
+        "token": "link-6",
+        "variableRef": "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300",
+        "keyCandidates": [
+          "75f358d76d414f045a47f128470fcbbde49888dc"
+        ],
+        "idCandidates": [
+          "VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300"
+        ],
+        "nameCandidates": [
+          "primary-6"
+        ]
+      },
+      "table-action-danger-key": {
+        "enabled": true,
+        "token": "danger-6",
+        "variableRef": "VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672",
+        "keyCandidates": [
+          "f60b03f9d134cb4ac3f68fb23b1fda9ba1304745"
+        ],
+        "idCandidates": [
+          "VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-cell-text-style-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
       }
     },
     "renderNotes": tableCellRenderNotes
   },
   "table-cell-action-icon": {
     "id": "table-cell-action-icon",
-    "name": "表格操作图标单元格",
+    "name": "ActionIcon 操作图标",
     "category": "Table",
-    "description": "表格单元格, 操作图标按钮",
+    "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。",
     "schemaVersion": "2.0.0",
+    "family": "table-cell",
     "prompts": {
-      "description": "表格单元格, 用于显示操作图标按钮",
-      "usage": "适用于表格中的操作列",
+      "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。",
+      "usage": "用于表格“操作/Action”列：用 3 个图标（编辑、删除、更多）展示操作，图标默认 16px，图标间距 24px，整体默认右对齐。优先复用 Figma token：`table.cell.icon.edit`、`table.cell.icon.delete`、`table.cell.icon.actionMore`。",
       "examples": [
-        "操作图标: { \"componentId\": \"table-cell-action-icon\", \"params\": { \"icon\": \"more\" } }"
+        "操作列(图标): { \"componentId\": \"table-cell-action-icon\", \"params\": { \"width\": 0 } }"
       ]
     },
     "params": {
-      "icon": {
+      "text": {
         "type": "string",
-        "default": "more",
-        "description": "图标类型"
+        "default": "",
+        "description": "操作说明文本（可选；不影响图标渲染）"
+      },
+      "width": {
+        "type": "number",
+        "default": 0,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "right",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-action-icon"
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-action-icon-key": {
+        "enabled": true,
+        "token": "text.secondary",
+        "variableRef": "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562",
+        "keyCandidates": [
+          "a7442f0ba4f4f027d86e03f335df11c38232c0ce"
+        ],
+        "idCandidates": [
+          "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"
+        ]
       }
     },
     "renderNotes": tableCellRenderNotes
   },
   "table-header-cell": {
     "id": "table-header-cell",
-    "name": "表格表头单元格",
+    "name": "Header 表头",
     "category": "Table",
-    "description": "表格表头单元格",
+    "description": "加粗文本的表头单元格",
     "schemaVersion": "2.0.0",
     "prompts": {
-      "description": "表格表头单元格, 用于表格列标题",
-      "usage": "适用于表格表头",
+      "description": "加粗文本的表头单元格",
+      "usage": "用于表格的表头单元格，文本默认为加粗。通常作为 table-column 的第一个子项。",
       "examples": [
-        "表头: { \"componentId\": \"table-header-cell\", \"params\": { \"text\": \"姓名\" } }"
+        "标准表头: { \"componentId\": \"table-header-cell\", \"params\": { \"text\": \"Header\" } }"
       ]
     },
     "params": {
@@ -240,38 +1217,241 @@ export const tableComponents: ComponentRegistry["components"] = {
         "default": "表头",
         "description": "表头文本"
       },
-      "sortable": {
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#F5F5F5",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
         "type": "boolean",
-        "default": false,
-        "description": "是否可排序"
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-header-cell"
+    },
+    "colorVariableBindings": {
+      "table-header-bg-key": {
+        "enabled": true,
+        "token": "table.header.bg",
+        "variableRef": "VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586",
+        "keyCandidates": [
+          "0ad927853701159721b6bb95d53b532de24282a7"
+        ],
+        "idCandidates": [
+          "VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586"
+        ],
+        "nameCandidates": [
+          "background/深 灰底 @color-bg-4",
+          "@color-bg-4"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-header-text-key": {
+        "enabled": true,
+        "token": "table.header.text",
+        "variableRef": "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562",
+        "keyCandidates": [
+          "a7442f0ba4f4f027d86e03f335df11c38232c0ce"
+        ],
+        "idCandidates": [
+          "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-header-text-style-key": {
+        "enabled": true,
+        "token": "table.header.text",
+        "textStyleRef": "S:06c98e2c68a38e391190684c4b73e26efcd5d930,131052:3",
+        "keyCandidates": [
+          "06c98e2c68a38e391190684c4b73e26efcd5d930"
+        ],
+        "idCandidates": [
+          "S:06c98e2c68a38e391190684c4b73e26efcd5d930,131052:3"
+        ],
+        "nameCandidates": [
+          "Header",
+          "表头",
+          "Text/Header"
+        ]
       }
     },
     "renderNotes": tableHeaderCellRenderNotes
   },
   "table-column": {
     "id": "table-column",
-    "name": "表格列",
+    "name": "Column 列",
     "category": "Table",
-    "description": "表格列容器",
+    "description": "包含表头和多个单元格的列容器",
     "schemaVersion": "2.0.0",
     "prompts": {
-      "description": "表格列容器，包含表头和单元格",
-      "usage": "用于表格列的组合",
+      "description": "包含表头和多个单元格的列容器",
+      "usage": "表格的列容器。它垂直排列一个表头单元格和多个普通单元格。请设置 rowCount 来控制行数。如果需要填充具体数据，请务必通过 children 传入 table-header-cell 和多个 table-cell。注意：如果传入了 children，请不要传入任何默认的占位符单元格，只传入你需要的数据。必须显式提供表头(第一个子节点)和所有数据单元格。",
       "examples": [
-        "表格列: { \"componentId\": \"table-column\", \"params\": { \"header\": \"姓名\", \"cells\": [\"张三\", \"李四\"] } }"
+        "创建一列自动数据: { \"componentId\": \"table-column\", \"params\": { \"headerText\": \"Name\", \"rowCount\": 10 } }",
+        "创建一列具体数据(禁止包含额外占位符): { \"componentId\": \"table-column\", \"params\": { \"headerText\": \"ID\" }, \"children\": [ { \"componentId\": \"table-header-cell\", \"params\": { \"text\": \"ID\" } }, { \"componentId\": \"table-cell\", \"params\": { \"text\": \"001\" } }, { \"componentId\": \"table-cell\", \"params\": { \"text\": \"002\" } } ] }"
       ]
     },
     "params": {
-      "header": {
+      "headerText": {
         "type": "string",
-        "default": "列标题",
-        "description": "列标题"
+        "default": "表头",
+        "description": "表头文本"
       },
-      "cells": {
-        "type": "array",
-        "default": [],
-        "description": "列单元格数据"
+      "headerType": {
+        "type": "select",
+        "default": "None",
+        "description": "表头元素",
+        "enumValues": [
+          "None",
+          "Filter",
+          "Sort",
+          "Search",
+          "Info"
+        ]
+      },
+      "rowCount": {
+        "type": "number",
+        "default": 10,
+        "description": "数据行数"
+      },
+      "width": {
+        "type": "number",
+        "default": 150,
+        "description": "列宽"
+      },
+      "columnWidthMode": {
+        "type": "select",
+        "default": "FILL",
+        "description": "列宽模式",
+        "enumValues": [
+          "FIXED",
+          "HUG",
+          "FILL"
+        ]
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "left",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "headerHeight": {
+        "type": "number",
+        "default": 40,
+        "description": "表头行高"
+      },
+      "bodyHeight": {
+        "type": "number",
+        "default": 40,
+        "description": "内容行高"
       }
+    },
+    "slots": {
+      "default": {
+        "displayName": "Default",
+        "allowedComponents": [
+          "table-cell",
+          "table-header-cell",
+          "table-cell-tag",
+          "table-cell-avatar",
+          "table-cell-input",
+          "table-cell-select",
+          "table-cell-action-text",
+          "table-cell-action-icon"
+        ],
+        "required": false,
+        "minItems": 0,
+        "ordered": true
+      }
+    },
+    "capabilities": {
+      "allowChildren": true,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-column"
     },
     "renderNotes": tableColumnRenderNotes
   },
@@ -279,80 +1459,183 @@ export const tableComponents: ComponentRegistry["components"] = {
     "id": "table",
     "name": "表格",
     "category": "Table",
-    "description": "表格容器",
+    "description": "由多个列组成的完整表格",
     "schemaVersion": "2.0.0",
     "prompts": {
-      "description": "用于展示表格数据",
-      "usage": "包含表头和表体，支持自定义列和数据",
+      "description": "由多个列组成的完整表格",
+      "usage": "表格创建优先走 draw_table(payload)（不要输出冗长 table 子树）。\n- 当目标是创建新表格时，直接调用 draw_table。\n- 如果是“新建表格”，禁止输出 apply_scene(table-root)。\n- draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。\n- 支持直接定义表格工具栏与分页：\n  - 若需标签页，请在 payload 中添加 \"tabs\": [\"全部\", \"进行中\"] 或 \"hasTabs\": true。\n  - 若需筛选器，请在 payload 中添加 \"filters\": [\"状态\", \"城市\", \"关键词\"] 或字符串。\n  - 若需按钮组，请在 payload 中添加 \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" } 或 \"hasButtonGroup\": true。\n  - 分页器默认启用；若需关闭，请显式设置 \"pagination\": false。\n  - 不要为此拆分任务，直接在一个 draw_table 动作中完成。\n- 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 \"rowAction\": \"multiple\"。\n- 单选列请使用 \"rowAction\": \"single\"。\n- 不要把勾选列写进 headers/rows/columnTypes。\n- 标签列（Tag）请显式区分两类：\n  - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：{ \"text\": \"启用\", \"statusTheme\": \"Success 成功\" } 或 { \"statusText\": \"禁用\", \"statusColor\": \"red\" }\n  - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：{ \"text\": \"企业\", \"tagType\": \"Outline 线型标签\" }\n- 兼容：旧的 columnTypes \"Tag\" 视为 \"StatusTag\"。\n- 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 \"ActionText\" 或 \"ActionIcon\"。\n- 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：\n @@table_stream {\"event\":\"table_start\",\"headers\":[\"姓名\",\"年龄\"],\"rows\":[[\"张三\",28]],\"columnTypes\":[\"Text\",\"Text\"],\"rowHeight\":{\"header\":40,\"body\":40}}\n @@table_stream {\"event\":\"table_row\",\"row\":[\"李四\",32]}\n @@table_stream {\"event\":\"table_done\"}\n- 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。",
       "examples": [
-        "简单表格: { \"componentId\": \"table\", \"params\": { \"columns\": [\"姓名\", \"年龄\"], \"data\": [[\"张三\", 25], [\"李四\", 30]] } }"
+        "标准表格: { \"headers\": [\"姓名\", \"年龄\", \"城市\"], \"rows\": [[\"张三\", \"28\", \"北京\"], [\"李四\", \"32\", \"上海\"]], \"columnTypes\": [\"Text\", \"Text\", \"Text\"], \"tabs\": [\"全部\", \"进行中\"], \"filters\": [\"状态\", \"城市\", \"关键词\"], \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" }, \"pagination\": true, \"rowHeight\": { \"header\": 40, \"body\": 40 } }"
+      ]
+    },
+    "renderNotes": {
+      "actionHint": "新建表格必须使用 draw_table payload { headers, rows, columnTypes?, columnWidths? }，避免输出 apply_scene 的表格子树。",
+      "paramRules": [
+        "若消息里出现 \"表格结构(JSON)\"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。",
+        "若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。"
+      ],
+      "commonErrors": [
+        "新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。"
       ]
     },
     "params": {
       "size": {
-        "type": "string",
-        "enum": ["mini", "default", "medium", "large"],
+        "type": "select",
         "default": "default",
-        "description": "表格尺寸"
+        "description": "表格尺寸",
+        "enumValues": [
+          "mini",
+          "default",
+          "medium",
+          "large"
+        ]
       },
-      "columns": {
-        "type": "array",
-        "default": [],
-        "description": "表格列标题"
+      "columnCount": {
+        "type": "number",
+        "default": 3,
+        "description": "列数"
       },
-      "data": {
-        "type": "array",
-        "default": [],
-        "description": "表格数据"
+      "rowCount": {
+        "type": "number",
+        "default": 10,
+        "description": "行数 (不含表头)"
+      },
+      "rowAction": {
+        "type": "select",
+        "default": "none",
+        "description": "表格行操作",
+        "enumValues": [
+          "none",
+          "multiple",
+          "single",
+          "drag",
+          "expand",
+          "switch"
+        ]
+      },
+      "hasPagination": {
+        "type": "boolean",
+        "default": false,
+        "description": "分页器"
+      },
+      "hasFilter": {
+        "type": "boolean",
+        "default": false,
+        "description": "筛选器"
+      },
+      "hasTabs": {
+        "type": "boolean",
+        "default": false,
+        "description": "标签页"
+      },
+      "hasButtonGroup": {
+        "type": "boolean",
+        "default": false,
+        "description": "按钮组"
+      },
+      "headerHeight": {
+        "type": "number",
+        "default": 40,
+        "description": "表头行高"
+      },
+      "bodyHeight": {
+        "type": "number",
+        "default": 40,
+        "description": "内容行高"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "表格外边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "表格外边框宽度"
+      },
+      "cornerRadius": {
+        "type": "number",
+        "default": 8,
+        "description": "表格圆角"
       }
     },
-    "colorVariableBindings": [
-      {
-        "token": "table.border",
-        "keyCandidates": ["table-border-key"],
-        "idCandidates": ["VariableID:1cf6b7d649a4c0b7fd8d25cb11a0a73e0a6b59f5/174345:286"],
-        "nameCandidates": ["border/分割线 @color-border-2", "@color-border-2"]
-      },
-      {
-        "token": "table.header.bg",
-        "keyCandidates": ["table-header-bg-key"],
-        "idCandidates": ["VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586"],
-        "nameCandidates": ["background/深 灰底 @color-bg-4", "@color-bg-4"]
-      },
-      {
-        "token": "table.header.text",
-        "keyCandidates": ["table-header-text-key"],
-        "idCandidates": ["VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"]
-      },
-      {
-        "token": "table.cell.text",
-        "keyCandidates": ["table-cell-text-key"],
-        "idCandidates": ["VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"]
-      },
-      {
-        "token": "table.cell.bg",
-        "keyCandidates": ["table-cell-bg-key"],
-        "idCandidates": ["VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"]
+    "slots": {
+      "default": {
+        "displayName": "Default",
+        "allowedComponents": [
+          "table-column"
+        ],
+        "required": false,
+        "minItems": 0,
+        "ordered": true
       }
-    ],
-    "renderNotes": {
-      "actionHint": "使用 draw_table 渲染表格，交由表格引擎处理列宽、滚动与固定列。",
-      "paramRules": [
-        "columns 数组是表头列表；data 是二维数组，每行对应一条数据。",
-        "size 决定行高与字号，尽量使用默认值。",
-        "不要在 table 的 children 中手动拼 table-cell。"
-      ],
-      "commonErrors": [
-        "不要把 table 当作普通容器来拼装表头或表体。",
-        "不要在没有 columns 的情况下传 data。"
-      ]
+    },
+    "capabilities": {
+      "allowChildren": true,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table"
     },
     "runtime": {
       "sizeMetrics": {
-        "Mini 32": { "height": 32, "paddingX": 12, "paddingY": 6, "fontSize": 12, "cornerRadius": 6 },
-        "Default 40": { "height": 40, "paddingX": 12, "paddingY": 6, "fontSize": 12, "cornerRadius": 6 },
-        "Medium 48": { "height": 48, "paddingX": 12, "paddingY": 6, "fontSize": 12, "cornerRadius": 6 },
-        "Large 56": { "height": 56, "paddingX": 12, "paddingY": 6, "fontSize": 12, "cornerRadius": 6 }
+        "mini": {
+          "height": 32,
+          "paddingX": 12,
+          "paddingY": 8,
+          "fontSize": 13,
+          "cornerRadius": 8
+        },
+        "default": {
+          "height": 40,
+          "paddingX": 12,
+          "paddingY": 8,
+          "fontSize": 13,
+          "cornerRadius": 8
+        },
+        "medium": {
+          "height": 48,
+          "paddingX": 12,
+          "paddingY": 8,
+          "fontSize": 13,
+          "cornerRadius": 8
+        },
+        "large": {
+          "height": 56,
+          "paddingX": 12,
+          "paddingY": 8,
+          "fontSize": 13,
+          "cornerRadius": 8
+        }
+      },
+      "spacing": {
+        "paginationRowPaddingTop": 16,
+        "toolbarPaddingBottom": 20,
+        "rowActionPaddingLeft": 16,
+        "rowActionPaddingRight": 8,
+        "rowActionWidth": 35,
+        "rowActionSwitchWidth": 60,
+        "rowActionIconSize": 14,
+        "headerIconSize": 12
+      }
+    },
+    "colorVariableBindings": {
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
       }
     }
   }

@@ -1157,7 +1157,7 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
                 id: `tabs-${Date.now()}`,
                 componentId: 'figma-component',
                 params: {
-                    componentToken: 'library.data-display.othertabs',
+                    componentToken: 'lib-data-display-othertabs',
                     variantCriteria: JSON.stringify({ Type: 'Capsule' })
                 }
             }, { isRoot: false });
@@ -2531,10 +2531,10 @@ function resolveTagComponentFamily(componentToken: unknown): TagComponentFamily 
     const baseToken = normalized
         ? resolveComponentTokenProfile(normalized)?.baseToken || normalized
         : '';
-    if (baseToken === STATUS_TAG_COMPONENT_TOKEN || baseToken === 'library.data-display.status-tag') {
+    if (baseToken === STATUS_TAG_COMPONENT_TOKEN || baseToken === 'lib-data-display-status-tag') {
         return 'status';
     }
-    if (baseToken === OTHER_TAG_COMPONENT_TOKEN || baseToken === 'library.data-display.other-tag') {
+    if (baseToken === OTHER_TAG_COMPONENT_TOKEN || baseToken === 'lib-data-display-other-tag') {
         return 'other';
     }
     return 'default';
@@ -4769,8 +4769,6 @@ async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Re
     ) || contentContainer.children.find(isLikelyFormFieldControlNode);
     if (!existingControlNode) return false;
 
-    // #region debug-point D:form-field-control-existing
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"D",location:"code.ts:4780",msg:"[DEBUG] existing control in template",data:{controlType:normalizeFormFieldControlType(params.controlType),nodeType:existingControlNode.type,width:existingControlNode.width,height:existingControlNode.height}})}).catch(()=>{});
     // #endregion
     setNodeClipsContent(existingControlNode, false);
 
@@ -4881,8 +4879,6 @@ async function createFormFieldFromFigmaTemplate(
     params: Record<string, any>
 ): Promise<SceneNode | null> {
     const layout = resolveFormFieldLayout(params);
-    // #region debug-point E:form-field-template-enter
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"E",location:"code.ts:4893",msg:"[DEBUG] enter createFormFieldFromFigmaTemplate",data:{layout,controlType:normalizeFormFieldControlType(params.controlType),labelWidthAuto:Boolean(params.labelWidthAuto)}})}).catch(()=>{});
     // #endregion
     if (params.labelWidthAuto && layout !== 'vertical') {
         return null;
@@ -4923,8 +4919,6 @@ async function createFormFieldFromFigmaTemplate(
 
         if (!templateInstance) return null;
 
-        // #region debug-point F:form-field-template-instance
-        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"F",location:"code.ts:4931",msg:"[DEBUG] template instance created",data:{instanceWidth:templateInstance.width,instanceHeight:templateInstance.height,layout,controlType}})}).catch(()=>{});
         // #endregion
         relaxFormFieldTemplateClipping(templateInstance);
         await updateFormFieldLabelTemplate(templateInstance, params);
@@ -4934,8 +4928,6 @@ async function createFormFieldFromFigmaTemplate(
         await updateFormFieldMessageTemplate(templateInstance, params);
         if (updatedInPlace) {
             templateInstance.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
-            // #region debug-point G:form-field-template-updated
-            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"G",location:"code.ts:4940",msg:"[DEBUG] template updated in place",data:{width:templateInstance.width,height:templateInstance.height,layout,controlType}})}).catch(()=>{});
             // #endregion
             return templateInstance;
         }
@@ -4946,8 +4938,6 @@ async function createFormFieldFromFigmaTemplate(
         await replaceFormFieldControlTemplate(detached, instance, params);
         await updateFormFieldMessageTemplate(detached, params);
         detached.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
-        // #region debug-point H:form-field-template-detached
-        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"H",location:"code.ts:4949",msg:"[DEBUG] template detached",data:{width:detached.width,height:detached.height,layout,controlType}})}).catch(()=>{});
         // #endregion
         return detached;
     } catch (e) {
@@ -5803,7 +5793,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.datepicker',
+                componentToken: 'lib-data-input-datepicker',
                 width
             }
         };
@@ -5814,7 +5804,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.inputnumber',
+                componentToken: 'lib-data-input-inputnumber',
                 width
             }
         };
@@ -5825,7 +5815,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.slider',
+                componentToken: 'lib-data-input-slider',
                 width
             }
         };
@@ -5836,7 +5826,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.switch',
+                componentToken: 'lib-data-input-switch',
                 variantCriteria: JSON.stringify({
                     'Status 状态': toVariantBoolean(Boolean(params.checked)),
                     'Disabled 禁用': toVariantBoolean(Boolean(params.disabled))
@@ -5850,7 +5840,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.textarea',
+                componentToken: 'lib-data-input-textarea',
                 width
             }
         };
@@ -5861,7 +5851,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.timepicker',
+                componentToken: 'lib-data-input-timepicker',
                 width
             }
         };
@@ -5872,7 +5862,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.segmented-picker',
+                componentToken: 'lib-data-input-segmented-picker',
                 componentKey: '94125fa758354931512313d1bb6ce37aae02b8c7',
                 optionsText: params.optionsText || '选项一,选项二',
                 value: params.value || '选项一',
@@ -5886,7 +5876,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             id: 'form-field-control',
             componentId: 'figma-component',
             params: {
-                componentToken: 'library.data-input.button',
+                componentToken: 'lib-data-input-button',
                 width
             }
         };
@@ -7260,8 +7250,6 @@ async function renderComponent(
     const controlNode = instance.children && instance.children.length > 0
       ? await renderComponent(instance.children[0], { isRoot: false })
       : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
-    // #region debug-point I:form-field-control-node
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"form-field-height-1",runId:"pre-fix",hypothesisId:"I",location:"code.ts:7630",msg:"[DEBUG] form-field fallback control node",data:{controlType:normalizeFormFieldControlType(params.controlType),nodeType:controlNode.type,width:controlNode.width,height:controlNode.height}})}).catch(()=>{});
     // #endregion
     controlColumn.appendChild(controlNode);
 
@@ -9026,8 +9014,6 @@ function centerNodeInViewport(node: SceneNode): void {
 // callback. The callback will be passed the "pluginMessage" property of the
 // posted message.
 figma.ui.onmessage = async (msg) => {
-  // #region debug-point D:plugin-onmessage
-  fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"D",location:"code.ts:8036",msg:"[DEBUG] plugin onmessage",data:{type:msg?.type}})}).catch(()=>{});
   // #endregion
   if (msg.type === 'cancel') {
     figma.closePlugin();
@@ -9058,8 +9044,6 @@ figma.ui.onmessage = async (msg) => {
       }
       checkSelection();
     }
-    // #region debug-point C:apply-envelope-result
-    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"code.ts:8067",msg:"[DEBUG] apply-envelope result",data:{ok:Boolean(result?.ok),intent:result?.intent,hasRootNodeId:Boolean(result?.rootNodeId)}})}).catch(()=>{});
     // #endregion
     figma.ui.postMessage({ type: 'apply-result', result });
   }

@@ -1666,8 +1666,9 @@ const PROMPT_SECTIONS = [
     id: 'workflow',
     title: '工作流 (Workflow)',
     color: '#059669',
-    content: `1. 若用户输入包含"表单/筛选/图表"等明确组件关键词，直接调用 read_specs 获取对应组件信息。
+    content: `1. 若用户输入包含"图表"等明确组件关键词，直接调用 read_specs 获取对应组件信息。
    ⚠️ 例外：创建表格（Table）时，直接使用 draw_table，无需读取 spec。
+   ⚠️ 例外：创建表单（Form）时，直接使用 draw_form，无需读取 spec。
 
 2. 其他情况先分析用户需求，必须从 Component Index 里选择可用组件，再决定需要使用哪些组件。
    - 必须调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
