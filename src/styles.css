@@ -46,7 +46,7 @@ body {
 }
 
 .container-chat .tabs {
-  display: flex;
+  display: none;
 }
 
 h2 {
@@ -2446,7 +2446,7 @@ button:disabled {
 }
 
 .tabs {
-  display: flex;
+  display: none;
   background: #F0F0F0;
   border-radius: 8px;
   padding: 2px;
