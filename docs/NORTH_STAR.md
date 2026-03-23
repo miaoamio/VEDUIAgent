@@ -35,56 +35,65 @@
 
 > 每一层的具体文件结构、放什么、禁止什么，见 [FILE_STRUCTURE.md](FILE_STRUCTURE.md)。
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  Layer 1: Component Spec（组件结构规范）                   │
-│                                                          │
-│  定义"组件是什么"：                                        │
-│  - params（参数及默认值）                                  │
-│  - slots（槽位结构）                                       │
-│  - constraints（约束）                                    │
-│  - capabilities（能力声明）                               │
-│  - runtime（尺寸/间距/圆角等渲染规格）                      │
-│  - renderNotes（给 Agent 读的渲染注意事项）                 │
-│                                                          │
-│  稳定，设计师可读可改，AI 按需加载                          │
-└──────────────────────┬───────────────────────────────────┘
-                       │ 引用 token key（不含实际值）
-┌──────────────────────▼───────────────────────────────────┐
-│  Layer 2: Theme Package（主题包）                         │
-│                                                          │
-│  定义"用哪套视觉"：                                        │
-│  - color token → variableRef + fallbackHex               │
-│  - typography token → textStyleRef                       │
-│  - spacing token → 圆角/间距实际数值                      │
-│                                                          │
-│  可整包替换。换主题 = 换一个文件                            │
-│  code.ts 不再出现任何 hex 颜色值                           │
-└──────────────────────┬───────────────────────────────────┘
-                       │ 运行时合并（registry resolver）
-┌──────────────────────▼───────────────────────────────────┐
-│  Layer 3: Skill（技能包）                                  │
-│                                                          │
-│  定义"怎么执行"：                                          │
-│  - draw_table / draw_form 等动作的完整执行逻辑             │
-│  - 分步计划模板                                            │
-│  - 错误恢复策略                                            │
-└──────────────────────────────────────────────────────────┘
-```
-
-### 数据流
+### 整体流程（从用户说话到 Figma 落地）
 
 ```
-用户自然语言
-    ↓
-Agent 读 read_specs（Layer 1 的 params + renderNotes）
-    ↓
-Agent 输出结构化协议（draw_table / apply_scene）
-    ↓
-渲染引擎读 Layer 1 runtime + Layer 2 theme，执行渲染
-    ↓
-Figma 节点落地
+设计师说：「帮我画一个用户管理表格」
+        │
+        ▼
+   ┌─────────────┐
+   │   VED UI Agent  │  理解需求，规划步骤，决定调用哪些工具
+   └──────┬──────┘
+          │  读规范：「table 组件有哪些参数？」
+          │  ──────────────────────────────────────────────────────►  ┌──────────────────────────────────────────┐
+          │                                                            │  规范库（只读，AI 和执行层共同参考）          │
+          │  ◄──────────────────────────────────────────────────────  │                                          │
+          │  获得规范：列宽、行高、支持的 columnType…                    │  Layer 1 — 组件规范（registry/）           │
+          │                                                            │    每个组件「是什么」：参数定义、尺寸规格、   │
+          │  输出指令：draw_table({ headers, rows, … })                │    渲染注意事项（AI 可读）                  │
+          │                                                            │                                          │
+          ▼                                                            │  Layer 2 — 主题包（theme/）               │
+   ┌─────────────────────────────────────────────────────┐            │    「用哪套视觉」：颜色 token、间距数值、     │
+   │  执行层（Layer 3 — engine/）                          │◄──────────│    Figma 组件 key                        │
+   │                                                     │  读取数值   └──────────────────────────────────────────┘
+   │  接口层：接收 AI 指令，分发给对应的技能包               │
+   │    draw_table → table.skill.ts                      │
+   │    draw_form  → form.skill.ts                       │
+   │                                                     │
+   │  技能包：封装完整业务逻辑，组装节点结构，不直接操作 Figma │
+   │  工具函数：解析尺寸、应用颜色、计算布局                  │
+   └───────────────────────┬─────────────────────────────┘
+                           │  postMessage（跨线程）
+        ═══════════════════╪═════════════════════════════════════════
+        Figma 沙盒边界       │   上方 = 网页环境  /  下方 = Figma 专属环境
+        ═══════════════════╪═════════════════════════════════════════
+                           ▼
+   ┌─────────────────────────────────────────────────────┐
+   │  主线程（code.ts）— 唯一能直接操作 Figma API 的地方   │
+   │                                                     │
+   │  解析指令 → 递归渲染节点树 → 应用组件属性              │
+   └───────────┬──────────────────────┬──────────────────┘
+               │                      │
+               ▼                      ▼
+   ┌──────────────────┐    ┌─────────────────────────┐
+   │  代码自绘          │    │  Figma 组件库实例         │
+   │  从零构建节点树     │    │  通过 componentKey 导入   │
+   │  table / form /  │    │  button / tag / input /  │
+   │  layout 等        │    │  icon 等设计系统组件       │
+   └──────────────────┘    └─────────────────────────┘
+               └──────────────────────┘
+                        Figma 画布
 ```
+
+### 三层各自的职责
+
+| 层 | 存放什么 | 谁来读 | 换了会怎样 |
+|----|---------|--------|-----------|
+| **Layer 1 — 组件规范** | 每个组件的参数、尺寸规格、渲染注意事项 | AI（决策）+ 执行层（执行）| 所有调用方自动跟随，无需改其他代码 |
+| **Layer 2 — 主题包** | 颜色值、间距数值、Figma 组件 key | 执行层（渲染时取值）| 整包替换即可换一套视觉风格 |
+| **Layer 3 — 执行层** | 如何把 AI 指令转成 Figma 操作的逻辑 | 由 AI 指令触发 | 业务逻辑变更只改这里 |
+
+**核心原则**：Layer 1 和 Layer 2 只存"规则和数值"，不包含任何执行逻辑。执行逻辑全在 Layer 3。
 
 ---
 
@@ -397,23 +406,44 @@ renderNotes: {
 
 ## 九、文档结构与职责
 
-### 真源文档（Source of Truth）
+> 一个关键前提：**运行时 AI 无法读取项目文件系统**。插件运行时 AI 的全部上下文来自 `App.tsx` 动态拼装的 system prompt，文件系统里的 `docs/` 对它不可见。因此，所有 `docs/` 文档都是给**开发者**或**开发 AI**（Claude Code 等编程助手）读的。
 
-| 文档 | 职责 | 位置 |
+### 文档分类
+
+| 目录 | 读者 | 用途 |
 |------|------|------|
-| **本文档** | 指导思想、架构决策、所有文档的元规则 | `docs/NORTH_STAR.md` |
-| `AI_RUNTIME_SPEC_CODING_CN.md` | 运行时 AI 的动作规则（what to do） | `docs/for-runtime-ai/` |
-| `SPEC_REGISTRY_CN.md` | Registry 数据结构规范 | `docs/for-dev-ai/coding-specs/` |
-| `SPEC_RENDER_ENGINE_CN.md` | 渲染引擎执行规范 | `docs/for-dev-ai/coding-specs/` |
-| `SPEC_PROTOCOL_SCENE_CN.md` | Scene 协议字段规范 | `docs/for-runtime-ai/specs/` |
-| `SPEC_AGENT_PLANNER_CN.md` | 计划队列规范 | `docs/for-runtime-ai/specs/` |
+| `docs/NORTH_STAR.md` + `docs/FILE_STRUCTURE.md` | 开发者 + 开发 AI | 架构决策、文件归属规则 |
+| `docs/for-dev-ai/` | 开发 AI（Claude Code 等） | 工程实现规范、协议细节 |
+| `docs/for-humans/` | 开发者、设计师 | 使用说明、测试流程 |
+
+### 运行时 AI 的上下文来自哪里
+
+运行时 AI 的规则**只来自 `App.tsx` 的 `generateMasterPrompt()` 动态拼装**，包括：
+
+- 身份定义 + 可用组件索引（从 registry 动态生成）
+- 工作流规则（draw_table / draw_form / apply_scene 的决策顺序）
+- 各动作的详细 payload 规范
+- 组件 renderNotes（从 registry 按需注入）
+
+修改运行时 AI 行为 = 修改 `App.tsx generateMasterPrompt()` 或各组件的 `renderNotes`，不是修改 `docs/`。
+
+### 主要参考文档
+
+| 文档 | 职责 |
+|------|------|
+| `docs/NORTH_STAR.md`（本文档）| 指导思想、架构决策 |
+| `docs/FILE_STRUCTURE.md` | 文件归属规则 |
+| `docs/for-dev-ai/coding-specs/SPEC_REGISTRY_CN.md` | Registry 数据结构规范 |
+| `docs/for-dev-ai/coding-specs/SPEC_RENDER_ENGINE_CN.md` | 渲染引擎执行规范 |
+| `docs/for-dev-ai/coding-specs/SPEC_PROTOCOL_SCENE_CN.md` | Scene 协议字段规范 |
+| `docs/for-dev-ai/coding-specs/SPEC_AGENT_PLANNER_CN.md` | 计划队列规范 |
 
 ### 维护规则
 
 1. **同一规则只在一个真源出现**，其他地方只链接。
-2. **本文档不写字段细节**，字段细节在对应真源文档里。
-3. **发现矛盾时以本文档为准**，然后修正矛盾的那份文档。
-4. **新能力接入时，先更新本文档的架构部分**，再动代码。
+2. **发现矛盾时以本文档为准**，然后修正矛盾的那份文档。
+3. **新能力接入时，先更新本文档的架构部分**，再动代码。
+4. **运行时行为规则写在 `generateMasterPrompt()` 或 `renderNotes`**，不要写在 `docs/`。
 
 ---
 
@@ -464,6 +494,12 @@ renderNotes: {
 ### 2026-03-22：Spec 推送分两阶段，Phase 1 系统主动推送，Phase 2 AI 主动读取
 
 **决策**：Phase 1（当前）系统识别意图主动推 `params + renderNotes`；Phase 2（未来）AI 主动按需读层。
+
+### 2026-03-23：删除 for-runtime-ai/ 目录，澄清文档读者边界
+
+**背景**：`docs/for-runtime-ai/` 存放了给"运行时 AI"读的文档，但插件运行时 AI 无法访问文件系统，这个目录没有有效读者。`AI_RUNTIME_SPEC_CODING_CN.md` 是 `App.tsx generateMasterPrompt()` 的过期文档副本，两者已出现不一致。
+
+**决策**：删除 `for-runtime-ai/` 目录。原子规范文档（SPEC_PROTOCOL_SCENE、SPEC_AGENT_PLANNER、SPEC_METADATA）移入 `for-dev-ai/coding-specs/`，作为开发 AI 的协议参考。运行时 AI 行为规则的唯一真源是 `generateMasterPrompt()` 和各组件的 `renderNotes`。
 
 ### 2026-03-23：spec.component-token-map.ts 迁移至 registry/
 

@@ -1407,215 +1407,182 @@ function OverviewView() {
 
       {/* Architecture Diagram */}
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-body" style={{ padding: '16px 20px' }}>
-          <div className="section-title" style={{ marginBottom: 14 }}>完整架构图</div>
-
-          {/* Row 1: AI Layer */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
-            <ArchBox
-              label="用户 / User"
-              sub="自然语言 prompt"
-              bg="#f9fafb" border="#d0d5dd" color="#374151"
-            />
-            <ArchBox
-              label="Claude AI"
-              sub="规划 → 调用工具"
-              bg="#fef3c7" border="#fbbf24" color="#92400e"
-            />
-            <ArchBox
-              label="Figma Plugin Iframe"
-              sub="App.tsx  ·  UI thread"
-              bg="#ede9fe" border="#8b5cf6" color="#4c1d95"
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 2 }}>
-            <div />
-            <ArchArrow label="tool_use (JSON)" />
-            <ArchArrow label="postMessage" />
+        <div className="card-body" style={{ padding: '20px 24px' }}>
+          <div className="section-title" style={{ marginBottom: 4 }}>完整架构图</div>
+          <div style={{ fontSize: 11, color: '#86909c', marginBottom: 20 }}>
+            一句话：设计师说需求 → AI 读规范 → 生成指令 → 引擎执行 → Figma 画布落地
           </div>
 
-          {/* Row 2: Three-layer spec system */}
-          <div style={{
-            border: '1.5px solid #c7d2fe', borderRadius: 8,
-            background: '#eef2ff', padding: '10px 12px', marginBottom: 4,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#3730a3', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              静态规格系统（只读，AI 和渲染引擎共享）
+          {/* ── 第一层：对话 ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr 40px 1fr', alignItems: 'stretch', gap: 0, marginBottom: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', background: '#f9fafb', border: '1.5px solid #d0d5dd', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, marginBottom: 4 }}>👤</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#1d2129' }}>设计师</div>
+              <div style={{ fontSize: 10, color: '#86909c', marginTop: 2 }}>用自然语言描述需求</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 32px 1fr 32px 1fr', gap: 4, alignItems: 'center' }}>
-              <div>
-                <ArchBox
-                  label="Layer 1 — registry.ts"
-                  sub="组件 params / slots / runtime / renderNotes"
-                  bg="#e8f0ff" border="#93c5fd" color="#1e40af"
-                />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#d0d5dd' }}>⇆</div>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', background: '#fef3c7', border: '1.5px solid #fbbf24', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, marginBottom: 4 }}>🤖</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>VED UI Agent</div>
+              <div style={{ fontSize: 10, color: '#92400e', marginTop: 2, opacity: 0.8 }}>理解需求，规划步骤，调用工具</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#86909c', lineHeight: 1.4, textAlign: 'center' }}>读<br/>规范</div>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#3730a3', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                规范库（只读）
               </div>
-              <div style={{ textAlign: 'center', color: '#6366f1', fontSize: 12 }}>+</div>
-              <div>
-                <ArchBox
-                  label="Layer 2 — theme/"
-                  sub="颜色 token · 间距 · 组件 key (VOLCENGINE DESIGN)"
-                  bg="#d1fae5" border="#6ee7b7" color="#065f46"
-                />
-              </div>
-              <div style={{ textAlign: 'center', color: '#6366f1', fontSize: 12 }}>→</div>
-              <div>
-                <ArchBox
-                  label="buildSpecsInfo()"
-                  sub="按需推送 Spec 给 AI（3 level）"
-                  bg="#fef9c3" border="#fde047" color="#713f12"
-                />
+              <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                <div style={{ flex: 1, background: '#e8f0ff', border: '1px solid #93c5fd', borderRadius: 6, padding: '6px 8px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#1e40af', marginBottom: 2 }}>Layer 1 — 组件规范</div>
+                  <div style={{ fontSize: 9, color: '#3b82f6', lineHeight: 1.5 }}>
+                    每个组件「是什么」<br/>
+                    参数定义 / 尺寸规格<br/>
+                    AI 可读的渲染注意事项
+                  </div>
+                </div>
+                <div style={{ flex: 1, background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 6, padding: '6px 8px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#065f46', marginBottom: 2 }}>Layer 2 — 主题</div>
+                  <div style={{ fontSize: 9, color: '#047857', lineHeight: 1.5 }}>
+                    「用哪套视觉」<br/>
+                    颜色 / 间距 token<br/>
+                    Figma 组件 key
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <ArchArrow label="scene tree payload" />
 
-          {/* Row 3: Execution layer (four sub-layers) */}
+          {/* ── 箭头：AI 输出指令 ── */}
+          <div style={{ textAlign: 'center', padding: '2px 0 6px', color: '#86909c', fontSize: 10 }}>
+            <span style={{ fontSize: 14 }}>↓</span>　AI 输出结构化指令（draw_table / draw_form / apply_scene …）
+          </div>
+
+          {/* ── 第二层：执行层 ── */}
           <div style={{
             border: '1.5px solid #fed7aa', borderRadius: 8,
-            background: '#fff7ed', padding: '10px 12px', marginBottom: 4,
+            background: '#fff7ed', padding: '12px 14px', marginBottom: 6,
           }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#9a3412', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              执行层（Engine）— Utils / Tool / Skill / Agentic Recovery
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              执行层（Layer 3）— AI 指令在这里被翻译成 Figma 操作
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 32px 1fr 32px 1fr 32px 1fr', gap: 4, alignItems: 'center' }}>
-              {/* E0 Utils */}
-              <div style={{ border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 8px', background: '#eff6ff' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>E0 — Utils</div>
-                <div style={{ fontSize: 10, color: '#1e40af', lineHeight: 1.5 }}>
-                  <div>block.helpers.ts</div>
-                  <div>resolve/size.ts</div>
-                  <div>resolve/color.ts</div>
-                  <div>resolve/layout.ts</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 32px 1fr', gap: 6, alignItems: 'start' }}>
+              {/* 左：对外接口 */}
+              <div style={{ border: '1px solid #a7f3d0', borderRadius: 6, padding: '8px 10px', background: '#ecfdf5' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#065f46', marginBottom: 6 }}>
+                  🔌 对外接口（AI 可调用）
                 </div>
-                <div style={{ fontSize: 9, color: '#93c5fd', marginTop: 4 }}>纯函数，不暴露给 AI</div>
+                <div style={{ fontSize: 10, color: '#047857', lineHeight: 1.7 }}>
+                  <div><strong>draw_table</strong> — 创建表格</div>
+                  <div><strong>draw_form</strong> — 创建表单</div>
+                  <div><strong>apply_scene</strong> — 提交节点树</div>
+                  <div><strong>read_specs</strong> — 读取组件规范</div>
+                  <div><strong>create_node</strong> — 创建单个节点</div>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 9, color: '#6ee7b7' }}>App.tsx action dispatch</div>
               </div>
-              <ArchArrow dir="right" />
-              {/* E1 Tool */}
-              <div style={{ border: '1px solid #a7f3d0', borderRadius: 6, padding: '6px 8px', background: '#ecfdf5' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#065f46', marginBottom: 4 }}>E1 — Tool / Action</div>
-                <div style={{ fontSize: 10, color: '#047857', lineHeight: 1.5 }}>
-                  <div>App.tsx dispatch</div>
-                  <div>draw_form</div>
-                  <div>draw_table</div>
-                  <div>set_props…</div>
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#86909c', paddingTop: 20 }}>→</div>
+              {/* 右：内部执行 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ border: '1px solid #c4b5fd', borderRadius: 6, padding: '8px 10px', background: '#f5f3ff' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#4c1d95', marginBottom: 4 }}>
+                    ⚙️ 技能包（Skill）
+                  </div>
+                  <div style={{ fontSize: 9, color: '#5b21b6', lineHeight: 1.5 }}>
+                    封装完整业务逻辑，读规范、组装节点结构<br/>
+                    <span style={{ opacity: 0.7 }}>form.skill.ts · table.skill.ts</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: 9, color: '#6ee7b7', marginTop: 4 }}>AI 可调用（action.type）</div>
-              </div>
-              <ArchArrow dir="right" />
-              {/* E2 Skill */}
-              <div style={{ border: '1px solid #c4b5fd', borderRadius: 6, padding: '6px 8px', background: '#f5f3ff' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#4c1d95', marginBottom: 4 }}>E2 — Skill</div>
-                <div style={{ fontSize: 10, color: '#5b21b6', lineHeight: 1.5 }}>
-                  <div>form.skill.ts</div>
-                  <div>table.skill.ts</div>
+                <div style={{ border: '1px solid #bfdbfe', borderRadius: 6, padding: '8px 10px', background: '#eff6ff' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>
+                    🔧 工具函数（Utils）
+                  </div>
+                  <div style={{ fontSize: 9, color: '#1e40af', lineHeight: 1.5 }}>
+                    解析尺寸 / 应用颜色变量 / 设置布局<br/>
+                    <span style={{ opacity: 0.7 }}>resolve/size · color · layout</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: 9, color: '#a78bfa', marginTop: 4 }}>完整业务逻辑，不调 Figma API</div>
-              </div>
-              <ArchArrow dir="right" />
-              {/* E3 Agentic Recovery */}
-              <div style={{ border: '1px solid #fca5a5', borderRadius: 6, padding: '6px 8px', background: '#fff1f2' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#9f1239', marginBottom: 4 }}>E3 — Agentic Recovery</div>
-                <div style={{ fontSize: 10, color: '#be123c', lineHeight: 1.5 }}>
-                  <div>renderNotes</div>
-                  <div>commonErrors</div>
-                  <div>agentHints</div>
-                </div>
-                <div style={{ fontSize: 9, color: '#fca5a5', marginTop: 4 }}>静态写入 registry，AI 运行时读取</div>
               </div>
             </div>
           </div>
-          <ArchArrow label="postMessage → code.ts" />
 
-          {/* Row 4: Thread boundary */}
-          <ArchDivider label="── Figma Plugin 线程边界  ·  UI thread ↑  /  main thread ↓ ──" />
+          {/* ── 箭头：跨线程 ── */}
+          <ArchDivider label="── Figma Plugin 线程边界  ·  上方 UI thread（网页环境）/ 下方 main thread（Figma 沙盒）──" />
 
-          {/* Row 5: Main thread */}
+          {/* ── 第三层：主线程 ── */}
           <div style={{
             border: '1.5px solid #d1d5db', borderRadius: 8,
-            background: '#f9fafb', padding: '10px 12px', marginBottom: 4,
+            background: '#f9fafb', padding: '12px 14px', marginBottom: 6,
           }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#374151', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              主线程（code.ts）— 唯一能调用 Figma API 的地方
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              主线程（code.ts）— 唯一能直接操作 Figma 的地方
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 32px 1fr 32px 1fr', gap: 4, alignItems: 'center' }}>
-              <ArchBox
-                label="operationExecutor.ts"
-                sub="解析操作队列，路由到 handler"
-                bg="#f3f4f6" border="#d1d5db" color="#374151"
-              />
-              <ArchArrow dir="right" />
-              <ArchBox
-                label="renderSceneNode.ts"
-                sub="递归渲染 scene tree → Figma 节点"
-                bg="#f3f4f6" border="#d1d5db" color="#374151"
-              />
-              <ArchArrow dir="right" />
-              <ArchBox
-                label="applyFigmaComponentProps()"
-                sub="propertyMap 驱动  ·  setProperties()"
-                bg="#f3f4f6" border="#d1d5db" color="#374151"
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px 1fr 28px 1fr', gap: 4, alignItems: 'center' }}>
+              <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', background: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#374151', marginBottom: 2 }}>operationExecutor</div>
+                <div style={{ fontSize: 9, color: '#6b7280' }}>接收指令，分发给对应处理器</div>
+              </div>
+              <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>→</div>
+              <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', background: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#374151', marginBottom: 2 }}>renderSceneNode</div>
+                <div style={{ fontSize: 9, color: '#6b7280' }}>把节点结构树递归渲染成 Figma 节点</div>
+              </div>
+              <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>→</div>
+              <div style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', background: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#374151', marginBottom: 2 }}>applyFigmaComponentProps</div>
+                <div style={{ fontSize: 9, color: '#6b7280' }}>按 propertyMap 给实例设置属性</div>
+              </div>
             </div>
           </div>
-          <ArchArrow label="figma.createFrame / setProperties / createInstance…" />
 
-          {/* Row 6: Figma */}
+          {/* ── 箭头 ── */}
+          <div style={{ textAlign: 'center', padding: '2px 0 6px', color: '#86909c', fontSize: 10 }}>
+            <span style={{ fontSize: 14 }}>↓</span>　createFrame / createInstance / setProperties …
+          </div>
+
+          {/* ── 底层：Figma 画布 ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <ArchBox
-              label="Figma Canvas"
-              sub="代码自绘节点（frame / text / auto-layout）"
-              bg="#ecfdf5" border="#6ee7b7" color="#065f46"
-            />
-            <ArchBox
-              label="Figma Component Library"
-              sub="Figma Key 渲染（createInstance + setProperties）"
-              bg="#ede9fe" border="#c4b5fd" color="#4c1d95"
-            />
+            <div style={{ background: '#ecfdf5', border: '1.5px solid #6ee7b7', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 16, marginBottom: 4 }}>🎨</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#065f46', marginBottom: 2 }}>代码自绘</div>
+              <div style={{ fontSize: 9, color: '#047857', lineHeight: 1.5 }}>
+                由代码从零构建节点树<br/>
+                table / form / layout 等复杂结构
+              </div>
+            </div>
+            <div style={{ background: '#ede9fe', border: '1.5px solid #c4b5fd', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 16, marginBottom: 4 }}>🧩</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#4c1d95', marginBottom: 2 }}>Figma 组件库实例</div>
+              <div style={{ fontSize: 9, color: '#5b21b6', lineHeight: 1.5 }}>
+                通过 componentKey 导入设计系统组件<br/>
+                button / tag / icon / input 等
+              </div>
+            </div>
+          </div>
+
+          {/* ── 底注 ── */}
+          <div style={{ marginTop: 12, fontSize: 9, color: '#86909c', textAlign: 'center', lineHeight: 1.6 }}>
+            规范库（Layer 1 + 2）被 AI 和执行层同时读取，但不参与运行时执行，只提供"规则"和"数值"。
           </div>
         </div>
       </div>
 
-      {/* Two render modes + three-layer summary side by side */}
-      <div className="grid-2">
-        <div>
-          <div className="card">
-            <div className="card-body">
-              <div className="section-title" style={{ marginBottom: 12 }}>两种渲染方式</div>
-              <div style={{ marginBottom: 8, padding: '8px 12px', background: '#ede9fe', borderRadius: 6, fontSize: 12, color: '#5b21b6' }}>
-                <strong>Figma Key 渲染</strong>：有 figmaPropertySnapshot，通过 componentKey 导入库实例，
-                由 <code>applyFigmaComponentProps()</code> 读 <code>propertyMap</code> 设置 variant。
-                Icons / button / badge / tag 等属于此类。
-              </div>
-              <div style={{ padding: '8px 12px', background: '#e8f0ff', borderRadius: 6, fontSize: 12, color: '#1664ff' }}>
-                <strong>代码自绘</strong>：无 figmaPropertySnapshot，由 <code>code.ts</code> 逐节点构建
-                (auto-layout / frame / text / 嵌套 instance)。form / table / input / select 等复杂交互组件属于此类。
+      {/* 两种渲染方式说明 */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-body">
+          <div className="section-title" style={{ marginBottom: 12 }}>两种渲染方式</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ padding: '10px 14px', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8, fontSize: 12, color: '#065f46' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>🎨 代码自绘（Custom Component）</div>
+              <div style={{ fontSize: 11, lineHeight: 1.7, color: '#047857' }}>
+                渲染引擎用 Figma API 从零构建节点树，完全按 registry 规范执行。
+                <br/>适用于：<strong>form · table · layout</strong> 等复杂结构组件。
               </div>
             </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="card">
-            <div className="card-body">
-              <div className="section-title" style={{ marginBottom: 12 }}>三层规格 + 执行层映射</div>
-              <div style={{ fontSize: 12, color: '#4e5969', lineHeight: 1.8 }}>
-                <div style={{ marginBottom: 6, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#1664ff', flexShrink: 0, marginTop: 2 }} />
-                  <div><strong>registry.ts</strong>：组件 params / slots / runtime 数字 / renderNotes → AI Spec 来源</div>
-                </div>
-                <div style={{ marginBottom: 6, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#059669', flexShrink: 0, marginTop: 2 }} />
-                  <div><strong>theme/volcengine-design/</strong>：token → variableRef + fallbackHex；换主题只改 <code>active.ts</code></div>
-                </div>
-                <div style={{ marginBottom: 6, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#7c3aed', flexShrink: 0, marginTop: 2 }} />
-                  <div><strong>engine/skills/</strong>：Skill 构造 scene tree；Utils 解析 registry / theme；均不调 Figma API</div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#c05621', flexShrink: 0, marginTop: 2 }} />
-                  <div><strong>renderNotes</strong>：AI 可读的语义错误 + 自愈规则；无代码，无需维护</div>
-                </div>
+            <div style={{ padding: '10px 14px', background: '#ede9fe', border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 12, color: '#4c1d95' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>🧩 Figma Key 渲染（Figma Library Component）</div>
+              <div style={{ fontSize: 11, lineHeight: 1.7, color: '#5b21b6' }}>
+                通过 componentKey 导入设计系统实例，再按 propertyMap 设置 variant 属性。
+                <br/>适用于：<strong>button · tag · input · icon</strong> 等设计系统组件。
               </div>
             </div>
           </div>

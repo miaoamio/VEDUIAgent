@@ -1,7 +1,7 @@
-# 给开发 AI 读的文档（Skill / 工程规范）
+# 给开发 AI 读的文档（工程规范）
 
-> **读者：** Cursor、Trae、Aime 等编程助手
-> **用途：** 辅助开发者写插件代码时使用，约束开发 AI 的行为和实现方式
+> **读者：** Claude Code、Cursor、Trae 等编程助手
+> **用途：** 辅助理解项目架构、约束开发 AI 的实现方式
 
 ---
 
@@ -24,6 +24,9 @@
 | [Spec Coding 全文指南](coding-specs/SPEC_CODING_GUIDE_CN.md) | 代码规范、实现约定 |
 | [注册表规范](coding-specs/SPEC_REGISTRY_CN.md) | 组件 Registry 数据结构和扩展方式 |
 | [渲染引擎规范](coding-specs/SPEC_RENDER_ENGINE_CN.md) | Figma 节点渲染、patch 执行器细节 |
+| [Scene 协议规范](coding-specs/SPEC_PROTOCOL_SCENE_CN.md) | apply_scene 的协议格式（create / edit / patch） |
+| [Agent 计划系统规范](coding-specs/SPEC_AGENT_PLANNER_CN.md) | 多步骤任务拆解与计划执行逻辑 |
+| [元数据规范](coding-specs/SPEC_METADATA_CN.md) | 节点元数据的读写与兼容规则 |
 | [组件快照登记流程](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_WORKFLOW_CN.md) | 如何批量维护组件属性快照（含 npm 命令） |
 | [组件快照登记用例](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_CASES_CN.md) | 逐组件的登记测试用例 |
 | [图表组件登记流程](coding-specs/CHART_COMPONENT_REGISTRATION_WORKFLOW_CN.md) | 图表类组件登记与运行时使用规范 |
@@ -46,4 +49,3 @@
 
 - [文档总入口](../README_CN.md)
 - [给人读的文档](../for-humans/README_CN.md)
-- [给运行时 AI 读的文档](../for-runtime-ai/README_CN.md)

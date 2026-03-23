@@ -6,23 +6,24 @@
 
 ---
 
-## 👤 我是人类（设计师 / 开发者）
-→ [docs/for-humans/README_CN.md](for-humans/README_CN.md)
-
-项目说明、工作流程、测试指引、历史计划。
-
----
-
-## 🤖 我是开发 AI（Cursor / Trae / Aime 等编程助手）
+## 🤖 我是开发 AI（Claude Code / Cursor / Trae 等编程助手）
 → [docs/for-dev-ai/README_CN.md](for-dev-ai/README_CN.md)
 
-工程实现规范、注册表、渲染引擎、测试策略、技能包。
+工程实现规范、注册表、渲染引擎、协议细节、测试策略、技能包。
 
 > 注意：`AGENTS.md`（根目录）和 `.trae/rules/project.md` 也是给开发 AI 读的，且路径固定不可移动。
 
 ---
 
-## 💬 我是插件运行时 AI（OpenAI / 大模型）
-→ [docs/for-runtime-ai/README_CN.md](for-runtime-ai/README_CN.md)
+## 👤 我是人类（设计师 / 开发者）
+→ [docs/for-humans/README_CN.md](for-humans/README_CN.md)
 
-System Prompt 主规范和子规范，直接喂给模型使用。
+项目说明、工作流程、测试指引。
+
+---
+
+## 💬 关于运行时 AI
+
+**插件运行时 AI 无法读取文件系统**，它的全部上下文来自 `App.tsx` 的 `generateMasterPrompt()` 动态拼装。
+
+修改运行时 AI 行为 = 修改 `src/App.tsx generateMasterPrompt()` 或各组件的 `renderNotes`，不是修改这里的文档。
