@@ -135,6 +135,15 @@ export interface ComponentRuntimeDefinition {
   sizeMetrics?: Record<string, SizeMetricDefinition>;
   sizeMetricsRef?: string;
   spacing?: Record<string, number>;
+  labelWidth?: {
+    default?: number;
+    presets?: Record<string, number>;
+    variantThresholds?: {
+      medium?: number;
+      large?: number;
+    };
+  };
+  controlWidthModeOverrides?: Record<string, string[]>;
   fallback?: {
     width?: number;
     height?: number;

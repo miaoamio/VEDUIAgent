@@ -530,11 +530,11 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
   },
   'lib-data-display-component-piechart': {
     token: 'lib-data-display-component-piechart',
-    componentKey: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+    componentKey: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
     source: 'Figma组件库词汇表_ComponentSets 图表.json',
-    displayName: 'PieChart 饼图',
+    displayName: 'Card/PieChart 饼图',
     category: '数据展示',
-    aliases: ['figma-set:Component/PieChart']
+    aliases: ['figma-set:Card/PieChart']
   },
   'lib-data-display-component-barchart': {
     token: 'lib-data-display-component-barchart',

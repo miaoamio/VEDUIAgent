@@ -109,7 +109,7 @@ const volcengineDesignDataDisplayComponents: ComponentsTheme = {
   'lib-data-display-multicolor-tag':        '1fe9750b5bb150ddbff545a49e6bf442683fe85c',
   'lib-data-display-other-tag':             '2d9c0e17cb30fdb3fb4d5a785f8e5ed4e638252e',
   'lib-data-display-othertabs':             '6d9e7cb10773c4659dcdfdb2cffb6c268a0b0221',
-  'lib-data-display-component-piechart':    'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  'lib-data-display-component-piechart':    'a414c3e671b3619d480d4932b83d9969b7ebbe03',
   'lib-data-display-component-barchart':    'a83efa5b5ba4efbdb96694268b50e43a61bee971',
   'lib-data-display-component-areachart':   '99fdb5caaa7ae3a429f0bb83022f737cd34caa01',
   'lib-data-display-component-linechart':   '62d6b59603766fdb416ff787eec5d21800264694',

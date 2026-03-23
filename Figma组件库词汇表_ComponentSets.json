@@ -1090,11 +1090,6 @@
     "description": "分类：导航"
   },
   {
-    "name": "Component/PieChart",
-    "key": "ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e",
-    "description": "分类：数据展示"
-  },
-  {
     "name": "Toplist 条形图",
     "key": "6acea515cbcd1ae970ef5627425bd55cbda137ff",
     "description": "分类：数据展示"

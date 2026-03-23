@@ -1,9 +1,20 @@
 export function setFillWidth(node: SceneNode) {
-  if ('layoutGrow' in node) {
-    node.layoutGrow = 1;
-  }
-  if ('layoutAlign' in node) {
-    node.layoutAlign = 'STRETCH';
+  if (node.parent && 'layoutMode' in node.parent && node.parent.layoutMode === 'VERTICAL') {
+    // 父容器是纵向时，水平撑满用 layoutAlign = 'STRETCH'
+    if ('layoutAlign' in node) {
+      node.layoutAlign = 'STRETCH';
+    }
+    if ('layoutGrow' in node) {
+      node.layoutGrow = 0; // 纵向父容器中，layoutGrow = 1 会导致垂直方向被撑开
+    }
+  } else {
+    // 父容器是横向时，水平撑满用 layoutGrow = 1
+    if ('layoutGrow' in node) {
+      node.layoutGrow = 1;
+    }
+    if ('layoutAlign' in node) {
+      node.layoutAlign = 'STRETCH';
+    }
   }
   if ('layoutSizingHorizontal' in node) {
     try {
@@ -28,6 +39,26 @@ export function setFixedWidth(node: SceneNode, width: number) {
   if ('layoutSizingHorizontal' in node) {
     try {
       (node as any).layoutSizingHorizontal = 'FIXED';
+    } catch {
+    }
+  }
+}
+
+export function setFillWidthPreserveHeight(node: SceneNode) {
+  const parent = node.parent;
+  if (parent && 'layoutMode' in parent && parent.layoutMode === 'HORIZONTAL') {
+    if ('layoutGrow' in node) {
+      node.layoutGrow = 1;
+    }
+    if ('layoutAlign' in node) {
+      node.layoutAlign = 'MIN';
+    }
+  } else {
+    setFillWidth(node);
+  }
+  if ('layoutSizingHorizontal' in node) {
+    try {
+      (node as any).layoutSizingHorizontal = 'FILL';
     } catch {
     }
   }

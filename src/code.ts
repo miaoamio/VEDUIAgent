@@ -28,6 +28,7 @@ import {
   parseColor,
   setCurrentTheme
 } from './engine/skills/resolve/color';
+import { setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resolve/layout';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 
@@ -79,6 +80,29 @@ const resolveComponentDisplayNameFromToken = (token: string): string | undefined
   if (!normalized) return undefined;
   return resolveComponentTokenProfile(normalized)?.profile.displayName;
 };
+
+const normalizeTextareaState = (value: unknown): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return 'Defalult 默认';
+  if (normalized === 'Default 默认') return 'Defalult 默认';
+  return normalized;
+};
+
+const isComponentOrSetNode = (node: BaseNode | PageNode | DocumentNode | null): node is ComponentNode | ComponentSetNode =>
+  Boolean(node && (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET'));
+
+const findLocalComponentKeyByName = (name: unknown): string => {
+  const normalized = String(name || '').trim().toLowerCase();
+  if (!normalized) return '';
+  const isTarget = (node: SceneNode | PageNode | DocumentNode) => {
+    if (!isComponentOrSetNode(node)) return false;
+    const nodeName = node.name.toLowerCase();
+    return nodeName === normalized || nodeName.includes(normalized);
+  };
+  const found = figma.currentPage.findOne(isTarget) || figma.root.findOne(isTarget);
+  return (found as ComponentNode | ComponentSetNode | null)?.key || '';
+};
+
 
 function loadFontCached(font: FontName): Promise<void> {
   const key = `${font.family}:${font.style}`;
@@ -492,7 +516,8 @@ figma.on('documentchange', async (event) => {
 
     const properties = change.properties || [];
     const isSizeChange = properties.includes('height') || properties.includes('width');
-    if (!isSizeChange) continue;
+    const isTextChange = properties.includes('characters');
+    if (!isSizeChange && !isTextChange) continue;
 
     const cell = findTableCellFromNode(node);
     if (!cell) continue;
@@ -503,6 +528,21 @@ figma.on('documentchange', async (event) => {
 
     const rowIndex = column.children.indexOf(cell as SceneNode);
     if (rowIndex < 0) continue;
+    if (isTextChange) {
+      const cellParams = readNodeParams(cell);
+      if (cellParams.textDisplay === 'lineBreak') {
+        if ('counterAxisSizingMode' in cell) {
+          try {
+            (cell as any).counterAxisSizingMode = 'AUTO';
+          } catch {}
+        }
+        if ('layoutSizingVertical' in cell) {
+          try {
+            (cell as any).layoutSizingVertical = 'HUG';
+          } catch {}
+        }
+      }
+    }
 
     const key = `${table.id}:${rowIndex}`;
     const existing = pendingTableRowSync.get(key);
@@ -1143,6 +1183,7 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
     let toolbar = contentStack.children.find(
         (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
     ) as FrameNode;
+    const isNewToolbar = !toolbar;
 
     const legacyFilter = contentStack.children.find(
         (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'filter-group'
@@ -1176,7 +1217,6 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
             toolbar.appendChild(legacyFilter);
         }
         
-        contentStack.insertChild(0, toolbar);
     } else {
         toolbar.visible = true;
         toolbar.layoutMode = 'HORIZONTAL';
@@ -1328,9 +1368,15 @@ async function ensureTableToolbar(contentStack: FrameNode, width: number, option
         toolbar.primaryAxisAlignItems = 'MIN';
     }
 
-    // 7. Remove if empty
+    // 7. Insert or remove if empty
     if (toolbar.children.length === 0) {
-        toolbar.remove();
+        if (toolbar.parent) {
+            toolbar.remove();
+        }
+        return;
+    }
+    if (isNewToolbar || toolbar.parent !== contentStack) {
+        contentStack.insertChild(0, toolbar);
     }
 }
 
@@ -1576,6 +1622,51 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
     if (columns.length === 0) return;
 
     let maxHeight = 0;
+    const isLineBreakCell = (cell: SceneNode): boolean => {
+        if (!cell || cell.removed) return false;
+        const params = readNodeParams(cell);
+        return params.textDisplay === 'lineBreak';
+    };
+    const ensureLineBreakMeasure = (cell: SceneNode) => {
+        if (!isLineBreakCell(cell)) return;
+        if ('counterAxisSizingMode' in cell) {
+            try {
+                (cell as any).counterAxisSizingMode = 'AUTO';
+            } catch {}
+        }
+        if ('layoutSizingVertical' in cell) {
+            try {
+                (cell as any).layoutSizingVertical = 'HUG';
+            } catch {}
+        }
+    };
+    const normalizeLineBreakAfterAlign = (cell: SceneNode, target: number) => {
+        if (!isLineBreakCell(cell)) return;
+        const shouldFix = Math.abs(cell.height - target) > 0.1;
+        if (shouldFix) {
+            if ('counterAxisSizingMode' in cell) {
+                try {
+                    (cell as any).counterAxisSizingMode = 'FIXED';
+                } catch {}
+            }
+            if ('layoutSizingVertical' in cell) {
+                try {
+                    (cell as any).layoutSizingVertical = 'FIXED';
+                } catch {}
+            }
+        } else {
+            if ('counterAxisSizingMode' in cell) {
+                try {
+                    (cell as any).counterAxisSizingMode = 'AUTO';
+                } catch {}
+            }
+            if ('layoutSizingVertical' in cell) {
+                try {
+                    (cell as any).layoutSizingVertical = 'HUG';
+                } catch {}
+            }
+        }
+    };
 
     // Prefer heights from nodes that actually changed. This allows shrinking rows.
     if (sourceNodes.length > 0) {
@@ -1587,6 +1678,7 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
             const index = column.children.indexOf(node as SceneNode);
             if (index !== rowIndex) continue;
             if (node.type === 'FRAME' || node.type === 'INSTANCE') {
+                ensureLineBreakMeasure(node);
                 if (node.height > maxHeight) maxHeight = node.height;
             }
         }
@@ -1599,6 +1691,7 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
             const cell = column.children[rowIndex];
             if (cell.removed) continue;
             if (cell.type === 'FRAME' || cell.type === 'INSTANCE') {
+                ensureLineBreakMeasure(cell);
                 if (cell.height > maxHeight) maxHeight = cell.height;
             }
         }
@@ -1618,6 +1711,7 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
                     // Ignore resize failures for non-resizable nodes.
                 }
             }
+            normalizeLineBreakAfterAlign(cell, maxHeight);
         }
     }
 }
@@ -3179,7 +3273,7 @@ async function createTagFromFigmaTemplate(
         try {
             importedInstance = await createFigmaComponentInstance({
                 componentKey,
-                fallbackName: def.name,
+                fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
                 variantCriteria: criteria,
                 visible: false
             });
@@ -3225,7 +3319,7 @@ async function createTagFromFigmaTemplate(
         }
         const fallbackInstance = await createFigmaComponentInstance({
             componentKey,
-            fallbackName: def.name,
+            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             visible: false
         });
         const detached = fallbackInstance.detachInstance();
@@ -3338,7 +3432,7 @@ async function createButtonFromFigmaTemplate(
     try {
         const importedInstance = await createFigmaComponentInstance({
             componentKey,
-            fallbackName: def.name,
+            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
                 'Disable 禁用': toVariantBoolean(disabled),
                 'IconOnly 仅图标': toVariantBoolean(iconOnly),
@@ -3379,6 +3473,107 @@ async function createButtonFromFigmaTemplate(
     }
 }
 
+async function createTextareaFromFigmaTemplate(
+    def: ComponentDefinition,
+    params: Record<string, any>
+): Promise<SceneNode | null> {
+    const snapshot = def.figmaPropertySnapshot as any;
+    let componentKey = snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '';
+    if (!componentKey) componentKey = String(snapshot?.componentKey || '').trim();
+    if (!componentKey) componentKey = findLocalComponentKeyByName(snapshot?.componentSetName || def.name);
+    if (!componentKey) return null;
+
+    try {
+        const importedInstance = await createFigmaComponentInstance({
+            componentKey,
+            fallbackName: snapshot?.componentSetName || def.name,
+            variantCriteria: {}
+        });
+
+        const normalizedParams: Record<string, any> = { ...params, state: normalizeTextareaState(params.state) };
+        applyFigmaComponentProps(importedInstance, 'textarea', normalizedParams);
+        
+        const rawValue = String(normalizedParams.value ?? '');
+        const placeholder = String(normalizedParams.placeholder ?? '请输入内容');
+        const textToDisplay = rawValue || placeholder;
+        
+        const textNode = importedInstance.findOne(n => n.type === 'TEXT') as TextNode;
+        if (textNode) {
+            try {
+                await figma.loadFontAsync(textNode.fontName as FontName);
+                textNode.characters = textToDisplay;
+            } catch(e) {}
+        }
+
+        const width = Number(params.width) > 0 ? Number(params.width) : 240;
+        try {
+            if (importedInstance.layoutMode !== 'NONE') {
+                importedInstance.layoutSizingHorizontal = 'FIXED';
+            }
+        } catch(e) {}
+        try {
+            importedInstance.resize(width, importedInstance.height);
+        } catch(e) {}
+
+        importedInstance.name = def.name;
+        return importedInstance;
+    } catch (e) {
+        console.warn('[TextareaTemplate] failed to create textarea from original Figma component', e);
+        return null;
+    }
+}
+
+async function createSwitchFromFigmaTemplate(
+    def: ComponentDefinition,
+    params: Record<string, any>
+): Promise<SceneNode | null> {
+    const snapshot = def.figmaPropertySnapshot as any;
+    let componentKey = snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '';
+    if (!componentKey) componentKey = String(snapshot?.componentKey || '').trim();
+    if (!componentKey) componentKey = findLocalComponentKeyByName(snapshot?.componentSetName || def.name);
+    if (!componentKey) return null;
+
+    try {
+        const importedInstance = await createFigmaComponentInstance({
+            componentKey,
+            fallbackName: snapshot?.componentSetName || def.name,
+            variantCriteria: {}
+        });
+
+        applyFigmaComponentProps(importedInstance, 'switch', params);
+        
+        const checked = Boolean(params.checked);
+        const props = importedInstance.componentProperties;
+        const nextProps: Record<string, any> = {};
+        for (const key of Object.keys(props)) {
+            const lowerKey = key.toLowerCase();
+            if (lowerKey.includes('check') || lowerKey.includes('选中') || lowerKey.includes('on') || lowerKey.includes('status')) {
+                if (props[key].type === 'BOOLEAN') {
+                    nextProps[key] = checked;
+                } else if (props[key].type === 'VARIANT') {
+                    const options = def.figmaPropertySnapshot?.properties?.find(p => p.propertyName === key)?.options || [];
+                    if (options.includes('True') && options.includes('False')) {
+                        nextProps[key] = checked ? 'True' : 'False';
+                    } else if (options.includes('On') && options.includes('Off')) {
+                        nextProps[key] = checked ? 'On' : 'Off';
+                    } else if (options.includes('开') && options.includes('关')) {
+                        nextProps[key] = checked ? '开' : '关';
+                    }
+                }
+            }
+        }
+        if (Object.keys(nextProps).length > 0) {
+            try { importedInstance.setProperties(nextProps); } catch(e) {}
+        }
+
+        importedInstance.name = def.name;
+        return importedInstance;
+    } catch (e) {
+        console.warn('[SwitchTemplate] failed to create switch from original Figma component', e);
+        return null;
+    }
+}
+
 async function createInputFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
@@ -3400,7 +3595,7 @@ async function createInputFromFigmaTemplate(
     try {
         const importedInstance = await createFigmaComponentInstance({
             componentKey,
-            fallbackName: def.name,
+            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
                 'Disable 禁用': toVariantBoolean(disabled),
                 'Error 错误': toVariantBoolean(error),
@@ -3552,7 +3747,7 @@ async function createSelectFromFigmaTemplate(
     try {
         const importedInstance = await createFigmaComponentInstance({
             componentKey,
-            fallbackName: def.name,
+            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
                 'Type 类型': resolveSelectTypeVariantLabel(params.selectType ?? params.type),
                 'Size 尺寸': resolveInputSizeVariantLabel(params.size),
@@ -3820,7 +4015,7 @@ async function createCheckboxFromFigmaTemplate(
     try {
         const importedInstance = await createFigmaComponentInstance({
             componentKey,
-            fallbackName: def.name,
+            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
                 'Checked 已选': toVariantBoolean(Boolean(params.checked)),
                 'Indeterminate 半选': toVariantBoolean(Boolean(params.indeterminate)),
@@ -3992,7 +4187,7 @@ async function createCheckboxGroupFromFigmaTemplate(
     try {
 	        const importedInstance = await createFigmaComponentInstance({
 	            componentKey,
-	            fallbackName: def.name,
+	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
 	            variantCriteria: {
 	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
                 'Items 数量': String(itemCount)
@@ -4103,7 +4298,7 @@ async function createRadioGroupFromFigmaTemplate(
     try {
 	        const importedInstance = await createFigmaComponentInstance({
 	            componentKey,
-	            fallbackName: def.name,
+	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
 	            variantCriteria: {
 	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
                 'Items 数量': String(itemCount),
@@ -4148,8 +4343,30 @@ function resolveFormAlignVariantLabel(value: unknown): 'Top 顶部对齐' | 'Lef
     }
 }
 
+function getFormLabelWidthRuntimeConfig(): {
+    defaultWidth: number | null;
+    presets: Record<string, number>;
+    variantThresholds: { medium?: number; large?: number };
+} {
+    const formDef = COMPONENT_DEFS['form'] as any;
+    const runtime = formDef?.runtime?.labelWidth;
+    const presets = runtime?.presets && typeof runtime.presets === 'object' ? runtime.presets : {};
+    const variantThresholds =
+        runtime?.variantThresholds && typeof runtime.variantThresholds === 'object'
+            ? runtime.variantThresholds
+            : {};
+    const defaultWidth =
+        toPositiveNumber(runtime?.default) ?? toPositiveNumber(formDef?.params?.labelWidth?.default);
+    return {
+        defaultWidth: defaultWidth ?? null,
+        presets,
+        variantThresholds
+    };
+}
+
 function resolveFormLabelWidthVariantLabel(params: Record<string, any>): 'Fill 跟随输入域' | 'Default 80' | 'Medium 120' | 'Large 160' {
-    switch (normalizeFormLabelWidthPreset(params.labelWidthPreset)) {
+    const preset = normalizeFormLabelWidthPreset(params.labelWidthPreset);
+    switch (preset) {
         case 'fill':
             return 'Fill 跟随输入域';
         case 'medium-120':
@@ -4160,8 +4377,11 @@ function resolveFormLabelWidthVariantLabel(params: Record<string, any>): 'Fill �
             return 'Default 80';
         default: {
             const explicit = Number(params.labelWidth);
-            if (Number.isFinite(explicit) && explicit >= 150) return 'Large 160';
-            if (Number.isFinite(explicit) && explicit >= 110) return 'Medium 120';
+            const { variantThresholds } = getFormLabelWidthRuntimeConfig();
+            const largeThreshold = toPositiveNumber(variantThresholds.large);
+            const mediumThreshold = toPositiveNumber(variantThresholds.medium);
+            if (Number.isFinite(explicit) && largeThreshold !== null && explicit >= largeThreshold) return 'Large 160';
+            if (Number.isFinite(explicit) && mediumThreshold !== null && explicit >= mediumThreshold) return 'Medium 120';
             return 'Default 80';
         }
     }
@@ -4611,6 +4831,22 @@ function relaxFormFieldTemplateClipping(root: SceneNode): void {
     }
 }
 
+function normalizeFormFieldTemplateSizing(root: SceneNode): void {
+    if ('counterAxisSizingMode' in root) {
+        try {
+            (root as FrameNode).counterAxisSizingMode = 'AUTO';
+        } catch {}
+    }
+    const contentContainer = findFormFieldContentContainer(root);
+    if (contentContainer) {
+        if ('counterAxisSizingMode' in contentContainer) {
+            try {
+                (contentContainer as FrameNode).counterAxisSizingMode = 'AUTO';
+            } catch {}
+        }
+    }
+}
+
 async function updateFormFieldLabelTemplate(root: SceneNode, params: Record<string, any>): Promise<void> {
     const contentContainer = findFormFieldContentContainer(root);
     if (!contentContainer) return;
@@ -4667,20 +4903,52 @@ async function updateFormFieldMessageTemplate(root: SceneNode, params: Record<st
 }
 
 function applyFormControlWidthModeToNode(node: SceneNode, params: Record<string, any>): void {
-    const mode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const mode = resolveFormControlWidthMode(params);
+    if (mode === 'fill') {
+        setFillWidthPreserveHeight(node);
+        return;
+    }
+    const width = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
+    if (width !== null) {
+        setFixedWidth(node, width);
+        return;
+    }
     if ('layoutSizingHorizontal' in node) {
         try {
-            (node as any).layoutSizingHorizontal = mode === 'fill' ? 'FILL' : 'FIXED';
+            (node as any).layoutSizingHorizontal = 'FIXED';
         } catch {}
     }
     if ('layoutGrow' in node) {
         try {
-            (node as any).layoutGrow = mode === 'fill' ? 1 : 0;
+            (node as any).layoutGrow = 0;
         } catch {}
     }
     if ('layoutAlign' in node) {
         try {
-            (node as any).layoutAlign = mode === 'fill' ? 'STRETCH' : 'MIN';
+            (node as any).layoutAlign = 'MIN';
+        } catch {}
+    }
+}
+
+function normalizeFormControlVerticalSizing(node: SceneNode): void {
+    if ('layoutSizingVertical' in node) {
+        try {
+            (node as any).layoutSizingVertical = 'FIXED';
+        } catch {}
+    }
+    if ('layoutAlign' in node) {
+        try {
+            (node as any).layoutAlign = 'MIN';
+        } catch {}
+    }
+}
+
+function preserveNodeHeight(node: SceneNode, height: number | null): void {
+    if (!height || !Number.isFinite(height) || height <= 0) return;
+    if ('resize' in node) {
+        try {
+            const width = 'width' in node ? node.width : (node as any).width;
+            (node as any).resize(width, height);
         } catch {}
     }
 }
@@ -4711,7 +4979,7 @@ async function updateInputControlTemplateInPlace(node: SceneNode, params: Record
         showSuffix,
     });
 
-    const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const widthMode = resolveFormControlWidthMode(params);
     const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
     if (width) {
         node.resize(width, node.height);
@@ -4763,7 +5031,7 @@ async function updateSelectControlTemplateInPlace(node: SceneNode, params: Recor
         selectType: resolveSelectTypeVariantLabel(params.selectType ?? params.type),
     });
 
-    const widthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const widthMode = resolveFormControlWidthMode(params);
     const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
     if (width) {
         node.resize(width, node.height);
@@ -4896,7 +5164,7 @@ async function replaceFormFieldControlTemplate(
     if (!existingControlNode) return;
 
     const controlType = normalizeFormFieldControlType(params.controlType);
-    const controlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
+    const controlWidthMode = resolveFormControlWidthMode(params);
     const nextControlWidth =
         controlType === 'switch' || controlWidthMode === 'fill'
             ? undefined
@@ -4914,10 +5182,28 @@ async function replaceFormFieldControlTemplate(
 
     const controlNode = await renderComponent(controlInstance, { isRoot: false });
     setNodeClipsContent(controlNode, false);
-    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea') {
+    // 优先从注册表读取默认高度，作为真正的“原始高度”兜底
+    const controlDef = COMPONENT_DEFS[controlType];
+    const defaultHeight = controlDef?.runtime?.fallback?.height ?? null;
+    const recordedHeight = 'height' in controlNode ? controlNode.height : 0;
+    const targetHeight = (defaultHeight && defaultHeight > 1) ? defaultHeight : (recordedHeight > 1 ? recordedHeight : 32);
+
+    replaceSceneNode(existingControlNode, controlNode);
+    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea' || controlType === 'datepicker' || controlType === 'timepicker') {
         applyFormControlWidthModeToNode(controlNode, params);
     }
-    replaceSceneNode(existingControlNode, controlNode);
+
+    // 强制恢复高度并设置为 FIXED，避免被模板的 100px 或 AutoLayout 塌陷影响
+    if ('resize' in controlNode) {
+        try {
+            (controlNode as any).resize(controlNode.width, targetHeight);
+        } catch {}
+    }
+    if ('layoutSizingVertical' in controlNode) {
+        try {
+            (controlNode as any).layoutSizingVertical = 'FIXED';
+        } catch {}
+    }
 }
 
 async function extractHorizontalFormFieldShell(
@@ -4959,6 +5245,7 @@ async function createFormFieldFromFigmaTemplate(
         controlType === 'datepicker' ||
         controlType === 'inputnumber' ||
         controlType === 'slider' ||
+        controlType === 'textarea' ||
         controlType === 'timepicker' ||
         controlType === 'upload';
     if (!supportsTemplateControl) return null;
@@ -4987,6 +5274,7 @@ async function createFormFieldFromFigmaTemplate(
 
         // #endregion
         relaxFormFieldTemplateClipping(templateInstance);
+        normalizeFormFieldTemplateSizing(templateInstance);
         await updateFormFieldLabelTemplate(templateInstance, params);
         const updatedInPlace = !instance.children?.length
             ? await updateFormFieldControlTemplateInPlace(templateInstance, params)
@@ -5000,10 +5288,16 @@ async function createFormFieldFromFigmaTemplate(
 
         const detached = templateInstance.detachInstance();
         relaxFormFieldTemplateClipping(detached);
+        normalizeFormFieldTemplateSizing(detached);
         await updateFormFieldLabelTemplate(detached, params);
         await replaceFormFieldControlTemplate(detached, instance, params);
         await updateFormFieldMessageTemplate(detached, params);
         detached.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
+        if ('primaryAxisSizingMode' in detached) {
+            try {
+                (detached as FrameNode).primaryAxisSizingMode = 'AUTO';
+            } catch {}
+        }
         // #endregion
         return detached;
     } catch (e) {
@@ -5079,6 +5373,23 @@ function normalizeFormControlWidthMode(value: unknown): 'fixed' | 'fill' {
     return 'fixed';
 }
 
+function getFormFieldControlWidthModeOverrides(): Record<string, string[]> {
+    const runtime = (COMPONENT_DEFS['form-field'] as any)?.runtime;
+    const overrides = runtime?.controlWidthModeOverrides;
+    return overrides && typeof overrides === 'object' ? overrides : {};
+}
+
+function resolveFormControlWidthMode(params: Record<string, any>): 'fixed' | 'fill' {
+    const controlType = normalizeFormFieldControlType(params.controlType);
+    const overrides = getFormFieldControlWidthModeOverrides();
+    const fillOverrides = Array.isArray(overrides.fill) ? overrides.fill : [];
+    const fixedOverrides = Array.isArray(overrides.fixed) ? overrides.fixed : [];
+    if (fillOverrides.includes(controlType)) return 'fill';
+    if (fixedOverrides.includes(controlType)) return 'fixed';
+    if (fillOverrides.length > 0) return 'fixed';
+    return normalizeFormControlWidthMode(params.controlWidthMode);
+}
+
 function resolveFormFieldLayout(params: Record<string, any>): 'horizontal' | 'vertical' {
     const explicitLayout = String(params.layout || '').trim();
     if (explicitLayout) {
@@ -5091,16 +5402,12 @@ function resolveFormLabelWidth(params: Record<string, any>): number {
     const explicit = Number(params.labelWidth);
     if (Number.isFinite(explicit) && explicit > 0) return explicit;
 
-    switch (normalizeFormLabelWidthPreset(params.labelWidthPreset)) {
-        case 'default-80':
-            return 80;
-        case 'medium-120':
-            return 120;
-        case 'large-160':
-            return 160;
-        default:
-            return 96;
-    }
+    const { defaultWidth, presets } = getFormLabelWidthRuntimeConfig();
+    const preset = normalizeFormLabelWidthPreset(params.labelWidthPreset);
+    const presetWidth = toPositiveNumber(presets[preset]);
+    if (presetWidth !== null) return presetWidth;
+    if (defaultWidth !== null) return defaultWidth;
+    return 0;
 }
 
 function resolveFormLabelControlSpacing(params: Record<string, any>, layout: 'horizontal' | 'vertical'): number {
@@ -5649,11 +5956,13 @@ const FORM_INHERITED_PARAM_KEYS = [
     'controlWidthMode',
     'showColon'
 ];
+const FORM_FIELD_LABEL_WIDTH_DEFAULT =
+    toPositiveNumber((COMPONENT_DEFS['form-field'] as any)?.params?.labelWidth?.default) ?? 0;
 const FORM_FIELD_DEFAULTS: Record<string, any> = {
     layout: 'horizontal',
     labelAlign: 'left',
     labelWidthPreset: 'custom',
-    labelWidth: 96,
+    labelWidth: FORM_FIELD_LABEL_WIDTH_DEFAULT,
     controlWidth: 240,
     controlWidthMode: 'fixed',
     showColon: false
@@ -5776,9 +6085,9 @@ function mapFormRowAlignment(value: unknown): 'MIN' | 'CENTER' | 'MAX' | 'SPACE_
 
 function createControlInstanceFromFormFieldParams(params: Record<string, any>): ComponentInstance {
     const controlType = normalizeFormFieldControlType(params.controlType);
-    const controlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
-    const controlWidth = controlWidthMode === 'fill' ? NaN : Number(params.controlWidth);
-    const width = Number.isFinite(controlWidth) && controlWidth > 0 ? controlWidth : undefined;
+    const controlWidthMode = resolveFormControlWidthMode(params);
+    const explicitControlWidth = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
+    const width = controlWidthMode === 'fill' ? undefined : (explicitControlWidth !== null ? explicitControlWidth : undefined);
 
     if (controlType === 'select') {
         return {
@@ -5910,16 +6219,16 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     }
 
     if (controlType === 'textarea') {
+        const componentToken = 'lib-data-input-textarea';
         return {
             id: 'form-field-control',
-            componentId: 'textarea',
+            componentId: 'figma-component',
             params: {
-                placeholder: params.placeholder || '请输入内容',
-                value: params.value || '',
-                state: params.state || 'Default 默认',
-                disabled: Boolean(params.disabled),
+                componentToken,
+                componentKey: resolveComponentKeyFromToken(componentToken),
                 width,
-                forceFigmaKey: true
+                forceFigmaKey: true,
+                fallbackName: 'TextArea 文本域'
             }
         };
     }
@@ -6076,7 +6385,11 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
             // ignore unsupported sizing transitions
         }
     }
-    if (oldLayoutSizingVertical !== undefined && 'layoutSizingVertical' in newNode) {
+    
+    // 对于表单控件，不从旧节点继承垂直尺寸模式（避免从模板占位符继承 100px 固定高度）
+    const isFormFieldControl = oldName === 'form-field-control' || newNode.name === 'form-field-control' || oldNode.getPluginData('component-id') === 'form-field-control' || newNode.getPluginData('component-id') === 'form-field-control';
+
+    if (!isFormFieldControl && oldLayoutSizingVertical !== undefined && 'layoutSizingVertical' in newNode) {
         try {
             (newNode as any).layoutSizingVertical = oldLayoutSizingVertical;
         } catch {
@@ -6084,6 +6397,7 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
         }
     }
     if (
+        !isFormFieldControl &&
         ('layoutSizingHorizontal' in newNode) === false &&
         'layoutMode' in newNode &&
         newNode.layoutMode !== 'NONE'
@@ -6731,6 +7045,30 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
   const componentId = 'getPluginData' in cell ? cell.getPluginData('component-id') : '';
   const useAutoWidth = componentId === 'table-cell' || componentId === 'table-header-cell';
   const isTagCell = componentId === 'table-cell-tag';
+  const cellParams = 'getPluginData' in cell ? readNodeParams(cell) : {};
+  const table = findTableFrameFromNode(cell);
+  const tableParams = table ? readNodeParams(table) : {};
+  const sizingParams = { ...tableParams, ...cellParams };
+  const isHeader = componentId === 'table-header-cell';
+  const targetHeight = isHeader
+    ? resolveTableHeaderHeight(sizingParams)
+    : resolveTableBodyHeight(sizingParams);
+  const paddingTop =
+    typeof sizingParams.paddingTop === 'number' ? sizingParams.paddingTop : undefined;
+  const paddingBottom =
+    typeof sizingParams.paddingBottom === 'number' ? sizingParams.paddingBottom : undefined;
+  const resolvedPaddingTop =
+    paddingTop !== undefined
+      ? paddingTop
+      : 'paddingTop' in cell
+        ? Number((cell as any).paddingTop || 0)
+        : 0;
+  const resolvedPaddingBottom =
+    paddingBottom !== undefined
+      ? paddingBottom
+      : 'paddingBottom' in cell
+        ? Number((cell as any).paddingBottom || 0)
+        : 0;
   const textNodes = collectTextNodes(cell);
   for (const textNode of textNodes) {
     try {
@@ -6740,12 +7078,78 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
       } else if (mode === 'lineBreak') {
         textNode.textAutoResize = useAutoWidth ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
         textNode.textTruncation = 'DISABLED';
+        if ('layoutSizingHorizontal' in textNode) {
+          try {
+            (textNode as any).layoutSizingHorizontal = 'FILL';
+          } catch {}
+        }
+        if ('layoutSizingVertical' in textNode) {
+          try {
+            (textNode as any).layoutSizingVertical = 'HUG';
+          } catch {}
+        }
       } else {
-        textNode.textAutoResize = 'NONE';
+        textNode.textAutoResize = 'HEIGHT';
         textNode.textTruncation = 'ENDING';
+        if ('layoutSizingHorizontal' in textNode) {
+          try {
+            (textNode as any).layoutSizingHorizontal = 'FILL';
+          } catch {}
+        }
+        if ('layoutSizingVertical' in textNode) {
+          try {
+            (textNode as any).layoutSizingVertical = 'HUG';
+          } catch {}
+        }
       }
     } catch (e) {
       console.warn('Failed to apply text display mode', e);
+    }
+  }
+  if ('counterAxisSizingMode' in cell) {
+    if (mode === 'lineBreak') {
+      try {
+        (cell as any).counterAxisSizingMode = 'AUTO';
+      } catch {}
+      if ('layoutSizingVertical' in cell) {
+        try {
+          (cell as any).layoutSizingVertical = 'HUG';
+        } catch {}
+      }
+      if ('paddingTop' in cell) {
+        try {
+          (cell as any).paddingTop = 8;
+        } catch {}
+      }
+      if ('paddingBottom' in cell) {
+        try {
+          (cell as any).paddingBottom = 8;
+        } catch {}
+      }
+    } else {
+      try {
+        (cell as any).counterAxisSizingMode = 'FIXED';
+      } catch {}
+      if (Number.isFinite(targetHeight) && targetHeight > 0 && 'resize' in cell) {
+        try {
+          (cell as any).resize((cell as any).width, targetHeight);
+        } catch {}
+      }
+      if ('layoutSizingVertical' in cell) {
+        try {
+          (cell as any).layoutSizingVertical = 'FIXED';
+        } catch {}
+      }
+      if (paddingTop !== undefined && 'paddingTop' in cell) {
+        try {
+          (cell as any).paddingTop = paddingTop;
+        } catch {}
+      }
+      if (paddingBottom !== undefined && 'paddingBottom' in cell) {
+        try {
+          (cell as any).paddingBottom = paddingBottom;
+        } catch {}
+      }
     }
   }
   mergeNodeParams(cell, { textDisplay: mode });
@@ -6849,7 +7253,14 @@ async function setSceneText(node: SceneNode, text: string) {
     await figma.loadFontAsync(target.fontName as FontName);
     target.characters = nextText;
     if (isTableTextContext(node) || isTableTextContext(target)) {
-      target.textAutoResize = 'WIDTH_AND_HEIGHT';
+      const cell = findTableCellFromNode(node) || findTableCellFromNode(target);
+      const cellParams = cell ? readNodeParams(cell) : {};
+      const displayMode = String(cellParams.textDisplay || '').trim();
+      if (displayMode === 'lineBreak') {
+        target.textAutoResize = 'WIDTH_AND_HEIGHT';
+      } else if (displayMode === 'ellipsis') {
+        target.textAutoResize = 'NONE';
+      }
     }
   } catch (e) {
     console.warn('Failed to set text', e);
@@ -7196,10 +7607,6 @@ async function renderComponent(
     const computedWidth =
         toPositiveNumber(params.width) ??
         await resolveFormContentWidth(instance, resolvedFormParams);
-    if (computedWidth !== null) {
-        frame.resize(computedWidth, 100);
-        frame.counterAxisSizingMode = 'FIXED';
-    }
 
     if (params.title) {
         const titleNode = figma.createText();
@@ -7209,6 +7616,7 @@ async function renderComponent(
         frame.appendChild(titleNode);
     }
 
+    const shouldStretchChildren = computedWidth !== null;
     if (instance.children) {
         const showActionArea = params.showActionArea !== false;
         for (const child of instance.children) {
@@ -7242,11 +7650,14 @@ async function renderComponent(
                 };
             }
             const childNode = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
-            if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && frame.counterAxisSizingMode === 'FIXED') {
+            if ((childNode.type === 'FRAME' || childNode.type === 'INSTANCE') && shouldStretchChildren) {
                 childNode.layoutAlign = 'STRETCH';
             }
             frame.appendChild(childNode);
         }
+    }
+    if (computedWidth !== null) {
+        setFixedWidth(frame, computedWidth);
     }
     node = frame;
   }
@@ -7264,16 +7675,15 @@ async function renderComponent(
     frame.clipsContent = false;
 
     const width = Number(params.width);
-    if (Number.isFinite(width) && width > 0) {
-        frame.resize(width, 100);
-        frame.counterAxisSizingMode = 'FIXED';
-    }
 
     if (instance.children) {
         for (const child of instance.children) {
             const childNode = await renderComponent(inheritRowFormFieldParams(params, child), { isRoot: false });
             frame.appendChild(childNode);
         }
+    }
+    if (Number.isFinite(width) && width > 0) {
+        setFixedWidth(frame, width);
     }
     node = frame;
   }
@@ -7283,9 +7693,7 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
-    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-    await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
-
+    // Fallback: 如果不支持模板，手工绘制表单字段
     const layout = resolveFormFieldLayout(params);
     const labelAlign = String(params.labelAlign || '').trim().toLowerCase() === 'right' ? 'right' : 'left';
     const frame = figma.createFrame();
@@ -7343,22 +7751,42 @@ async function renderComponent(
         frame.appendChild(labelWrap);
     }
 
-    const controlColumn = figma.createFrame();
-    controlColumn.layoutMode = 'VERTICAL';
-    controlColumn.primaryAxisSizingMode = 'AUTO';
-    controlColumn.counterAxisSizingMode = 'AUTO';
-    controlColumn.itemSpacing = 4;
-    controlColumn.fills = [];
-    controlColumn.clipsContent = false;
-
+    const controlType = normalizeFormFieldControlType(params.controlType);
+    const controlWidthMode = resolveFormControlWidthMode(params);
+    
+    // 直接渲染控件节点，不再包裹 controlColumn
     const controlNode = instance.children && instance.children.length > 0
       ? await renderComponent(instance.children[0], { isRoot: false })
       : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
-    // #endregion
-    controlColumn.appendChild(controlNode);
+    
+    // 优先从注册表读取默认高度，作为真正的“原始高度”兜底
+    const controlDef = COMPONENT_DEFS[controlType];
+    const defaultHeight = controlDef?.runtime?.fallback?.height ?? null;
+    const recordedHeight = 'height' in controlNode ? controlNode.height : 0;
+    const targetHeight = (defaultHeight && defaultHeight > 1) ? defaultHeight : (recordedHeight > 1 ? recordedHeight : 32);
+    frame.appendChild(controlNode);
 
     const messageText = String(params.errorText || params.descriptionText || params.helpText || '').trim();
     if (messageText) {
+        // 如果有错误信息，包裹在一个单独的垂直容器中以保持流向
+        const wrap = figma.createFrame();
+        wrap.layoutMode = 'VERTICAL';
+        wrap.primaryAxisSizingMode = 'AUTO';
+        wrap.counterAxisSizingMode = 'AUTO';
+        wrap.fills = [];
+        wrap.clipsContent = false;
+        
+        if (controlWidthMode === 'fill') {
+            if (layout !== 'vertical') {
+                wrap.layoutGrow = 1;
+            } else {
+                wrap.layoutAlign = 'STRETCH';
+            }
+        }
+        
+        // 把控件移到包裹里
+        wrap.appendChild(controlNode);
+        
         const helpNode = figma.createText();
         await applyTextStyleBinding(helpNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 12 });
         helpNode.characters = messageText;
@@ -7367,10 +7795,25 @@ async function renderComponent(
         } else {
             await applyColorVariable(helpNode, 'form-help-text', '#737A87');
         }
-        controlColumn.appendChild(helpNode);
+        wrap.appendChild(helpNode);
+        frame.appendChild(wrap);
     }
 
-    frame.appendChild(controlColumn);
+    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea' || controlType === 'datepicker' || controlType === 'timepicker') {
+        applyFormControlWidthModeToNode(controlNode, params);
+    }
+
+    if ('resize' in controlNode) {
+        try {
+            (controlNode as any).resize(controlNode.width, targetHeight);
+        } catch {}
+    }
+    if ('layoutSizingVertical' in controlNode) {
+        try {
+            (controlNode as any).layoutSizingVertical = 'FIXED';
+        } catch {}
+    }
+
     node = frame;
     }
   }
@@ -8036,13 +8479,11 @@ async function renderComponent(
           textNode.lineHeight = { value: Number(params.lineHeight), unit: 'PIXELS' };
       }
       
-      if (params.color) {
+      const defaultTextColor = '#42464E';
+      if (params.color && params.color !== defaultTextColor) {
           await applyColorVariable(textNode, "text-custom-key", params.color);
-          // textNode.fills = [{ type: 'SOLID', color: parseColor(params.color) }];
       } else {
-          // Default color
-          await applyColorVariable(textNode, "text-primary-key", "#0C0D0E");
-          // textNode.fills = [{ type: 'SOLID', color: { r: 0.05, g: 0.05, b: 0.05 } }];
+          await applyColorVariable(textNode, "text-secondary-key", defaultTextColor);
       }
       node = textNode;
   }
@@ -8236,8 +8677,27 @@ async function renderComponent(
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
   }
-  // --- DATEPICKER / TIMEPICKER / INPUTNUMBER / SLIDER / TEXTAREA / SWITCH / SEGMENTED-PICKER / UPLOAD ---
-  else if (['datepicker', 'timepicker', 'inputnumber', 'slider', 'textarea', 'switch', 'segmented-picker', 'upload'].includes(instance.componentId)) {
+  // --- TEXTAREA ---
+  else if (instance.componentId === 'textarea') {
+    const templateNode = await createTextareaFromFigmaTemplate(def, params);
+    if (templateNode) {
+        node = templateNode;
+    } else {
+        const width = Number(params.width) > 0 ? Number(params.width) : 240;
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 96);
+    }
+  }
+  // --- SWITCH ---
+  else if (instance.componentId === 'switch') {
+    const templateNode = await createSwitchFromFigmaTemplate(def, params);
+    if (templateNode) {
+        node = templateNode;
+    } else {
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, 44, 22);
+    }
+  }
+  // --- DATEPICKER / TIMEPICKER / INPUTNUMBER / SLIDER / SEGMENTED-PICKER / UPLOAD ---
+  else if (['datepicker', 'timepicker', 'inputnumber', 'slider', 'segmented-picker', 'upload'].includes(instance.componentId)) {
     const snapshot = def.figmaPropertySnapshot as any;
     const componentKey = (snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '') || String(snapshot?.componentKey || '').trim();
     const fallbackWidth = Number(params.width) > 0 ? Number(params.width) : (def.runtime?.fallback?.width ?? 240);
@@ -8246,7 +8706,7 @@ async function renderComponent(
       try {
         const importedInstance = await createFigmaComponentInstance({
           componentKey,
-          fallbackName: def.name,
+          fallbackName: snapshot?.componentSetName || def.name,
           variantCriteria: {}
         });
         applyFigmaComponentProps(importedInstance, instance.componentId, params);
@@ -8314,6 +8774,119 @@ async function renderComponent(
       }
     }
     node = frame;
+  }
+  // --- CHART (chart-toplist / chart-pie / chart-line / chart-bar / chart-area) ---
+  else if (instance.componentId.startsWith('chart-')) {
+    const snapshot = def.figmaPropertySnapshot as any;
+    const token = snapshot?.token || '';
+    const componentKey = (token ? resolveComponentKeyFromToken(token) : '')
+      || String(snapshot?.componentKey || '').trim();
+
+    // Build a set of known top-level VARIANT property names from the registry snapshot.
+    // Only VARIANT properties participate in findFigmaVariant — BOOLEAN/TEXT go to setProperties.
+    // We use the snapshot to determine which params are top-level VARIANT dimensions of the ComponentSet.
+    // Heuristic: a property is a top-level variant dimension if it appears in EVERY variant of the set.
+    // Since we can't know that statically, we use the snapshot properties list:
+    // collect all VARIANT propertyNames from figmaPropertySnapshot.properties.
+    const knownVariantProps = new Set<string>();
+    if (Array.isArray(snapshot?.properties)) {
+      (snapshot.properties as Array<{ propertyName: string; type: string }>).forEach((p) => {
+        if (p.type === 'VARIANT') {
+          knownVariantProps.add(p.propertyName.trim().toLowerCase());
+        }
+      });
+    }
+
+    // Split params into:
+    //   variantOnlyCriteria — only keys that are known VARIANT properties (for findFigmaVariant)
+    //   booleanProps        — BOOLEAN type properties (for setProperties after creation)
+    const CHART_RESERVED = new Set(['height', 'componentToken', 'componentKey', 'fallbackName', 'variantCriteria']);
+
+    // First: parse explicit variantCriteria JSON string if present
+    const explicitCriteria: Record<string, string | boolean> = {};
+    if (typeof params.variantCriteria === 'string' && params.variantCriteria.trim()) {
+      try {
+        const parsed = JSON.parse(params.variantCriteria);
+        if (parsed && typeof parsed === 'object') {
+          Object.assign(explicitCriteria, parsed);
+        }
+      } catch (_) { /* ignore invalid JSON */ }
+    }
+
+    const variantOnlyCriteria: Record<string, string> = {};
+    const booleanProps: Record<string, boolean> = {};
+
+    // Determine which properties are actually BOOLEAN vs VARIANT
+    const knownBooleanProps = new Set<string>();
+    if (Array.isArray(snapshot?.properties)) {
+      (snapshot.properties as Array<{ propertyName: string; type: string }>).forEach((p) => {
+        if (p.type === 'BOOLEAN') {
+          knownBooleanProps.add(p.propertyName.trim().toLowerCase());
+        }
+      });
+    }
+
+    const processParam = (k: string, v: any) => {
+      const kLower = k.trim().toLowerCase();
+      
+      if (typeof v === 'boolean') {
+        booleanProps[k] = v;
+        return;
+      }
+      const strV = String(v).trim();
+      const lowerV = strV.toLowerCase();
+      
+      // Auto-convert string "true"/"false" to boolean ONLY if it's a known boolean property
+      if ((lowerV === 'true' || lowerV === 'false') && knownBooleanProps.has(kLower)) {
+        booleanProps[k] = lowerV === 'true';
+        return;
+      }
+
+      if (knownVariantProps.size === 0 || knownVariantProps.has(kLower)) {
+        variantOnlyCriteria[k] = strV;
+      }
+    };
+
+    // Merge explicit criteria first
+    Object.entries(explicitCriteria).forEach(([k, v]) => processParam(k, v));
+
+    // Then merge remaining params
+    Object.entries(params).forEach(([k, v]) => {
+      if (CHART_RESERVED.has(k) || v === undefined || v === null) return;
+      processParam(k, v);
+    });
+
+    const variantCriteria = Object.keys(variantOnlyCriteria).length > 0 ? variantOnlyCriteria : undefined;
+
+    if (componentKey) {
+      try {
+        const importedInstance = await createFigmaComponentInstance({
+          componentKey,
+          fallbackName: snapshot?.componentSetName || def.name,
+          variantCriteria
+        });
+        // Apply boolean properties via setProperties after instance creation
+        if (Object.keys(booleanProps).length > 0) {
+          try {
+            importedInstance.setProperties(booleanProps);
+          } catch (e) {
+            console.warn(`[FigmaUI] setProperties failed for ${instance.componentId}`, e);
+          }
+        }
+        
+        // Use user-provided height if valid, otherwise preserve original component height
+        if (Number.isFinite(Number(params.height)) && Number(params.height) > 0) {
+          importedInstance.resize(importedInstance.width, Number(params.height));
+        }
+
+        node = importedInstance;
+      } catch (e) {
+        console.warn(`[FigmaUI] failed to create ${instance.componentId} from Figma component`, e);
+        node = await createMissingFigmaComponentFrame(token || def.name, undefined, Number(params.height) > 0 ? Number(params.height) : 220);
+      }
+    } else {
+      node = await createMissingFigmaComponentFrame(token || def.name, undefined, Number(params.height) > 0 ? Number(params.height) : 220);
+    }
   }
   else {
     // Fallback
@@ -9730,7 +10303,7 @@ figma.ui.onmessage = async (msg) => {
 	            if (typeof params.columnWidthMode === 'string') {
 	                applyColumnWidthMode(node, params.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', params.width);
 	            }
-	            if (typeof params.textAlign === 'string' || typeof params.textDisplay === 'string') {
+            if (typeof params.textAlign === 'string' || typeof params.textDisplay === 'string') {
                 const children = node.children.filter((child) => {
                     const id = child.getPluginData('component-id');
                     return isTableCellComponentId(id);
@@ -9743,6 +10316,12 @@ figma.ui.onmessage = async (msg) => {
                         applyCellTextDisplay(child, params.textDisplay as 'ellipsis' | 'lineBreak');
 	                    }
 	                }
+                if (typeof params.textDisplay === 'string') {
+                    const table = findTableFrameFromNode(node);
+                    if (table) {
+                        alignAllTableRows(table);
+                    }
+                }
 	            }
             if (params.headerText !== undefined) {
                 const headerCellNode = node.children.find(
@@ -9774,6 +10353,17 @@ figma.ui.onmessage = async (msg) => {
                 const column = findTableColumnFromNode(node);
                 if (column) {
                     applyColumnWidthMode(column, params.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', params.width);
+                }
+            }
+            if (typeof params.textDisplay === 'string') {
+                const cell = findTableCellFromNode(node);
+                const column = findTableColumnFromNode(node);
+                if (cell && column) {
+                    const table = findTableFrameFromNode(column);
+                    const rowIndex = column.children.indexOf(cell as SceneNode);
+                    if (table && rowIndex >= 0) {
+                        alignTableRowHeights(table, rowIndex, [cell as SceneNode]);
+                    }
                 }
             }
         }
@@ -9838,22 +10428,17 @@ figma.ui.onmessage = async (msg) => {
           }
         }
 
-        if (componentId === 'table-cell') {
-          const children = column.children.filter((child) => {
-            const id = child.getPluginData('component-id');
-            return isTableCellComponentId(id) && id !== 'table-header-cell';
-          });
-          for (const child of children) {
-            applyCellAutoWidth(child as SceneNode);
-          }
-        }
-
         if (isActionCell) {
           await ensureOperationColumnHeader(column);
         }
 
         const alignToApply = typeof textAlign === 'string' ? textAlign : undefined;
-        const displayToApply = typeof textDisplay === 'string' ? textDisplay : undefined;
+        let displayToApply = typeof textDisplay === 'string' ? textDisplay : undefined;
+        if (!displayToApply && componentId === 'table-cell') {
+          const defaultDisplay = getDefaultParams('table-cell').textDisplay;
+          displayToApply = typeof defaultDisplay === 'string' ? defaultDisplay : 'ellipsis';
+          columnParamPatch.textDisplay = displayToApply;
+        }
         if (alignToApply || displayToApply) {
           const children = column.children.filter((child) => {
             const id = child.getPluginData('component-id');

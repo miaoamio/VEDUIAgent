@@ -33,6 +33,12 @@ const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 const isEnabledComponent = (def: ComponentDefinition) => (
   def.id === 'figma-component' || !def.figmaPropertySnapshot
 );
+const isFigmaKeyComponent = (componentId?: string) => {
+  if (!componentId) return false;
+  if (componentId === 'figma-component') return true;
+  const def = COMPONENT_DEFS[componentId];
+  return Boolean(def?.figmaPropertySnapshot);
+};
 const BASE_COMPONENT_KEY_TO_NAME = Object.values(BASE_COMPONENT_TOKEN_PACK).reduce((acc, item) => {
   const key = typeof item?.componentKey === 'string' ? item.componentKey.trim() : '';
   if (key) {
@@ -1870,6 +1876,23 @@ function App() {
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
   const [chartExtraOptions, setChartExtraOptions] = React.useState<Record<string, string>>({});
   const [activeOptionMenu, setActiveOptionMenu] = React.useState<string | null>(null);
+  const [tagRowHeight, setTagRowHeight] = React.useState(0);
+
+  // Update tag row height when options change
+  React.useEffect(() => {
+    if (chartShortcutActive && chartDropdownRef.current) {
+      // Use ResizeObserver to catch actual height changes after render
+      const observer = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          setTagRowHeight(entry.contentRect.height);
+        }
+      });
+      observer.observe(chartDropdownRef.current);
+      return () => observer.disconnect();
+    } else {
+      setTagRowHeight(0);
+    }
+  }, [chartShortcutActive, chartExtraOptions]);
   const [chartMenuOpen, setChartMenuOpen] = React.useState(false);
   const [quickComponentMenuOpen, setQuickComponentMenuOpen] = React.useState(false);
   const chartUiHtml = React.useMemo(
@@ -2056,7 +2079,7 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        const nextTab = data?.componentId === 'figma-component' ? 'chat' : 'selection';
+        const nextTab = isFigmaKeyComponent(data?.componentId) ? 'chat' : 'selection';
         const multiTaskActive = isMultiTaskExecutionActive(
           Boolean(deferSelectionAutoSwitchRef.current),
           loading,
@@ -2581,10 +2604,11 @@ function App() {
    - 禁止在未读取 spec 的情况下直接猜测组件参数（表格和表单除外）。
    - read_specs 会返回组件的 params 定义和使用示例。
    - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
-   - 当要复用 Figma 设计系统组件时，先 read_specs([\"figma-component\"]) 获取 ComponentTokenCatalog，再使用 params.componentToken 调用。
+   - 当要复用 Figma 设计系统组件时，先 read_specs(["figma-component"]) 获取 ComponentTokenCatalog，再使用 params.componentToken 调用。
+   - 所有 Figma 原生组件（带 figmaBinding.renderKey）请注意阅读其 registry 里的 figmaPropertySnapshot，那里记录了组件的实际 token 和 Figma Component Key。如果直接复用 token 创建实例，请确保 token 写对；如果用 key 创建，请确保从 snapshot 里取对。
    - 若需要给 figma-component 传 variantCriteria，先调用 discover_component_props 探测目标 token 的真实可设置属性。
    - 如果未探测到属性，先只摆放组件本体（componentToken），不要猜测属性名。
-   - 禁止臆造 componentKey；只有 token 不可用时再回退 componentKey。
+   - 禁止臆造 componentKey；只有 token 不可用时再回退 componentKey。必须严格使用 registry figmaPropertySnapshot 中的 token 和 componentKey。
    - 对于 boolean 参数，不要显式输出默认值；仅当用户强行指定时才写入 true/false，未指定则使用默认值。
    - 对于 figma-component，不要输出 width/height，除非用户明确要求尺寸。
 3. **表格创建优先走 draw_table(payload)**（不要输出冗长 table 子树）。
@@ -2685,6 +2709,11 @@ function App() {
     - 建议统一 payload 形态：payload.block.container/header/body/footer（旧字段继续兼容）。
     - expand_table_block 支持 header.tabs/actions + body.filters.items + body.table + footer.pagination。
     - expand_chart_block 支持 header.tabs/actions + body.charts[] + footer.notes。
+      body.charts[] 每个 item 结构：{ "componentId": "chart-pie", "props": { "类型 Type": "环形图 DonutChart", "分类数量 Item": "5", "数值标注 Data Annotation": "On" } }
+      componentId 必须是注册的 chart 组件 ID（chart-toplist / chart-pie / chart-line / chart-bar / chart-area），props 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）。
+      示例（折线图）：{ "componentId": "chart-line", "props": { "线数量": "3", "类型 Type": "默认 default", "Show Legend": true } }
+      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 ": "3", "类型 type": "基础/分组柱 default" } }
+      ⚠️ 注意：body.charts[].props 中的属性名必须从 registry params 或 figmaPropertySnapshot 中取，不要自造属性名。
     - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
     - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
 13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
@@ -2706,6 +2735,12 @@ function App() {
 表格专用示例（固定链路）:
 Step1:
 {"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
+Step2:
+{"thought":"结束","action":{"type":"finish"}}
+
+图表专用示例（固定链路）:
+Step1（单图表，直接 create_node，params 中的属性名必须与 Figma variant propertyName 完全一致）:
+{"thought":"画环形图","action":{"type":"create_node","payload":{"componentId":"chart-pie","params":{"类型 Type":"环形图 DonutChart","分类数量 Item":"5","数值标注 Data Annotation":"On","总数值 Sum":"On","height":220}}}}
 Step2:
 {"thought":"结束","action":{"type":"finish"}}
 
@@ -2816,8 +2851,15 @@ StepD:
           specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], sections?: { title?: string; rows?: any[][]; fields?: any[]; groups?: any[] }[], groups?: any[], groupLabelMode?: "all"|"first", layout?: "horizontal"|"vertical", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
         }
         if (id === 'filter-group') {
-          specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId="filter-group")，不要用 draw_form 代替（除非用户明确要“带字段标签的表单布局”）。\n`;
+          specsInfo += `ActionHint: 筛选器组(filter-group)是独立组件；创建它请使用 create_node(componentId=”filter-group”)，不要用 draw_form 代替（除非用户明确要”带字段标签的表单布局”）。\n`;
           specsInfo += `ParamHint: itemsText 格式为 逗号/换行分隔的 label:type；type 支持 select/input/search（search 会将下拉 icon 替换为 search icon）。\n`;
+        }
+        if (CHART_SPEC_IDS.includes(id) || id.startsWith('chart-')) {
+          specsInfo += `ActionHint: 图表通过 expand_chart_block 的 body.charts[] 创建。每个 chart item 结构：{ “componentId”: “<chart-id>”, “props”: { “<Figma propertyName>”: “<enumValue>” } }。\n`;
+          specsInfo += `ParamRule: body.charts[].props 中的属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排），enumValue 必须从 registry params.enumValues 中取，不要自造属性名或用中文 开/关 代替 On/Off。\n`;
+          specsInfo += `ParamRule: chart-pie 的分类数量属性名是 “分类数量 Item”，取值范围 “2”–“10”（字符串）；数值标注是 “数值标注 Data Annotation”，取值 “Off”/”On”；类型是 “类型 Type” 取值 “饼图 PieChart”/”环形图 DonutChart”。\n`;
+          specsInfo += `ParamRule: chart-bar/chart-toplist 的系列数属性名是 “数量 “（末尾有空格），取值 “1”–“4”（字符串）；类型属性名是 “类型 type”（小写 t）。\n`;
+          specsInfo += `ParamRule: chart-line 的折线数属性名是 “线数量”，取值 “1”–“6”；chart-area 的线数属性名是 “线数量 “（末尾有空格）。\n`;
         }
         if (id === 'checkbox' || id === 'checkbox-group' || id === 'radio-group') {
           specsInfo += `ActionHint: Checkbox/radio visuals are sensitive. Prefer real Figma components; do not draw checkmarks or circles with vector/svg/path/text when checkbox/checkbox-group/radio-group or figma-component tokens are available.\n`;
@@ -6395,14 +6437,14 @@ StepD:
     const extraOptionsText = (CHART_EXTRA_OPTIONS[chartShortcutActive || ''] || [])
       .map(opt => {
         const val = chartExtraOptions[opt.key] || opt.defaultValue;
-        return `${opt.label}为${val}`;
+        return `${opt.label}: ${val}`;
       })
-      .join('，');
+      .join(', ');
     const baseChartText = chartShortcutActive 
-      ? `生成一个${chartShortcutActive}${extraOptionsText ? `，其中${extraOptionsText}` : ''}`
+      ? `生成一个${chartShortcutActive}${extraOptionsText ? `, 变体属性要求为 { ${extraOptionsText} }` : ''}`
       : '';
     const turnInput = (baseChartText && userInput.trim())
-      ? `${baseChartText}。${userInput}`
+      ? `${baseChartText}。补充说明：${userInput}`
       : baseChartText
         ? baseChartText
         : userInput;
@@ -7580,6 +7622,8 @@ StepD:
     { label: '面积图', prompt: '生成一个面积图' }
   ];
 
+  // CHART_EXTRA_OPTIONS: key 是内部状态 key，label 是发送给 AI 的 Figma propertyName（需与 registry figmaPropertySnapshot 对齐），
+  // options 是真实的 Figma variant 枚举值（直接嵌入 prompt）
   const CHART_EXTRA_OPTIONS: Record<string, {
     key: string;
     label: string;
@@ -7587,28 +7631,29 @@ StepD:
     defaultValue: string;
   }[]> = {
     '环形图': [
-      { key: 'categoryCount', label: '分类数量', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' },
+      { key: 'sumValue', label: '总数值 Sum', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '饼图': [
-      { key: 'categoryCount', label: '分类数量', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '柱状图': [
-      { key: 'categoryCount', label: '数据组数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'seriesCount', label: '数量 ', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
     ],
     '条形图': [
-      { key: 'categoryCount', label: '数据组数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'seriesCount', label: '数量 ', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
     ],
     '折线图': [
-      { key: 'categoryCount', label: '数据点数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 Type', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
     ],
     '面积图': [
-      { key: 'categoryCount', label: '数据点数', options: ['3', '4', '5', '6', '7', '8'], defaultValue: '5' },
-      { key: 'valueAnnotation', label: '数值标注', options: ['开启', '关闭'], defaultValue: '开启' }
+      { key: 'lineCount', label: '线数量 ', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 Type', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
     ]
   };
   const buildQuickComponentName = (displayName: string, token: string) => {
@@ -8761,7 +8806,8 @@ StepD:
 
   const renderSelectionEditor = () => {
     if (!selectedComponent) return null;
-    if (selectedComponent.componentId === 'figma-component') return null;
+    if (isFigmaKeyComponent(selectedComponent.componentId)) return null;
+    if (selectedComponent.componentId === 'text') return null;
     if (selectedComponent.componentId === 'table') {
       return renderTablePropertyEditor();
     }
@@ -9639,7 +9685,12 @@ StepD:
                     })}
                   </div>
                 )}
-                <div className="composer-textarea-wrap">
+                <div className="composer-textarea-wrap" style={{ 
+                  paddingTop: chartShortcutActive && tagRowHeight > 0
+                    ? `${Math.max(0, tagRowHeight + 16)}px`
+                    : '10px',
+                  transition: 'padding-top 0.2s ease-in-out'
+                }}>
                   <textarea
                     className="composer-textarea"
                     value={userInput}

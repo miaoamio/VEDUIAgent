@@ -146,7 +146,7 @@ export const basicComponents: ComponentRegistry["components"] = {
       },
       "color": {
         "type": "color",
-        "default": "#0C0D0E",
+        "default": "#42464E",
         "description": "文本颜色"
       },
       "fontWeight": {
@@ -184,6 +184,17 @@ export const basicComponents: ComponentRegistry["components"] = {
         ],
         "idCandidates": [
           "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
+        ]
+      },
+      "text-secondary-key": {
+        "enabled": true,
+        "token": "text.secondary",
+        "variableRef": "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562",
+        "keyCandidates": [
+          "a7442f0ba4f4f027d86e03f335df11c38232c0ce"
+        ],
+        "idCandidates": [
+          "VariableID:a7442f0ba4f4f027d86e03f335df11c38232c0ce/174345:562"
         ]
       },
       "text-custom-key": {

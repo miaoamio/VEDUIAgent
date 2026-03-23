@@ -352,8 +352,10 @@ h2 {
   position: absolute;
   top: 10px;
   left: 12px;
+  right: 12px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   z-index: 2;
 }
@@ -1457,7 +1459,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
 }
 
 .composer-box.with-chart-tag .composer-textarea {
-  text-indent: calc(var(--chart-tag-width, 0px) + 6px);
+  /* Remove text-indent to allow normal text wrapping */
 }
 
 .composer-textarea:focus {
@@ -2432,23 +2434,27 @@ button:disabled {
 }
 
 .selection-primary {
-  background: #1664FF;
-  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ved-button-primary-bg, #18181B);
+  color: var(--ved-button-primary-text, #FFFFFF);
   border: none;
-  border-radius: 10px;
-  height: 38px;
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: 4px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
   cursor: pointer;
   width: 100%;
 }
 
 .selection-primary:hover {
-  background: #0d57e0;
+  background: var(--ved-button-primary-bg, #18181B);
 }
 
 .selection-primary:disabled {
-  background: #93c5fd;
+  background: var(--ved-button-primary-bg, #18181B);
   cursor: not-allowed;
 }
 
