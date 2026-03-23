@@ -106,9 +106,11 @@
 - 当模型 thought 语义是“初始化/创建/更新 任务/计划”时：
   - 不在对话气泡里额外追加 `Plan initialized / Plan updated` 的系统摘要行
   - 计划变化直接体现在任务面板（任务数量、任务名称、状态变化）
+  - 执行任务的系统回执只展示对用户有意义的信息：不展示节点/父级等实现细节
 
 实现锚点：
 - set_plan/init_plan 与 update_plan 的对话回执抑制逻辑：[App.tsx:L6552-L6686](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L6552-L6686)
+- 执行任务成功回执（隐藏节点/父级等细节）：[App.tsx:L6078-L6224](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L6078-L6224)
 
 ### 3.4 避免重复信息：末尾“任务状态汇总 thought”自动隐藏
 
@@ -130,6 +132,23 @@
 - 系统回执翻译入口：`translateSystemLine`（[App.tsx](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L284-L299)）
 - 任务执行成功/失败文案（已中文化）：[App.tsx:L6070-L6228](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L6070-L6228)
 - 任务完成回执（中文）：[App.tsx:L6758-L6771](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L6758-L6771)
+
+### 3.6 多任务执行时的自动跳转规则（手动调整面板）
+
+目标：
+- 避免“绘制第一个任务完成后就自动跳到手动调整面板”，打断后续任务的对话流阅读。
+
+规则：
+- 当对话流触发执行多个任务（计划任务数 > 1）时：
+  - 在所有任务都完成之前，不因画布选中变化而自动切换到“手动调整”面板，应保持在对话流（chat）页。
+  - 等整轮执行结束（loading 结束）且画布已有选中内容后，再自动切换到“手动调整”面板。
+- 当只执行 1 个任务，或未触发执行任务时：
+  - 保持现有效果：绘制完成（产生选中）后可直接自动跳转到“手动调整”面板。
+
+实现锚点：
+- 多任务执行期间抑制 selection-update 的自动切换：[App.tsx:L2038-L2068](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L2038-L2068)
+- 执行结束后再统一切换到 selection：[App.tsx:L2077-L2082](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L2077-L2082)
+- 触发多任务延迟切换标记（set_plan/自动生成计划）：[App.tsx:L6419-L6572](file:///Users/bytedance/VEDUIAgent/src/App.tsx#L6419-L6572)
 
 ## 4. Thought 图标规则（与任务/计划相关）
 
@@ -159,4 +178,3 @@
 如果需要在后续迭代中让“对话流展示任务相关内容”遵循统一规则：
 - 研发侧：以本文作为 UI 逻辑与样式回归的准绳，修改时优先对照本文各条规则与锚点。
 - 运行时侧：若需要让模型遵守“计划控制回执不刷屏/全中文”等展示约束，应把这些规则同步到运行时 prompt（避免模型输出与 UI 展示策略冲突）。
-

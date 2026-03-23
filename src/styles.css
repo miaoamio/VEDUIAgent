@@ -76,10 +76,14 @@ h2 {
   flex-direction: column;
   gap: 12px;
   flex: 1;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
   min-height: 0;
   padding-bottom: 8px;
+}
+
+.chat-scroll:hover {
+  overflow-y: auto;
 }
 
 .chat-thread {

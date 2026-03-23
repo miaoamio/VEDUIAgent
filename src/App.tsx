@@ -1969,6 +1969,7 @@ function App() {
   const [thinkingActive, setThinkingActive] = React.useState(false);
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
   const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(true);
+  const deferSelectionAutoSwitchRef = React.useRef(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -2043,7 +2044,16 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTab(data?.componentId === 'figma-component' ? 'chat' : 'selection');
+        const nextTab = data?.componentId === 'figma-component' ? 'chat' : 'selection';
+        const isMultiTaskExecutionActive =
+          Boolean(deferSelectionAutoSwitchRef.current) &&
+          loading &&
+          agentPlan?.tasks?.length &&
+          agentPlan.tasks.length > 1 &&
+          agentPlan.tasks.some((task) => task.status === 'pending' || task.status === 'in_progress');
+        if (!isMultiTaskExecutionActive || nextTab === 'chat') {
+          setActiveTab(nextTab);
+        }
         if (data.componentId) {
           setSelectedComponent(data);
           setSelectionVersion((prev) => prev + 1);
@@ -2054,7 +2064,15 @@ function App() {
       if (type === 'selection-multi-update') {
         setSelectionCount(data?.count ?? 0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTab('selection');
+        const isMultiTaskExecutionActive =
+          Boolean(deferSelectionAutoSwitchRef.current) &&
+          loading &&
+          agentPlan?.tasks?.length &&
+          agentPlan.tasks.length > 1 &&
+          agentPlan.tasks.some((task) => task.status === 'pending' || task.status === 'in_progress');
+        if (!isMultiTaskExecutionActive) {
+          setActiveTab('selection');
+        }
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
@@ -2072,7 +2090,14 @@ function App() {
       }
 
     };
-  }, [activeTab]);
+  }, [activeTab, agentPlan, loading]);
+
+  React.useEffect(() => {
+    if (!deferSelectionAutoSwitchRef.current) return;
+    if (loading) return;
+    if (selectionCount <= 0) return;
+    setActiveTab('selection');
+  }, [loading, selectionCount]);
 
   React.useEffect(() => {
     if (!selectedComponent || selectedComponent.componentId !== 'form-field') return;
@@ -6083,7 +6108,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}`
       };
     }
 
@@ -6114,7 +6139,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}`
       };
     }
 
@@ -6142,7 +6167,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}`
       };
     }
 
@@ -6175,7 +6200,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}`
       };
     }
 
@@ -6207,7 +6232,7 @@ StepD:
       return {
         ok: true,
         nodeId,
-        message: `[System]: 任务执行成功：${task.title || task.taskId}（节点=${nodeId}${parentId ? `，父级=${parentId}` : ''}）`
+        message: `[System]: 任务执行成功：${task.title || task.taskId}`
       };
     }
 
@@ -6343,6 +6368,7 @@ StepD:
     }
 
     stopRequestedRef.current = false;
+    deferSelectionAutoSwitchRef.current = false;
     llmAbortRef.current?.abort();
     const abortController = new AbortController();
     llmAbortRef.current = abortController;
@@ -6537,6 +6563,9 @@ StepD:
             const inferredPlan = inferInitialPlanFromUserInput(userInput);
             if (inferredPlan) {
                 runtimePlan = inferredPlan;
+                if (runtimePlan.tasks.length > 1) {
+                  deferSelectionAutoSwitchRef.current = true;
+                }
                 const summary = summarizePlan(runtimePlan);
                 const autoMsg = `[System]: 已自动生成执行计划（${runtimePlan.tasks.length} 个任务）。`;
                 accumulatedLog += autoMsg + '\n' + summary;
@@ -6701,6 +6730,9 @@ StepD:
                     runtimePlan = nextPlan;
                     setAgentPlan(runtimePlan);
                     setPlanTasksCollapsed(false);
+                    if (runtimePlan.tasks.length > 1) {
+                      deferSelectionAutoSwitchRef.current = true;
+                    }
                     const summary = summarizePlan(runtimePlan);
                     messages.push({ role: "user", content: `System: Plan initialized.\n${summary}` });
                 }
