@@ -168,8 +168,10 @@ function toSeriesSpecText(raw: string, redo = false): string {
 }
 
 type AiDisplayItem = {
-  kind: 'thought' | 'text';
+  kind: 'thought' | 'spec_hint' | 'action_json' | 'system' | 'streaming' | 'raw' | 'text';
   text: string;
+  actionType?: string;
+  payloadText?: string;
 };
 
 function parseSeriesSpecLine(text: string): { kind: string; redo: boolean } | null {
@@ -201,6 +203,102 @@ function normalizeComponentSpecLine(text: string): string {
   return text;
 }
 
+const SEARCH_THOUGHT_KEYWORDS_CN = ['规范', '读取', '阅读', '目录', '组件库', '了解规范', '了解组件'];
+const SEARCH_THOUGHT_KEYWORDS_EN = ['spec', 'component', 'figma'];
+const PROPS_THOUGHT_KEYWORDS_CN = ['属性', '探测', '探查', '发现属性'];
+const PROPS_THOUGHT_KEYWORDS_EN = ['props'];
+const FRAME_THOUGHT_KEYWORDS_CN = ['生成', '创建', '绘制'];
+const FRAME_THOUGHT_KEYWORDS_EN = ['generate', 'create', 'draw'];
+
+function includesAny(haystack: string, keywords: string[]): boolean {
+  for (const keyword of keywords) {
+    if (keyword && haystack.includes(keyword)) return true;
+  }
+  return false;
+}
+
+function isSearchThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  if (raw.startsWith('读')) return true;
+  return (
+    includesAny(raw, SEARCH_THOUGHT_KEYWORDS_CN) ||
+    includesAny(lower, SEARCH_THOUGHT_KEYWORDS_EN) ||
+    includesAny(raw, PROPS_THOUGHT_KEYWORDS_CN) ||
+    includesAny(lower, PROPS_THOUGHT_KEYWORDS_EN)
+  );
+}
+
+function isFrameThoughtText(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (isSearchThoughtText(raw)) return false;
+  const lower = raw.toLowerCase();
+  if (raw.startsWith('生成') || raw.startsWith('创建') || raw.startsWith('绘制')) return true;
+  return includesAny(raw, FRAME_THOUGHT_KEYWORDS_CN) || includesAny(lower, FRAME_THOUGHT_KEYWORDS_EN);
+}
+
+function getThoughtIconKind(text: string): 'search' | 'frame' | 'brain' {
+  if (isSearchThoughtText(text)) return 'search';
+  if (isFrameThoughtText(text)) return 'frame';
+  return 'brain';
+}
+
+function translateSystemLine(text: string): string {
+  const normalized = String(text || '').trim();
+  let match = normalized.match(/^(draw_form)\s+success\s+\(ID:\s*([^\s,]+),\s*rows=([0-9]+),\s*layout=([^)]+)\)\.?$/i);
+  if (match) {
+    return `表单创建成功 (ID: ${match[2]}, 行数=${match[3]}, 布局=${match[4]})`;
+  }
+  match = normalized.match(/^(draw_table)\s+success\s+\(ID:\s*([^\s,]+),\s*cols=([0-9]+),\s*rows=([0-9]+)\)\.?$/i);
+  if (match) {
+    return `表格创建成功 (ID: ${match[2]}, 列数=${match[3]}, 行数=${match[4]})`;
+  }
+  match = normalized.match(
+    /^(discover_component_props|inspect_component_props|crawl_component_props)\s+done\.\s*success=([0-9]+),\s*failed=([0-9]+),\s*processed=([0-9]+)\/([0-9]+)(?:\s*\(truncated\))?\.?$/i
+  );
+  if (match) {
+    const truncated = /\(truncated\)/i.test(normalized);
+    return `组件属性探测完成（成功=${match[2]}，失败=${match[3]}，处理=${match[4]}/${match[5]}${truncated ? '，已截断' : ''}）`;
+  }
+  match = normalized.match(
+    /^(inspect_component_structure|discover_component_structure)\s+done\.\s*success=([0-9]+),\s*failed=([0-9]+)\.?$/i
+  );
+  if (match) {
+    return `组件结构探测完成（成功=${match[2]}，失败=${match[3]}）`;
+  }
+  match = normalized.match(/^Applied scene successfully\s+\(intent=([^,]+),\s*root=([^,]+),\s*ops=([0-9]+)\)\.?$/i);
+  if (match) {
+    return `场景应用成功 (intent=${match[1]}, root=${match[2]}, ops=${match[3]})`;
+  }
+  match = normalized.match(/^Created\s+(.+?)\s+\(ID:\s*([^)]+)\)\.?$/i);
+  if (match) {
+    return `组件创建成功 (ID: ${match[2]})`;
+  }
+  match = normalized.match(/^Loaded specs for\s+(.+?)\.?$/i);
+  if (match) {
+    return `已读取规范 (${match[1]})`;
+  }
+  match = normalized.match(/^Specs already loaded for\s+(.+?)$/i);
+  if (match) {
+    return `规范已加载 (${match[1]})`;
+  }
+  match = normalized.match(/^Invalid\s+(.+?)\s+payload\.?$/i);
+  if (match) {
+    return `参数无效：${match[1]}`;
+  }
+  match = normalized.match(/^Unknown action type\s+'([^']+)'\.?$/i);
+  if (match) {
+    return `未知动作类型：${match[1]}`;
+  }
+  match = normalized.match(/^(.+?)\s+failed:\s*(.+)$/i);
+  if (match) {
+    return `执行失败：${match[2]}`;
+  }
+  return normalized;
+}
+
 function ChevronUpIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -220,6 +318,154 @@ function ChevronUpIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M5.75 3.5L9.25 7L5.75 10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.5 5.75L7 9.25L10.5 5.75"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ActivityIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M22 12h-4l-3 9-6-18-3 9H2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CircleCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M8 12.5L11 15.5L16.5 9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CircleXIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M9 9L15 15"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15 9L9 15"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FrameIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <line x1="22" x2="2" y1="6" y2="6" />
+      <line x1="22" x2="2" y1="18" y2="18" />
+      <line x1="6" x2="6" y1="2" y2="22" />
+      <line x1="18" x2="18" y1="2" y2="22" />
     </svg>
   );
 }
@@ -309,6 +555,46 @@ function UserMessageBubble({
   );
 }
 
+function IconTextRow({
+  as,
+  className,
+  textClassName,
+  icon,
+  children,
+  ...rest
+}: {
+  as?: any;
+  className?: string;
+  textClassName?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  [key: string]: any;
+}) {
+  const textRef = React.useRef<HTMLElement | null>(null);
+  const [multiLine, setMultiLine] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    const style = window.getComputedStyle(el);
+    const lineHeight = Number.parseFloat(style.lineHeight || '0');
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+      setMultiLine(false);
+      return;
+    }
+    setMultiLine(el.scrollHeight > lineHeight + 1);
+  }, [children]);
+  const Container = as || 'div';
+  const containerClass = `${className || ''} ${multiLine ? 'multi-line' : 'single-line'}`.trim();
+  return (
+    <Container className={containerClass} {...rest}>
+      {icon}
+      <span ref={textRef as any} className={textClassName}>
+        {children}
+      </span>
+    </Container>
+  );
+}
+
 function buildAiDisplayItems(value: string): AiDisplayItem[] {
   const text = normalizeDisplayText(value);
   const lines = text.split('\n');
@@ -318,9 +604,43 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
     const line = rawLine.trimEnd();
     if (line.trim() === '') continue;
     const trimmedStart = line.trimStart();
-    if (trimmedStart.startsWith('[JSON]:')) continue;
-    if (trimmedStart.startsWith('[Raw]:')) continue;
-    if (trimmedStart.startsWith('[Streaming]:')) continue;
+    const isSpecHintLine = (input: string) => {
+      const normalized = String(input || '').trim();
+      if (parseSeriesSpecLine(normalized)) return true;
+      return /已加载.+规范/.test(normalized) || /已读取.+规范/.test(normalized);
+    };
+    const parseActionJson = (raw: string) => {
+      try {
+        const parsed = JSON.parse(raw);
+        const actionType = typeof parsed?.action?.type === 'string' ? parsed.action.type : undefined;
+        const payload = parsed?.action?.payload ?? parsed?.action ?? parsed;
+        const payloadText = JSON.stringify(payload, null, 2);
+        return { actionType, payloadText };
+      } catch {
+        return { actionType: undefined, payloadText: raw };
+      }
+    };
+    if (trimmedStart.startsWith('[JSON]:')) {
+      const jsonText = trimmedStart.replace('[JSON]:', '').trimStart();
+      const meta = parseActionJson(jsonText);
+      items.push({
+        kind: 'action_json',
+        text: jsonText,
+        actionType: meta.actionType,
+        payloadText: meta.payloadText
+      });
+      continue;
+    }
+    if (trimmedStart.startsWith('[Raw]:')) {
+      const rawText = trimmedStart.replace('[Raw]:', '').trimStart();
+      items.push({ kind: 'raw', text: rawText });
+      continue;
+    }
+    if (trimmedStart.startsWith('[Streaming]:')) {
+      const streamText = trimmedStart.replace('[Streaming]:', '').trimStart();
+      items.push({ kind: 'streaming', text: streamText });
+      continue;
+    }
 
     let kind: AiDisplayItem['kind'] = 'text';
     let displayLine = line;
@@ -328,7 +648,9 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       kind = 'thought';
       displayLine = trimmedStart.replace('[AI]:', '').trimStart();
     } else if (trimmedStart.startsWith('[System]:')) {
-      displayLine = trimmedStart.replace('[System]:', '系统：').trimStart();
+      kind = 'system';
+      displayLine = trimmedStart.replace('[System]:', '').trimStart();
+      displayLine = translateSystemLine(displayLine);
     }
 
     const normalized = displayLine.trim();
@@ -346,12 +668,16 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
         .match(/^画\s*(.+?)\s*[。.!！…]*$/);
       if (!matched) return raw;
       const subject = String(matched[1] || '').replace(/[。.!！…]+$/g, '').trim();
-      return subject ? `绘制 ${subject}` : raw;
+      return subject ? `绘制${subject}` : raw;
     };
     const specNormalized = normalizeComponentSpecLine(normalized);
     if (specNormalized !== normalized) displayLine = specNormalized;
     displayLine = normalizeExampleLine(displayLine);
     displayLine = normalizeDrawLine(displayLine);
+
+    if (kind === 'thought' && isSpecHintLine(displayLine)) {
+      kind = 'spec_hint';
+    }
 
     const nextItem: AiDisplayItem = { kind, text: displayLine };
     const last = items[items.length - 1];
@@ -361,8 +687,8 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       last.text = formatSeriesSpecLine(lastSeries.kind, true);
       nextItem.text = formatSeriesSpecLine(nextSeries.kind, true);
     }
-    if (last && last.text === nextItem.text) {
-      if (last.kind === 'thought') continue;
+    if (last && last.text === nextItem.text && last.kind === nextItem.kind) {
+      if (last.kind === 'thought' || last.kind === 'spec_hint') continue;
       const lastSeriesAfter = parseSeriesSpecLine(last.text);
       const nextSeriesAfter = parseSeriesSpecLine(nextItem.text);
       if (!lastSeriesAfter || !nextSeriesAfter || lastSeriesAfter.kind !== nextSeriesAfter.kind) {
@@ -460,6 +786,43 @@ function CheckIcon({ className }: { className?: string }) {
   );
 }
 
+function AlertIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M12 9V13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 17H12.01"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ThinkingIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -475,56 +838,56 @@ function ThinkingIcon({ className }: { className?: string }) {
       <g clipPath="url(#clip0_thinking)">
         <path
           d="M8 12V3.33333"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M10 8.66667C9.4232 8.49806 8.91656 8.14708 8.556 7.66633C8.19544 7.18558 8.00036 6.60094 8 6C7.99964 6.60094 7.80456 7.18558 7.444 7.66633C7.08344 8.14708 6.5768 8.49806 6 8.66667"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M11.732 4.33342C11.8854 4.06774 11.9756 3.77034 11.9957 3.46421C12.0158 3.15809 11.9652 2.85145 11.8478 2.56801C11.7304 2.28458 11.5494 2.03195 11.3187 1.82967C11.0881 1.62739 10.814 1.48088 10.5176 1.40148C10.2213 1.32208 9.91069 1.31191 9.6098 1.37176C9.30891 1.43161 9.02583 1.55988 8.78244 1.74665C8.53906 1.93341 8.3419 2.17366 8.20623 2.44881C8.07055 2.72396 7.99999 3.02663 8 3.33342C8.00001 3.02663 7.92945 2.72396 7.79377 2.44881C7.6581 2.17366 7.46094 1.93341 7.21756 1.74665C6.97417 1.55988 6.69109 1.43161 6.3902 1.37176C6.08931 1.31191 5.77868 1.32208 5.48236 1.40148C5.18603 1.48088 4.91193 1.62739 4.68129 1.82967C4.45064 2.03195 4.26961 2.28458 4.15222 2.56801C4.03483 2.85145 3.98421 3.15809 4.00429 3.46421C4.02436 3.77034 4.11459 4.06774 4.268 4.33342"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M11.998 3.41667C12.3899 3.51743 12.7537 3.70604 13.0619 3.96821C13.3701 4.23039 13.6146 4.55925 13.7768 4.9299C13.9391 5.30055 14.0149 5.70327 13.9985 6.10755C13.982 6.51183 13.8738 6.90707 13.682 7.26334"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M12 11.9994C12.587 11.9994 13.1576 11.8057 13.6233 11.4483C14.089 11.091 14.4238 10.59 14.5757 10.023C14.7276 9.45596 14.6882 8.85467 14.4636 8.31235C14.239 7.77002 13.8417 7.31696 13.3333 7.02344"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M13.3114 11.655C13.3581 12.0164 13.3303 12.3837 13.2295 12.734C13.1287 13.0843 12.9572 13.4102 12.7256 13.6916C12.4939 13.973 12.207 14.2039 11.8826 14.3701C11.5582 14.5363 11.2032 14.6342 10.8394 14.6578C10.4757 14.6814 10.111 14.6302 9.76782 14.5074C9.42466 14.3845 9.11033 14.1926 8.84424 13.9435C8.57815 13.6943 8.36596 13.3933 8.22077 13.059C8.07558 12.7247 8.00047 12.3641 8.00008 11.9996C7.99969 12.3641 7.92458 12.7247 7.77939 13.059C7.6342 13.3933 7.42201 13.6943 7.15592 13.9435C6.88983 14.1926 6.5755 14.3845 6.23234 14.5074C5.88917 14.6302 5.52446 14.6814 5.16073 14.6578C4.797 14.6342 4.44197 14.5363 4.11756 14.3701C3.79315 14.2039 3.50626 13.973 3.2746 13.6916C3.04294 13.4102 2.87144 13.0843 2.77067 12.734C2.66991 12.3837 2.64202 12.0164 2.68875 11.655"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M3.9998 11.9994C3.4128 11.9994 2.84221 11.8057 2.37651 11.4483C1.91082 11.091 1.57605 10.59 1.42412 10.023C1.27219 9.45596 1.31159 8.85467 1.53621 8.31235C1.76083 7.77002 2.15812 7.31696 2.66647 7.02344"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M4.00187 3.41667C3.61001 3.51743 3.24621 3.70604 2.93803 3.96821C2.62985 4.23039 2.38536 4.55925 2.2231 4.9299C2.06084 5.30055 1.98504 5.70327 2.00146 6.10755C2.01788 6.51183 2.12608 6.90707 2.31787 7.26334"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -555,7 +918,7 @@ function SearchIcon({ className }: { className?: string }) {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M3.5 7C3.5 5.067 5.067 3.5 7 3.5C8.933 3.5 10.5 5.067 10.5 7C10.5 7.88461 10.1718 8.69256 9.63058 9.30876L9.30876 9.63058C8.69256 10.1718 7.88461 10.5 7 10.5C5.067 10.5 3.5 8.933 3.5 7ZM9.96544 11.0261C9.13578 11.6382 8.11014 12 7 12C4.23858 12 2 9.76142 2 7C2 4.23858 4.23858 2 7 2C9.76142 2 12 4.23858 12 7C12 8.11014 11.6382 9.13578 11.0261 9.96544L14.0303 12.9697L14.5607 13.5L13.5 14.5607L12.9697 14.0303L9.96544 11.0261Z"
-        fill="#A1A1AA"
+        fill="currentColor"
       />
     </svg>
   );
@@ -576,28 +939,28 @@ function DrawIcon({ className }: { className?: string }) {
       <g clipPath="url(#clip0_draw)">
         <path
           d="M14.6666 4H1.33325"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M14.6666 12H1.33325"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M4 1.33333V14.6667"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M12 1.33333V14.6667"
-          stroke="#A1A1AA"
+          stroke="currentColor"
           strokeWidth="1.33333"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -966,6 +1329,24 @@ function buildTableContextText(tables: UploadedTableAttachment[]): string {
   return `表格结构(JSON):\n${JSON.stringify(payload)}`;
 }
 
+function buildAttachmentParseText(images: UploadedImageAttachment[], tables: UploadedTableAttachment[]): string {
+  const lines: string[] = [];
+  if (tables.length > 0) {
+    tables.forEach((table, index) => {
+      lines.push(`表格 ${index + 1}：${table.name}`);
+      if (table.parseError) {
+        lines.push(`解析失败：${table.parseError}`);
+      } else {
+        table.previewLines.forEach((line) => lines.push(line));
+      }
+    });
+  }
+  if (images.length > 0) {
+    lines.push(`图片：${images.map((image) => image.name).join(', ')}`);
+  }
+  return normalizeDisplayText(lines.join('\n'));
+}
+
 function buildCurrentTurnText(input: string, images: UploadedImageAttachment[], tables: UploadedTableAttachment[]): string {
   const trimmed = String(input || '').trim();
   const summary = buildUserSummary(input, images, tables);
@@ -1317,6 +1698,10 @@ function App() {
   } | null>(null);
   const quickComponentDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const quickComponentMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const [actionStreamPulse, setActionStreamPulse] = React.useState(0);
+  const lastResponseRef = React.useRef<string>('');
+  const [aiAttachmentParseExpanded, setAiAttachmentParseExpanded] = React.useState<Record<number, boolean>>({});
+  const [aiAttachmentParseHover, setAiAttachmentParseHover] = React.useState<Record<number, boolean>>({});
   const [quickComponentActiveCategory, setQuickComponentActiveCategory] = React.useState<string | null>(null);
   const [quickComponentSubmenuStyle, setQuickComponentSubmenuStyle] = React.useState<React.CSSProperties>({});
   const composerBoxRef = React.useRef<HTMLDivElement | null>(null);
@@ -1820,6 +2205,60 @@ function App() {
     if (response === null) return;
     updateLastAiMessage(response);
   }, [response, updateLastAiMessage]);
+
+  React.useEffect(() => {
+    if (response === null) {
+      lastResponseRef.current = '';
+      return;
+    }
+    const prev = lastResponseRef.current;
+    lastResponseRef.current = response;
+    if (!response) return;
+    const prevLines = prev.split('\n');
+    const nextLines = response.split('\n');
+    let index = 0;
+    while (index < prevLines.length && index < nextLines.length && prevLines[index] === nextLines[index]) {
+      index += 1;
+    }
+    const addedLines = nextLines.slice(index);
+    if (addedLines.length === 0) return;
+    const matchCount = addedLines.filter((line) => {
+      const trimmed = line.trimStart();
+      return trimmed.startsWith('[JSON]:') || trimmed.startsWith('[Streaming]:');
+    }).length;
+    if (matchCount > 0) {
+      setActionStreamPulse((prevPulse) => prevPulse + matchCount);
+    }
+  }, [response]);
+
+  const resolveSystemTone = React.useCallback((text: string) => {
+    const normalized = String(text || '').toLowerCase();
+    const errorTokens = [
+      'failed',
+      'error',
+      'invalid',
+      'unknown action',
+      'blocked',
+      '异常',
+      '失败',
+      '错误',
+      '无效',
+      '中断',
+      'abort'
+    ];
+    const successTokens = [
+      'success',
+      'succeeded',
+      '完成',
+      '成功',
+      'done',
+      'applied',
+      'created'
+    ];
+    if (errorTokens.some((token) => normalized.includes(token))) return 'error';
+    if (successTokens.some((token) => normalized.includes(token))) return 'success';
+    return 'neutral';
+  }, []);
 
   const extractStreamTableEvents = React.useCallback((rawChunk: string): StreamTableEvent[] => {
     const events: StreamTableEvent[] = [];
@@ -8283,115 +8722,194 @@ StepD:
             <div className="chat-thread">
               {uiMessages.map((msg, index) => (
                 <div key={`${msg.role}_${index}`} className={`chat-message ${msg.role}`}>
-                  {(() => {
-                    if (msg.role !== 'ai') return null;
-                    const isRunning = loading && index === uiMessages.length - 1;
-                    const hasContent = Boolean(msg.content.trim());
-                    if (!isRunning && !hasContent) return null;
-                    return (
-                      <span className={`chat-message-status ${isRunning ? 'running' : 'done'}`}>
-                        {isRunning ? (
-                          <SpinnerIcon className="chat-status-icon spin" />
-                        ) : (
-                          <CheckIcon className="chat-status-icon" />
-                        )}
-                      </span>
-                    );
-                  })()}
                   <div className="chat-bubble">
                     {msg.role === 'ai' ? (
-                      <div className="ai-message">
+                      <div
+                        className={`ai-message${
+                          index === uiMessages.length - 1 && actionStreamPulse > 0
+                            ? ` ${actionStreamPulse % 2 === 0 ? 'ai-line-pulse-a' : 'ai-line-pulse-b'}`
+                            : ''
+                        }`}
+                      >
                         {(() => {
                           const items = buildAiDisplayItems(msg.content);
                           const isLast = index === uiMessages.length - 1;
                           const showThinkingRow = isLast && (thinkingActive || thinkingSeconds !== null);
-                          const isHiddenSpecThought = (text: string) => {
-                            const normalized = String(text || '').trim();
-                            if (parseSeriesSpecLine(normalized)) return true;
-                            const compact = normalized.replace(/\s+/g, '').replace(/[。.!！…]+$/g, '');
-                            return (
-                              (compact.startsWith('读') ||
-                                compact.startsWith('读取') ||
-                                compact.startsWith('重新读取')) &&
-                              /spec$/i.test(compact)
-                            );
-                          };
-                          const hasSpecThought = items.some((item) => item.kind === 'thought' && isHiddenSpecThought(item.text));
+                          const hasSpecThought = items.some((item) => item.kind === 'spec_hint');
+                          const prevMessage = index > 0 ? uiMessages[index - 1] : null;
+                          const attachmentImages = prevMessage?.role === 'user' ? prevMessage.images ?? [] : [];
+                          const attachmentTables = prevMessage?.role === 'user' ? prevMessage.tables ?? [] : [];
+                          const hasAttachmentParse = attachmentImages.length > 0 || attachmentTables.length > 0;
+                          const attachmentExpanded = Boolean(aiAttachmentParseExpanded[index]);
+                          const attachmentHover = Boolean(aiAttachmentParseHover[index]);
+                          const attachmentParseText = hasAttachmentParse
+                            ? buildAttachmentParseText(attachmentImages, attachmentTables)
+                            : '';
+                          const showBreathingDots = isLast && loading;
+                          const lastItemIndex = items.length > 0 ? items.length - 1 : -1;
+                          const hasThoughtItem = items.some((item) => item.kind === 'thought');
+                          const shouldShowAttachmentDots = showBreathingDots && !hasThoughtItem;
+                          const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
+                          const lastItemKind = lastItemIndex >= 0 ? items[lastItemIndex]?.kind : null;
+                          let lastSystemIndex = -1;
+                          let lastFrameThoughtIndex = -1;
+                          for (let i = 0; i < items.length; i += 1) {
+                            const it = items[i];
+                            if (it.kind === 'system') lastSystemIndex = i;
+                            if (it.kind === 'thought' && isFrameThoughtText(it.text)) lastFrameThoughtIndex = i;
+                          }
+                          const dotsTargetIndex =
+                            showBreathingDots && lastFrameThoughtIndex > lastSystemIndex
+                              ? lastFrameThoughtIndex
+                              : lastItemIndex;
+                          const shouldShowIdleThinking =
+                            isLast && loading && lastItemKind === 'system';
                           return (
                             <>
                               {showThinkingRow && (
-                                <div className="ai-thought ai-thinking">
-                                  <ThinkingIcon className="ai-thought-icon" />
-                                  <p className="ai-thought-text">
-                                    {thinkingActive ? '思考中...' : `思考 ${thinkingSeconds ?? 1}s`}
-                                  </p>
-                                  {hasSpecThought && (
-                                    <button
-                                      type="button"
-                                      className={`ai-thinking-toggle ${thoughtDetailsExpanded ? 'expanded' : ''}`}
-                                      onClick={() => setThoughtDetailsExpanded((prev) => !prev)}
-                                      aria-label={thoughtDetailsExpanded ? '收起思考细节' : '展开思考细节'}
-                                    >
-                                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                          d="M4 6L8 10L12 6"
-                                          stroke="#A1A1AA"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    </button>
+                                <IconTextRow
+                                  className="ai-thought ai-thinking"
+                                  textClassName="ai-thought-text"
+                                  icon={<ThinkingIcon className="ai-thought-icon" />}
+                                >
+                                  {thinkingActive ? '思考中' : `思考 ${thinkingSeconds ?? 1}s`}
+                                  {thinkingActive && (
+                                    <span className="ai-breathing-dots" aria-hidden="true">
+                                      ...
+                                    </span>
+                                  )}
+                                </IconTextRow>
+                              )}
+                              {hasAttachmentParse && (
+                                <div className="ai-attachment-parse">
+                                  <IconTextRow
+                                    as="button"
+                                    className={`ai-attachment-parse-toggle ${attachmentExpanded ? 'expanded' : ''}`}
+                                    textClassName="ai-attachment-parse-label"
+                                    icon={
+                                      <span className="ai-attachment-parse-icon" aria-hidden="true">
+                                        {attachmentExpanded ? (
+                                          <ChevronDownIcon className="ai-attachment-parse-icon-inner" />
+                                        ) : attachmentHover ? (
+                                          <ChevronRightIcon className="ai-attachment-parse-icon-inner" />
+                                        ) : (
+                                          <ActivityIcon className="ai-attachment-parse-icon-inner" />
+                                        )}
+                                      </span>
+                                    }
+                                    onClick={() =>
+                                      setAiAttachmentParseExpanded((prev) => ({
+                                        ...prev,
+                                        [index]: !prev[index]
+                                      }))
+                                    }
+                                    onMouseEnter={() =>
+                                      setAiAttachmentParseHover((prev) => ({ ...prev, [index]: true }))
+                                    }
+                                    onMouseLeave={() =>
+                                      setAiAttachmentParseHover((prev) => ({ ...prev, [index]: false }))
+                                    }
+                                    aria-expanded={attachmentExpanded}
+                                  >
+                                    {attachmentLabelText}
+                                    {shouldShowAttachmentDots && (
+                                      <span className="ai-breathing-dots" aria-hidden="true">
+                                        ...
+                                      </span>
+                                    )}
+                                  </IconTextRow>
+                                  {attachmentExpanded && (
+                                    <div className="ai-attachment-parse-panel">
+                                      <div className="ai-attachment-parse-content">{attachmentParseText}</div>
+                                    </div>
                                   )}
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
+                                const shouldShowLineDots = showBreathingDots && hasThoughtItem && itemIndex === dotsTargetIndex;
+                                if (item.kind === 'spec_hint') {
+                                  return (
+                                    <IconTextRow
+                                      key={`spec_${itemIndex}`}
+                                      className="ai-spec-hint"
+                                      textClassName="ai-spec-text"
+                                      icon={<SearchIcon className="ai-spec-icon" />}
+                                    >
+                                      {item.text}
+                                      {shouldShowLineDots && (
+                                        <span className="ai-breathing-dots" aria-hidden="true">
+                                          ...
+                                        </span>
+                                      )}
+                                    </IconTextRow>
+                                  );
+                                }
                                 if (item.kind === 'thought') {
-                                  const shouldHide = isHiddenSpecThought(item.text);
-                                  if (shouldHide && !thoughtDetailsExpanded) return null;
-                                  const compact = String(item.text || '').replace(/\s+/g, '');
-                                  const isReadSpecsLine = Boolean(parseSeriesSpecLine(item.text));
-                                  const isDrawLine = compact.startsWith('绘制');
-                                  if (isReadSpecsLine) {
-                                    return (
-                                      <div key={`thought_${itemIndex}`} className="ai-action-line">
-                                        <SearchIcon className="ai-action-icon" />
-                                        <p className="ai-action-text">{item.text}</p>
-                                      </div>
-                                    );
-                                  }
-                                  if (isDrawLine) {
-                                    return (
-                                      <div key={`thought_${itemIndex}`} className="ai-action-line">
-                                        <DrawIcon className="ai-action-icon" />
-                                        <p className="ai-action-text">{isLast && loading ? `${item.text}...` : item.text}</p>
-                                      </div>
-                                    );
-                                  }
+                                  const iconKind = getThoughtIconKind(item.text);
                                   return (
-                                    <div key={`thought_${itemIndex}`} className="ai-thought">
-                                      <ThinkingIcon className="ai-thought-icon" />
-                                      <p className="ai-thought-text">{item.text}</p>
+                                    <IconTextRow
+                                      key={`thought_${itemIndex}`}
+                                      className="ai-thought"
+                                      textClassName="ai-thought-text"
+                                      icon={
+                                        iconKind === 'search' ? (
+                                          <SearchIcon className="ai-thought-icon" />
+                                        ) : iconKind === 'frame' ? (
+                                          <FrameIcon className="ai-thought-icon" />
+                                        ) : (
+                                          <ThinkingIcon className="ai-thought-icon" />
+                                        )
+                                      }
+                                    >
+                                      {item.text}
+                                      {shouldShowLineDots && (
+                                        <span className="ai-breathing-dots" aria-hidden="true">
+                                          ...
+                                        </span>
+                                      )}
+                                    </IconTextRow>
+                                  );
+                                }
+                                if (item.kind === 'action_json') {
+                                  return null;
+                                }
+                                if (item.kind === 'system') {
+                                  const tone = resolveSystemTone(item.text);
+                                  const icon =
+                                    tone === 'neutral' ? null : (
+                                      <span className="ai-system-icon">
+                                        {tone === 'error' ? (
+                                          <CircleXIcon className="ai-system-icon-inner" />
+                                        ) : (
+                                          <CircleCheckIcon className="ai-system-icon-inner" />
+                                        )}
+                                      </span>
+                                    );
+                                  return (
+                                    <IconTextRow
+                                      key={`system_${itemIndex}`}
+                                      className={`ai-system-line ai-system-${tone}`}
+                                      textClassName="ai-system-text"
+                                      icon={icon}
+                                    >
+                                      {item.text}
+                                    </IconTextRow>
+                                  );
+                                }
+                                if (item.kind === 'streaming') {
+                                  return (
+                                    <div key={`stream_${itemIndex}`} className="ai-stream-line">
+                                      <span className="ai-stream-text">{item.text}</span>
+                                      <span className="ai-stream-cursor" aria-hidden="true">
+                                        _
+                                      </span>
                                     </div>
                                   );
                                 }
-
-                                const compact = String(item.text || '').replace(/\s+/g, '');
-                                const isReadSpecsLine = Boolean(parseSeriesSpecLine(item.text));
-                                const isDrawLine = compact.startsWith('绘制');
-                                if (isReadSpecsLine) {
+                                if (item.kind === 'raw') {
                                   return (
-                                    <div key={`text_${itemIndex}`} className="ai-action-line">
-                                      <SearchIcon className="ai-action-icon" />
-                                      <p className="ai-action-text">{item.text}</p>
-                                    </div>
-                                  );
-                                }
-                                if (isDrawLine) {
-                                  return (
-                                    <div key={`text_${itemIndex}`} className="ai-action-line">
-                                      <DrawIcon className="ai-action-icon" />
-                                      <p className="ai-action-text">{isLast && loading ? `${item.text}...` : item.text}</p>
+                                    <div key={`raw_${itemIndex}`} className="ai-raw-line">
+                                      {item.text}
                                     </div>
                                   );
                                 }
@@ -8401,6 +8919,18 @@ StepD:
                                   </div>
                                 );
                               })}
+                              {shouldShowIdleThinking && (
+                                <IconTextRow
+                                  className="ai-thought ai-thinking"
+                                  textClassName="ai-thought-text"
+                                  icon={<ThinkingIcon className="ai-thought-icon" />}
+                                >
+                                  思考中
+                                  <span className="ai-breathing-dots" aria-hidden="true">
+                                    ...
+                                  </span>
+                                </IconTextRow>
+                              )}
                             </>
                           );
                         })()}
