@@ -619,29 +619,33 @@ function findComponentByFallbackName(fallbackName: string): ComponentNode | Comp
 
 async function resolveSchemaSourceNode(
   node: BaseNode | null
-): Promise<ComponentNode | ComponentSetNode | null> {
-  if (!node) return null;
-
-  let targetNode: BaseNode | null = node;
-  if (targetNode.type === 'INSTANCE') {
-    const mainComponent = await resolveInstanceMainComponent(targetNode);
-    targetNode = mainComponent;
-  }
-
-  if (!targetNode) return null;
-
-  if (targetNode.type === 'COMPONENT') {
-    if (targetNode.parent && targetNode.parent.type === 'COMPONENT_SET') {
-      return targetNode.parent;
+): Promise<ComponentNode | ComponentSetNode | undefined> {
+  if (!node) return undefined;
+  let targetNode: ComponentNode | ComponentSetNode | undefined;
+  
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+    targetNode = node;
+  } else if (node.type === 'INSTANCE') {
+    try {
+      const main = await node.getMainComponentAsync();
+      if (main) {
+        targetNode = main;
+      }
+    } catch (e) {
+      // fallback if async fails
     }
-    return targetNode;
   }
 
-  if (targetNode.type === 'COMPONENT_SET') {
-    return targetNode;
+  let currentParentForLoad: BaseNode | null | undefined = targetNode ? targetNode.parent : null;
+  while (currentParentForLoad && currentParentForLoad.type !== 'PAGE' && currentParentForLoad.type !== 'DOCUMENT') {
+    if (currentParentForLoad.type === 'COMPONENT_SET') {
+      targetNode = currentParentForLoad as ComponentSetNode;
+      break;
+    }
+    currentParentForLoad = currentParentForLoad.parent;
   }
 
-  return null;
+  return targetNode;
 }
 
 function cacheLoadedFigmaComponent(
@@ -681,6 +685,7 @@ export async function loadFigmaComponentByKey(
 
   if (componentNodeId) {
     const localNode = figma.getNodeById(componentNodeId);
+    // Resolve source node (handles INSTANCE and COMPONENT_SET parent)
     const localSource = await resolveSchemaSourceNode(localNode);
     if (localSource) {
       cacheLoadedFigmaComponent(localSource, [componentKey, localSource.key]);
@@ -865,8 +870,16 @@ export async function createFigmaComponentInstance(
 function toDisplayPropertyName(propertyName: string): string {
   const normalized = String(propertyName || '').trim();
   if (!normalized) return normalized;
+  // Let's keep the raw property name so we don't accidentally lose the `#` identifiers if needed
+  // Only remove `#` if it causes duplicates or we want cleaner JSON, but Figma needs the exact name often.
+  // We'll return the full propertyName for the inspect output so users can use the exact key in variantCriteria.
+  // Actually, Figma's variantProperties dictionary keys usually don't contain the #xxx.
+  // The #xxx is only in componentPropertyDefinitions. Let's keep it as is, or remove it correctly.
   const hashIndex = normalized.lastIndexOf('#');
-  if (hashIndex > 0) return normalized.slice(0, hashIndex);
+  if (hashIndex > 0 && hashIndex > normalized.length - 15) { 
+    // only strip if it looks like a node id #135:19
+    return normalized.slice(0, hashIndex);
+  }
   return normalized;
 }
 
@@ -1075,9 +1088,11 @@ function buildDiscoveredComponentSchemaResult(
 
   const properties: DiscoveredComponentProperty[] = Object.entries(definitions).map(
     ([propertyName, definition]) => {
+      // Figma usually returns property names like "Show Legend#135:19" in definitions
+      // But variantProperties doesn't have the #... part.
       const displayName = toDisplayPropertyName(propertyName);
       const property: DiscoveredComponentProperty = {
-        propertyName,
+        propertyName: displayName, // Output clean name for users to use in variantCriteria
         displayName,
         type: definition.type,
         defaultValue: definition.defaultValue
@@ -1087,7 +1102,7 @@ function buildDiscoveredComponentSchemaResult(
         const fromDefinition = Array.isArray(definition.variantOptions)
           ? definition.variantOptions.map((value) => String(value))
           : [];
-        const fromVariants = Array.from(variantValueMap[displayName] || []);
+        const fromVariants = Array.from(variantValueMap[displayName] || variantValueMap[propertyName] || []);
         const merged = Array.from(new Set([...fromDefinition, ...fromVariants])).filter(Boolean);
         if (merged.length > 0) {
           property.variantOptions = merged;
@@ -1139,6 +1154,124 @@ function buildDiscoveredComponentSchemaResult(
   };
 }
 
+function mergeDiscoveredProperties(
+  base: DiscoveredComponentProperty[] | undefined,
+  extra: DiscoveredComponentProperty[]
+): DiscoveredComponentProperty[] {
+  const map = new Map<string, DiscoveredComponentProperty>();
+  if (Array.isArray(base)) {
+    base.forEach((prop) => {
+      map.set(prop.propertyName, prop);
+    });
+  }
+  extra.forEach((prop) => {
+    if (!map.has(prop.propertyName)) {
+      map.set(prop.propertyName, prop);
+    }
+  });
+  const list = Array.from(map.values());
+  list.sort((a, b) => {
+    if (a.type !== b.type) return a.type.localeCompare(b.type);
+    return a.displayName.localeCompare(b.displayName);
+  });
+  return list;
+}
+
+async function collectNestedInstanceProperties(root: SceneNode): Promise<DiscoveredComponentProperty[]> {
+  const map = new Map<string, DiscoveredComponentProperty>();
+
+  const addProperty = (prop: DiscoveredComponentProperty) => {
+    if (!map.has(prop.propertyName)) {
+      map.set(prop.propertyName, prop);
+    }
+  };
+
+  const visit = async (node: SceneNode): Promise<void> => {
+    if (node.type === 'INSTANCE') {
+      const main = await resolveInstanceMainComponent(node);
+      if (main) {
+        let defSource: ComponentNode | ComponentSetNode = main;
+        const parent = main.parent;
+        if (parent && parent.type === 'COMPONENT_SET') {
+          defSource = parent;
+        }
+        const definitions = defSource.componentPropertyDefinitions || {};
+        const variantValueMap = collectVariantValueMap(defSource);
+        Object.entries(definitions).forEach(([propertyName, definition]) => {
+          const displayName = toDisplayPropertyName(propertyName);
+          const property: DiscoveredComponentProperty = {
+            propertyName: displayName,
+            displayName,
+            type: definition.type,
+            defaultValue: definition.defaultValue
+          };
+          if (definition.type === 'VARIANT') {
+            const fromDefinition = Array.isArray(definition.variantOptions)
+              ? definition.variantOptions.map((value) => String(value))
+              : [];
+            const fromVariants = Array.from(variantValueMap[displayName] || []);
+            const merged = Array.from(new Set([...fromDefinition, ...fromVariants])).filter(Boolean);
+            if (merged.length > 0) {
+              property.variantOptions = merged;
+            }
+          }
+          if (definition.type === 'BOOLEAN') {
+            property.variantOptions = ['True', 'False'];
+          }
+          if (
+            definition.type === 'INSTANCE_SWAP' &&
+            Array.isArray(definition.preferredValues) &&
+            definition.preferredValues.length > 0
+          ) {
+            property.preferredValues = definition.preferredValues.map((value) => ({
+              type: value.type,
+              key: value.key
+            }));
+          }
+          addProperty(property);
+        });
+      }
+
+      const componentProps = node.componentProperties || {};
+      Object.entries(componentProps).forEach(([propertyName, definition]) => {
+        const displayName = toDisplayPropertyName(propertyName);
+        if (map.has(displayName)) return;
+        const defValue =
+          definition && typeof definition === 'object' && 'value' in definition
+            ? (definition as { value: string | boolean }).value
+            : undefined;
+        const defType =
+          definition && typeof definition === 'object' && 'type' in definition
+            ? String((definition as { type: string }).type)
+            : typeof defValue === 'boolean'
+              ? 'BOOLEAN'
+              : 'VARIANT';
+        const property: DiscoveredComponentProperty = {
+          propertyName: displayName,
+          displayName,
+          type: defType as ComponentPropertyType,
+          defaultValue: defValue as string | boolean
+        };
+        if (defType === 'BOOLEAN') {
+          property.variantOptions = ['True', 'False'];
+        }
+        addProperty(property);
+      });
+    }
+
+    if ('children' in node) {
+      const children = (node as BaseNode & ChildrenMixin).children;
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+        await visit(child as SceneNode);
+      }
+    }
+  };
+
+  await visit(root);
+  return Array.from(map.values());
+}
+
 export async function discoverFigmaComponentSchema(
   options: FigmaComponentLoadOptions & { token?: string }
 ): Promise<DiscoveredComponentSchema> {
@@ -1170,6 +1303,24 @@ export async function discoverFigmaComponentSchema(
   }
 }
 
+export async function discoverFigmaComponentSchemaFromSelection(
+  options: FigmaComponentLoadOptions & { token?: string }
+): Promise<DiscoveredComponentSchema> {
+  const base = await discoverFigmaComponentSchema(options);
+  if (base.status !== 'ok') return base;
+  const componentNodeId = String(options.componentNodeId || '').trim();
+  if (!componentNodeId) return base;
+  const node = figma.getNodeById(componentNodeId);
+  if (!node) return base;
+  if (node.type === 'PAGE' || node.type === 'DOCUMENT') return base;
+  const extra = await collectNestedInstanceProperties(node as SceneNode);
+  if (!extra.length) return base;
+  return {
+    ...base,
+    properties: mergeDiscoveredProperties(base.properties, extra)
+  };
+}
+
 export async function inspectFigmaComponentStructure(
   options: FigmaComponentLoadOptions & {
     token?: string;
@@ -1197,6 +1348,13 @@ export async function inspectFigmaComponentStructure(
     });
     const schema = await discoverFigmaComponentSchema(options);
     const schemaProperties = schema.status === 'ok' ? schema.properties : undefined;
+    let selectionNode: SceneNode | null = null;
+    if (componentNodeId) {
+      const rawNode = figma.getNodeById(componentNodeId);
+      if (rawNode && rawNode.type !== 'PAGE' && rawNode.type !== 'DOCUMENT') {
+        selectionNode = rawNode as SceneNode;
+      }
+    }
     const variants =
       loaded.type === 'COMPONENT_SET'
         ? (loaded.children.filter((child) => child.type === 'COMPONENT') as ComponentNode[])
@@ -1218,19 +1376,23 @@ export async function inspectFigmaComponentStructure(
     }
 
     const variantStructures = [];
-    for (const variant of autoSelection.selected) {
-      variantStructures.push({
-        name: variant.name,
-        variantProperties: variant.variantProperties || undefined,
-        structure: await inspectSceneNodeTree(variant, {
-          depth: 0,
-          maxDepth,
-          maxChildren
-        })
-      });
+    if (!selectionNode) {
+      for (const variant of autoSelection.selected) {
+        variantStructures.push({
+          name: variant.name,
+          variantProperties: variant.variantProperties || undefined,
+          structure: await inspectSceneNodeTree(variant, {
+            depth: 0,
+            maxDepth,
+            maxChildren
+          })
+        });
+      }
     }
 
-    const structure = variantStructures[0]?.structure;
+    const structure = selectionNode
+      ? await inspectSceneNodeTree(selectionNode, { depth: 0, maxDepth, maxChildren })
+      : variantStructures[0] && variantStructures[0].structure ? variantStructures[0].structure : undefined;
 
     return {
       status: 'ok',
@@ -1257,7 +1419,7 @@ export async function inspectFigmaComponentStructure(
         variantProperties: variant.variantProperties || undefined
       })),
       structure,
-      variantStructures,
+      variantStructures: selectionNode ? undefined : variantStructures,
       variantStructuresTruncated: autoSelection.truncated
     };
   } catch (error) {

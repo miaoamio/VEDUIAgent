@@ -7,6 +7,7 @@ import { applyEnvelopeUnknown } from './engine/applyEnvelope';
 import {
   createFigmaComponentInstance,
   discoverFigmaComponentSchema,
+  discoverFigmaComponentSchemaFromSelection,
   findFigmaVariant,
   inspectFigmaComponentStructure,
   loadFigmaComponentByKey,
@@ -18,6 +19,7 @@ import {
   BASE_COMPONENT_TOKEN_PACK,
   resolveComponentTokenProfile
 } from './theme/volcengine-design/component-tokens';
+import { activeTheme } from './theme/active';
 import { createInspectDrivenTagFallbackNode } from './theme/volcengine-design/tag-fallback';
 import {
   applyColorVariable,
@@ -49,9 +51,10 @@ const TABLE_CELL_PREWARM_STATE = {
 };
 
 const TABLE_CELL_PREWARM_TOKENS = [
-  'table.cell.icon.edit',
-  'table.cell.icon.delete',
-  'table.cell.icon.actionMore',
+  'table-cell-icon-edit',
+  'table-cell-icon-delete',
+  'table-cell-icon-more',
+  'table-cell-icon-action-more',
   'lib-data-display-avataricon',
   'table.header.icon',
   'table.rowAction.text',
@@ -62,6 +65,20 @@ const TABLE_CELL_PREWARM_TOKENS = [
   'table.rowAction.switch',
   'table.rowAction.header'
 ];
+
+const resolveComponentKeyFromToken = (token: string): string => {
+  const normalized = String(token || '').trim();
+  if (!normalized) return '';
+  const themeKey = activeTheme.components?.[normalized];
+  if (themeKey) return themeKey;
+  return resolveComponentTokenProfile(normalized)?.profile.componentKey || '';
+};
+
+const resolveComponentDisplayNameFromToken = (token: string): string | undefined => {
+  const normalized = String(token || '').trim();
+  if (!normalized) return undefined;
+  return resolveComponentTokenProfile(normalized)?.profile.displayName;
+};
 
 function loadFontCached(font: FontName): Promise<void> {
   const key = `${font.family}:${font.style}`;
@@ -301,8 +318,13 @@ function findAiComponentNode(node: SceneNode | null): SceneNode | null {
 
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
+let selectionUpdateSuppressed = false;
+
 // Helper to check selection and notify UI
 function checkSelection() {
+  if (selectionUpdateSuppressed) {
+    return;
+  }
   const selection = figma.currentPage.selection;
   const canvasHint: CanvasHint = 'mixed';
   if (selection.length === 0) {
@@ -469,7 +491,7 @@ figma.on('documentchange', async (event) => {
     if (!node || node.removed) continue;
 
     const properties = change.properties || [];
-    const isSizeChange = properties.includes('height') || properties.includes('width') || properties.includes('size') || properties.includes('resize');
+    const isSizeChange = properties.includes('height') || properties.includes('width');
     if (!isSizeChange) continue;
 
     const cell = findTableCellFromNode(node);
@@ -511,7 +533,7 @@ figma.on('documentchange', async (event) => {
 });
 
 const TABLE_DEFAULT_PARAMS = getDefaultParams('table');
-const FORM_FIELD_HORIZONTAL_COMPONENT_KEY = '621ab3ad5d95d291cb6d31438dbad667594ae098';
+const FORM_FIELD_HORIZONTAL_COMPONENT_KEY = resolveComponentKeyFromToken('lib-data-input-horizontal-form') || '621ab3ad5d95d291cb6d31438dbad667594ae098';
 
 function toPositiveNumber(value: unknown): number | null {
     const n = Number(value);
@@ -768,6 +790,18 @@ function isTableCellComponentId(componentId?: string | null): boolean {
     return componentId === 'table-header-cell' || componentId.startsWith(TABLE_CELL_COMPONENT_PREFIX);
 }
 
+function isTableTextContext(node: BaseNode | null | undefined): boolean {
+    let current = node;
+    while (current && current.type !== 'PAGE') {
+        if ('getPluginData' in current) {
+            const componentId = current.getPluginData('component-id');
+            if (isTableCellComponentId(componentId)) return true;
+        }
+        current = current.parent;
+    }
+    return false;
+}
+
 function isTableColumnNode(node: BaseNode | null | undefined): node is FrameNode {
     return !!node && node.type === 'FRAME' && node.getPluginData('component-id') === 'table-column';
 }
@@ -1000,6 +1034,10 @@ function findTableContentStack(tableRoot: FrameNode): FrameNode | null {
 }
 
 function ensureTableContentStack(tableRoot: FrameNode, tableContent: FrameNode): FrameNode {
+    clearNodeStrokes(tableRoot);
+    if (tableContent !== tableRoot) {
+        clearNodeStrokes(tableContent);
+    }
     tableRoot.layoutMode = 'VERTICAL';
     tableRoot.primaryAxisSizingMode = 'AUTO';
     tableRoot.counterAxisSizingMode = 'FIXED';
@@ -1602,12 +1640,12 @@ function findTableColumnFromNode(node: BaseNode | null | undefined): FrameNode |
     let current = node;
     while (current && current.type !== 'PAGE') {
         if (isTableColumnNode(current)) return current;
-        if (current.type === 'FRAME' && looksLikeTableColumnFrame(current)) {
-            const parent = current.parent;
-            if (parent && parent.type === 'FRAME') {
+        if ((current as any).type === 'FRAME' && looksLikeTableColumnFrame(current as unknown as FrameNode)) {
+            const parent = (current as any).parent;
+            if (parent && (parent as any).type === 'FRAME') {
                 // Only treat it as a column if it sits in a table-like container.
-                if (isTableNode(parent) || parent.layoutMode === 'HORIZONTAL') {
-                    return current;
+                if (isTableNode(parent) || (parent as FrameNode).layoutMode === 'HORIZONTAL') {
+                    return current as unknown as FrameNode;
                 }
             }
         }
@@ -3113,7 +3151,9 @@ async function createTagFromFigmaTemplate(
     const componentKeyFromToken = componentToken
         ? resolveComponentTokenProfile(componentToken)?.profile.componentKey || ''
         : '';
-    const componentKey = componentKeyFromToken || String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = componentKeyFromToken
+        || (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
     if (!componentKey) return null;
 
     const family = resolveTagComponentFamily(componentToken || def.figmaPropertySnapshot?.token);
@@ -3285,7 +3325,8 @@ async function createButtonFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const disabled = Boolean(params.disabled);
@@ -3342,7 +3383,8 @@ async function createInputFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const width = Number(params.width) > 0 ? Number(params.width) : 240;
@@ -3495,7 +3537,8 @@ async function createSelectFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
     if (!componentKey) return null;
 
     const width = Number(params.width) > 0 ? Number(params.width) : 240;
@@ -3727,9 +3770,29 @@ function applyFigmaComponentProps(
         if (rawValue === undefined || rawValue === null) continue;
         const propName = findInstanceComponentPropertyName(instance, displayName);
         if (!propName) continue;
-        const value = binding.transform === 'boolean'
-            ? toVariantBoolean(Boolean(rawValue))
-            : String(rawValue);
+        let value: string | boolean;
+        if (binding.transform === 'boolean') {
+            value = toVariantBoolean(Boolean(rawValue));
+        } else if (binding.transform === 'string:boolean') {
+            // non-empty string → 'True', empty → 'False'
+            value = toVariantBoolean(String(rawValue).trim().length > 0);
+        } else if (binding.transform === 'number') {
+            value = String(Number(rawValue) || 0);
+        } else if (binding.transform === 'list:length') {
+            // count comma/newline-separated items
+            const items = String(rawValue).split(/[,，\n\r]/).map((s) => s.trim()).filter(Boolean);
+            value = String(Math.max(2, items.length));
+        } else if (binding.transform && binding.transform.startsWith('boolean:')) {
+            // e.g. "boolean:Disabled?Default"
+            const parts = binding.transform.replace('boolean:', '').split('?');
+            value = Boolean(rawValue) ? (parts[0] || 'True') : (parts[1] || 'False');
+        } else if (binding.transform && binding.transform.startsWith('variant:')) {
+            // e.g. "variant:Hover?Default"
+            const parts = binding.transform.replace('variant:', '').split('?');
+            value = Boolean(rawValue) ? (parts[0] || 'True') : (parts[1] || 'Default');
+        } else {
+            value = String(rawValue);
+        }
         nextProps[propName] = value;
     }
     if (Object.keys(nextProps).length > 0) {
@@ -3747,7 +3810,8 @@ async function createCheckboxFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const label = String(params.label || '选项一');
@@ -3811,6 +3875,7 @@ async function createCheckboxGroupFromCheckboxComponents(
 
 	    for (const option of options) {
 	        const checkboxNode = await renderComponent({
+	            id: `checkbox-${option}`,
 	            componentId: 'checkbox',
 	            params: {
 	                label: option,
@@ -3917,7 +3982,8 @@ async function createCheckboxGroupFromFigmaTemplate(
         console.warn('[CheckboxGroupTemplate] failed to compose from checkbox component', e);
     }
 
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
     if (!componentKey) return null;
 
     const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
@@ -4027,7 +4093,8 @@ async function createRadioGroupFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
+        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
     if (!componentKey) return null;
 
     const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
@@ -4892,8 +4959,6 @@ async function createFormFieldFromFigmaTemplate(
         controlType === 'datepicker' ||
         controlType === 'inputnumber' ||
         controlType === 'slider' ||
-        controlType === 'switch' ||
-        controlType === 'textarea' ||
         controlType === 'timepicker' ||
         controlType === 'upload';
     if (!supportsTemplateControl) return null;
@@ -4902,7 +4967,8 @@ async function createFormFieldFromFigmaTemplate(
     try {
         if (layout === 'vertical') {
             const fieldDef = COMPONENT_DEFS['form-field'];
-            const componentKey = String(fieldDef?.figmaPropertySnapshot?.componentKey || '').trim();
+            const componentKey = resolveComponentKeyFromToken('lib-data-input-vertical-form')
+                || String((fieldDef?.figmaPropertySnapshot as any)?.componentKey || '').trim();
             if (!componentKey) return null;
             templateInstance = await createFigmaComponentInstance({
                 componentKey,
@@ -5543,11 +5609,9 @@ function inheritFormFieldParams(
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
             controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
-            ...currentParams
+            ...currentParams,
+            ...(formParams.requiredMark === false ? { required: false } : {})
         };
-        if (formParams.requiredMark === false) {
-            nextParams.required = false;
-        }
         return { ...instance, params: nextParams };
     }
 
@@ -5791,10 +5855,15 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'datepicker') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'datepicker',
             params: {
-                componentToken: 'lib-data-input-datepicker',
-                width
+                placeholder: params.placeholder || '请选择日期',
+                value: params.value || '',
+                size: params.size || 'Default 32',
+                state: params.state || 'Default 默认',
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -5802,10 +5871,15 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'inputnumber') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'inputnumber',
             params: {
-                componentToken: 'lib-data-input-inputnumber',
-                width
+                placeholder: params.placeholder || '请输入数字',
+                value: params.value || '',
+                size: params.size || 'Default 32',
+                state: params.state || 'Default 默认',
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -5813,10 +5887,12 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'slider') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'slider',
             params: {
-                componentToken: 'lib-data-input-slider',
-                width
+                value: Number(params.value) || 50,
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -5824,13 +5900,11 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'switch') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'switch',
             params: {
-                componentToken: 'lib-data-input-switch',
-                variantCriteria: JSON.stringify({
-                    'Status 状态': toVariantBoolean(Boolean(params.checked)),
-                    'Disabled 禁用': toVariantBoolean(Boolean(params.disabled))
-                })
+                checked: Boolean(params.checked),
+                disabled: Boolean(params.disabled),
+                forceFigmaKey: true
             }
         };
     }
@@ -5838,10 +5912,14 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'textarea') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'textarea',
             params: {
-                componentToken: 'lib-data-input-textarea',
-                width
+                placeholder: params.placeholder || '请输入内容',
+                value: params.value || '',
+                state: params.state || 'Default 默认',
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -5849,10 +5927,15 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     if (controlType === 'timepicker') {
         return {
             id: 'form-field-control',
-            componentId: 'figma-component',
+            componentId: 'timepicker',
             params: {
-                componentToken: 'lib-data-input-timepicker',
-                width
+                placeholder: params.placeholder || '请选择时间',
+                value: params.value || '',
+                size: params.size || 'Default 32',
+                state: params.state || 'Default 默认',
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -6345,7 +6428,7 @@ async function applyTextStyleBinding(
     const style = await resolveTextStyle(bindingKey);
     if (style) {
         try {
-            if (style.fontName !== figma.mixed) {
+            if (typeof style.fontName !== 'symbol') {
                 await figma.loadFontAsync(style.fontName as FontName);
             }
             await node.setTextStyleIdAsync(style.id);
@@ -6374,14 +6457,14 @@ async function applyTextStyleBinding(
 async function createFigmaTagInstanceByToken(token: string): Promise<InstanceNode | null> {
     const normalized = String(token || '').trim();
     if (!normalized) return null;
-    const resolved = resolveComponentTokenProfile(normalized);
-    if (!resolved?.profile?.componentKey) {
+    const componentKey = resolveComponentKeyFromToken(normalized);
+    if (!componentKey) {
         return null;
     }
     try {
         return await createFigmaComponentInstance({
-            componentKey: resolved.profile.componentKey,
-            fallbackName: resolved.profile.displayName
+            componentKey,
+            fallbackName: resolveComponentDisplayNameFromToken(normalized)
         });
     } catch (e) {
         console.warn(`[FigmaTag] failed to create instance for token="${normalized}"`, e);
@@ -6398,8 +6481,8 @@ async function createFigmaComponentInstanceByToken(
 ): Promise<InstanceNode | null> {
     const normalized = String(token || '').trim();
     if (!normalized) return null;
-    const resolved = resolveComponentTokenProfile(normalized);
-    if (!resolved?.profile?.componentKey) return null;
+    const componentKey = resolveComponentKeyFromToken(normalized);
+    if (!componentKey) return null;
 
     const cacheKey = buildTokenCacheKey(normalized, options?.variantCriteria);
     if (cacheKey) {
@@ -6421,8 +6504,8 @@ async function createFigmaComponentInstanceByToken(
 
     try {
         const instance = await createFigmaComponentInstance({
-            componentKey: resolved.profile.componentKey,
-            fallbackName: resolved.profile.displayName,
+            componentKey,
+            fallbackName: resolveComponentDisplayNameFromToken(normalized),
             variantCriteria: options?.variantCriteria,
             visible: options?.visible
         });
@@ -6605,6 +6688,17 @@ function collectTextNodes(root: SceneNode): TextNode[] {
   return results;
 }
 
+function applyCellAutoWidth(cell: SceneNode) {
+  const textNodes = collectTextNodes(cell);
+  for (const textNode of textNodes) {
+    try {
+      textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+    } catch (e) {
+      console.warn('Failed to apply auto width', e);
+    }
+  }
+}
+
 async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'center') {
   if ((cell.type === 'FRAME' || cell.type === 'INSTANCE') && 'primaryAxisAlignItems' in cell) {
     if (align === 'right') {
@@ -6754,6 +6848,9 @@ async function setSceneText(node: SceneNode, text: string) {
   try {
     await figma.loadFontAsync(target.fontName as FontName);
     target.characters = nextText;
+    if (isTableTextContext(node) || isTableTextContext(target)) {
+      target.textAutoResize = 'WIDTH_AND_HEIGHT';
+    }
   } catch (e) {
     console.warn('Failed to set text', e);
   }
@@ -6879,7 +6976,7 @@ async function renderComponent(
 
     const componentKeyFromParam = typeof params.componentKey === 'string' ? params.componentKey.trim() : '';
     const componentToken = typeof params.componentToken === 'string' ? params.componentToken.trim() : '';
-    const componentKeyFromToken = componentToken ? resolveComponentTokenProfile(componentToken)?.profile.componentKey || '' : '';
+    const componentKeyFromToken = componentToken ? resolveComponentKeyFromToken(componentToken) : '';
     const componentKey = componentKeyFromParam || componentKeyFromToken;
     if (!componentKey) {
       console.error(`[FigmaUI] Missing component key for token: ${componentToken}`);
@@ -7221,11 +7318,18 @@ async function renderComponent(
         }
 
         if (params.required) {
-            const requiredNode = figma.createText();
-            await applyTextStyleBinding(requiredNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
-            requiredNode.characters = '*';
-            await applyColorVariable(requiredNode, 'form-required-text', '#F5222D');
-            labelWrap.appendChild(requiredNode);
+            const requiredIconDef = COMPONENT_DEFS['icon-asterisk'];
+            const requiredIconKey = requiredIconDef?.figmaBinding?.renderKey;
+            if (requiredIconKey) {
+                const requiredIcon = await createFigmaComponentInstance({
+                    componentKey: requiredIconKey,
+                    fallbackName: requiredIconDef?.name || 'icon-asterisk'
+                });
+                labelWrap.appendChild(requiredIcon);
+            } else {
+                const requiredIcon = await createMissingFigmaComponentFrame('icon-asterisk');
+                labelWrap.appendChild(requiredIcon);
+            }
         }
 
         const labelNode = figma.createText();
@@ -7273,6 +7377,8 @@ async function renderComponent(
   // --- TABLE ---
   else if (instance.componentId === 'table') {
       const frame = figma.createFrame();
+      frame.fills = [];
+      clearNodeStrokes(frame);
 
       // Early viewport movement for better UX
       if (options?.isRoot) {
@@ -7789,7 +7895,9 @@ async function renderComponent(
         }
 
         if (showMore) {
-            const moreIcon = await createFigmaComponentInstanceByToken('table.cell.icon.actionMore');
+            const moreIcon =
+              (await createFigmaComponentInstanceByToken('table-cell-icon-more')) ||
+              (await createFigmaComponentInstanceByToken('table-cell-icon-action-more'));
             if (moreIcon) {
                 try {
                     moreIcon.resize(16, 16);
@@ -7825,7 +7933,7 @@ async function renderComponent(
     else if (instance.componentId === 'table-cell-action-icon') {
         frame.itemSpacing = 24;
 
-        const iconTokens = ['table.cell.icon.edit', 'table.cell.icon.delete', 'table.cell.icon.actionMore'];
+        const iconTokens = ['table-cell-icon-edit', 'table-cell-icon-delete', 'table-cell-icon-more'];
         for (const token of iconTokens) {
             const icon = await createFigmaComponentInstanceByToken(token);
             if (!icon) continue;
@@ -8000,10 +8108,14 @@ async function renderComponent(
 	    if (isRoot && !widthExplicit) {
 	      (params as any).width = width;
 	    }
-	    if (Number.isFinite(width) && width > 0) {
-	      frame.primaryAxisSizingMode = 'FIXED';
-	      frame.resize(width, frame.height);
-	    }
+    if (Number.isFinite(width) && width > 0) {
+      frame.primaryAxisSizingMode = 'FIXED';
+      frame.resize(width, frame.height);
+      frame.primaryAxisSizingMode = 'FIXED';
+      frame.counterAxisSizingMode = 'AUTO';
+      try { (frame as any).layoutSizingHorizontal = 'FILL'; } catch {}
+      try { (frame as any).layoutSizingVertical = 'HUG'; } catch {}
+    }
 
 	    const itemWidthRaw = Number(params.itemWidth);
 	    const hasFixedItemWidth = Number.isFinite(itemWidthRaw) && itemWidthRaw > 0;
@@ -8124,6 +8236,31 @@ async function renderComponent(
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
   }
+  // --- DATEPICKER / TIMEPICKER / INPUTNUMBER / SLIDER / TEXTAREA / SWITCH / SEGMENTED-PICKER / UPLOAD ---
+  else if (['datepicker', 'timepicker', 'inputnumber', 'slider', 'textarea', 'switch', 'segmented-picker', 'upload'].includes(instance.componentId)) {
+    const snapshot = def.figmaPropertySnapshot as any;
+    const componentKey = (snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '') || String(snapshot?.componentKey || '').trim();
+    const fallbackWidth = Number(params.width) > 0 ? Number(params.width) : (def.runtime?.fallback?.width ?? 240);
+    const fallbackHeight = def.runtime?.fallback?.height ?? 32;
+    if (componentKey) {
+      try {
+        const importedInstance = await createFigmaComponentInstance({
+          componentKey,
+          fallbackName: def.name,
+          variantCriteria: {}
+        });
+        applyFigmaComponentProps(importedInstance, instance.componentId, params);
+        const targetWidth = Number(params.width) > 0 ? Number(params.width) : importedInstance.width;
+        importedInstance.resize(targetWidth, importedInstance.height);
+        node = importedInstance;
+      } catch (e) {
+        console.warn(`[FigmaUI] failed to create ${instance.componentId} from Figma component`, e);
+        node = await createMissingFigmaComponentFrame(snapshot?.token || def.name, fallbackWidth, fallbackHeight);
+      }
+    } else {
+      node = await createMissingFigmaComponentFrame(snapshot?.token || def.name, fallbackWidth, fallbackHeight);
+    }
+  }
   // --- CARD ---
   else if (instance.componentId === 'card') {
     const cardDefaults = getDefaultParams('card');
@@ -8238,28 +8375,44 @@ function resolveInspectionTargets(payload: any): Array<{
         fallbackName: base.displayName
       });
     });
-  } else if (requestedTokens.length > 0 || requestedKeys.length > 0) {
+  } else if (requestedTokens.length > 0 || requestedKeys.length > 0 || requestedNodeIds.length > 0) {
     requestedTokens.forEach(pushToken);
-    requestedKeys.forEach((key) => {
-      const normalized = String(key || '').trim();
-      if (!normalized) return;
-      const resolved = resolveComponentTokenProfile(normalized);
-      if (resolved) {
+
+    // If exactly one key and one nodeId are provided together, merge them into one target
+    // so discoverFigmaComponentSchemaFromSelection can traverse sub-component exposed properties
+    if (requestedKeys.length === 1 && requestedNodeIds.length === 1 && requestedTokens.length === 0) {
+      const key = String(requestedKeys[0] || '').trim();
+      const nodeId = String(requestedNodeIds[0] || '').trim();
+      if (key && nodeId) {
+        const resolved = resolveComponentTokenProfile(key);
         targets.push({
-          token: resolved.token,
-          componentKey: resolved.profile.componentKey,
-          fallbackName: resolved.profile.displayName
+          token: resolved?.token,
+          componentKey: resolved?.profile.componentKey || key,
+          componentNodeId: nodeId,
+          fallbackName: resolved?.profile.displayName
         });
-      } else {
-        // raw componentKey (hash) — no token mapping, use directly
-        targets.push({ componentKey: normalized });
       }
-    });
-    requestedNodeIds.forEach((nodeId) => {
-      const normalized = String(nodeId || '').trim();
-      if (!normalized) return;
-      targets.push({ componentNodeId: normalized });
-    });
+    } else {
+      requestedKeys.forEach((key) => {
+        const normalized = String(key || '').trim();
+        if (!normalized) return;
+        const resolved = resolveComponentTokenProfile(normalized);
+        if (resolved) {
+          targets.push({
+            token: resolved.token,
+            componentKey: resolved.profile.componentKey,
+            fallbackName: resolved.profile.displayName
+          });
+        } else {
+          targets.push({ componentKey: normalized });
+        }
+      });
+      requestedNodeIds.forEach((nodeId) => {
+        const normalized = String(nodeId || '').trim();
+        if (!normalized) return;
+        targets.push({ componentNodeId: normalized });
+      });
+    }
   } else {
     Object.entries(BASE_COMPONENT_TOKEN_PACK).forEach(([token]) => pushToken(token));
   }
@@ -8337,7 +8490,7 @@ async function drawAiChart(data: any, options: any) {
     console.log("PingFang SC Regular not available, falling back");
   }
 
-  let frame: FrameNode;
+  let frame: FrameNode | null = null;
   let width = 600;
   let height = 300;
   let useSelection = false;
@@ -8662,18 +8815,19 @@ async function drawAiChart(data: any, options: any) {
   // 根据图表类型选择不同的X轴标签布局
   let labelPositions: number[] = [];
   
+  let stepX = count > 1 ? drawW / (count - 1) : drawW;
   if (isBarChart) {
     // 柱状图：使用boundaryGap=true的布局
     const barCategoryGap = 0.3;
     const categorySlotWidth = count > 0 ? drawW / (count + barCategoryGap) : drawW;
-    
+
     for (let i = 0; i < count; i++) {
       const centerX = categorySlotWidth / 2 + i * categorySlotWidth;
       labelPositions.push(centerX);
     }
   } else {
     // 折线图：使用原有的等距布局
-    const stepX = count > 1 ? drawW / (count - 1) : drawW;
+    stepX = count > 1 ? drawW / (count - 1) : drawW;
     for (let i = 0; i < count; i++) {
       labelPositions.push(count === 1 ? drawW / 2 : i * stepX);
     }
@@ -9133,12 +9287,20 @@ figma.ui.onmessage = async (msg) => {
 
     for (let index = 0; index < scanned.length; index += 1) {
       const target = scanned[index];
-      const discovered = await discoverFigmaComponentSchema({
-        token: target.token,
-        componentKey: target.componentKey || '',
-        componentNodeId: target.componentNodeId,
-        fallbackName: target.fallbackName
-      });
+      const hasNodeId = typeof target.componentNodeId === 'string' && target.componentNodeId.trim().length > 0;
+      const discovered = hasNodeId
+        ? await discoverFigmaComponentSchemaFromSelection({
+            token: target.token,
+            componentKey: target.componentKey || '',
+            componentNodeId: target.componentNodeId,
+            fallbackName: target.fallbackName
+          })
+        : await discoverFigmaComponentSchema({
+            token: target.token,
+            componentKey: target.componentKey || '',
+            componentNodeId: target.componentNodeId,
+            fallbackName: target.fallbackName
+          });
 
       if (discovered.status === 'ok' || includeErrors) {
         results.push(discovered);
@@ -9416,6 +9578,9 @@ figma.ui.onmessage = async (msg) => {
             if (params.text) {
                 await figma.loadFontAsync(node.fontName as FontName);
                 node.characters = params.text;
+                if (isTableTextContext(node)) {
+                    node.textAutoResize = 'WIDTH_AND_HEIGHT';
+                }
             }
             if (params.fontSize) node.fontSize = params.fontSize;
             if (params.lineHeight && Number(params.lineHeight) > 0) {
@@ -9430,6 +9595,7 @@ figma.ui.onmessage = async (msg) => {
 	        if (componentId === 'table' && node.type === 'FRAME') {
 	            let tableRoot = node;
 	            let tableContent = resolveTableContentFrame(tableRoot);
+              let suppressedSelection = false;
 
 	            // Keep inner table params in sync so sizing / row-action helpers read correct values.
 	            if (tableContent !== tableRoot) {
@@ -9454,6 +9620,8 @@ figma.ui.onmessage = async (msg) => {
                 if (wrapped) {
                     tableRoot = wrapped;
                     tableContent = resolveTableContentFrame(tableRoot);
+                    selectionUpdateSuppressed = true;
+                    suppressedSelection = true;
                     figma.currentPage.selection = [tableRoot];
                 } else {
                     figma.ui.postMessage({
@@ -9551,6 +9719,9 @@ figma.ui.onmessage = async (msg) => {
                 clearNodeStrokes(tableRoot);
             }
 
+            if (suppressedSelection) {
+                selectionUpdateSuppressed = false;
+            }
 	            checkSelection();
             shouldRefreshSelection = false;
 	        }
@@ -9664,6 +9835,16 @@ figma.ui.onmessage = async (msg) => {
               }
             }
             column.setPluginData('cellType', componentId);
+          }
+        }
+
+        if (componentId === 'table-cell') {
+          const children = column.children.filter((child) => {
+            const id = child.getPluginData('component-id');
+            return isTableCellComponentId(id) && id !== 'table-header-cell';
+          });
+          for (const child of children) {
+            applyCellAutoWidth(child as SceneNode);
           }
         }
 

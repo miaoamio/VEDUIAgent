@@ -28,6 +28,7 @@
 | [Agent 计划系统规范](coding-specs/SPEC_AGENT_PLANNER_CN.md) | 多步骤任务拆解与计划执行逻辑 |
 | [元数据规范](coding-specs/SPEC_METADATA_CN.md) | 节点元数据的读写与兼容规则 |
 | [组件快照登记流程](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_WORKFLOW_CN.md) | 如何批量维护组件属性快照（含 npm 命令） |
+| [反查指令参考](coding-specs/INSPECT_COMMANDS_CN.md) | `/inspect` / `/inspect-style` 开发者调试指令用法 |
 | [组件快照登记用例](coding-specs/COMPONENT_SNAPSHOT_REGISTRATION_CASES_CN.md) | 逐组件的登记测试用例 |
 | [图表组件登记流程](coding-specs/CHART_COMPONENT_REGISTRATION_WORKFLOW_CN.md) | 图表类组件登记与运行时使用规范 |
 | [测试策略规范](coding-specs/SPEC_TEST_STRATEGY_CN.md) | 单元/集成/回归测试分层策略 |

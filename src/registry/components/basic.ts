@@ -111,138 +111,6 @@ export const basicComponents: ComponentRegistry["components"] = {
     "figmaBinding": {
       "nodeType": "INSTANCE",
       "preferredLayoutMode": "VERTICAL"
-    },
-    "figmaPropertySnapshot": {
-      "token": "lib-data-display-toplist",
-      "componentKey": "6acea515cbcd1ae970ef5627425bd55cbda137ff",
-      "inspectedAt": "2026-03-13T14:17:22.987Z",
-      "source": "discover_component_props",
-      "properties": [
-        {
-          "propertyName": "Show Legend",
-          "displayName": "Show Legend",
-          "type": "BOOLEAN",
-          "defaultValue": true,
-          "options": [
-            "True",
-            "False"
-          ]
-        },
-        {
-          "propertyName": "数量 ",
-          "displayName": "数量 ",
-          "type": "VARIANT",
-          "defaultValue": "1",
-          "options": [
-            "1",
-            "2",
-            "3",
-            "4"
-          ]
-        },
-        {
-          "propertyName": "状态 state",
-          "displayName": "状态 state",
-          "type": "VARIANT",
-          "defaultValue": "默认 Default",
-          "options": [
-            "默认 Default",
-            "悬浮 Hover",
-            "聚焦 Focus"
-          ]
-        },
-        {
-          "propertyName": "类型 type",
-          "displayName": "类型 type",
-          "type": "VARIANT",
-          "defaultValue": "基础/分组柱 default",
-          "options": [
-            "基础/分组柱 default",
-            "堆叠 stacked",
-            "百分比堆叠 stacked part to whole",
-            "特殊 special case",
-            "特殊 special case 2"
-          ]
-        },
-        {
-          "propertyName": "适配方式 responsive",
-          "displayName": "适配方式 responsive",
-          "type": "VARIANT",
-          "defaultValue": "固定柱宽 fixed width",
-          "options": [
-            "固定柱宽 fixed width",
-            "固定间距 fixed gap"
-          ]
-        }
-      ]
-    },
-    "figmaPropertySnapshotCatalog": {
-      "token:lib-data-display-toplist": {
-        "token": "lib-data-display-toplist",
-        "componentKey": "6acea515cbcd1ae970ef5627425bd55cbda137ff",
-        "inspectedAt": "2026-03-13T14:17:22.987Z",
-        "source": "discover_component_props",
-        "componentName": "Toplist 条形图",
-        "componentSetName": "Toplist 条形图",
-        "properties": [
-          {
-            "propertyName": "Show Legend",
-            "displayName": "Show Legend",
-            "type": "BOOLEAN",
-            "defaultValue": true,
-            "options": [
-              "True",
-              "False"
-            ]
-          },
-          {
-            "propertyName": "数量 ",
-            "displayName": "数量 ",
-            "type": "VARIANT",
-            "defaultValue": "1",
-            "options": [
-              "1",
-              "2",
-              "3",
-              "4"
-            ]
-          },
-          {
-            "propertyName": "状态 state",
-            "displayName": "状态 state",
-            "type": "VARIANT",
-            "defaultValue": "默认 Default",
-            "options": [
-              "默认 Default",
-              "悬浮 Hover",
-              "聚焦 Focus"
-            ]
-          },
-          {
-            "propertyName": "类型 type",
-            "displayName": "类型 type",
-            "type": "VARIANT",
-            "defaultValue": "基础/分组柱 default",
-            "options": [
-              "基础/分组柱 default",
-              "堆叠 stacked",
-              "百分比堆叠 stacked part to whole",
-              "特殊 special case",
-              "特殊 special case 2"
-            ]
-          },
-          {
-            "propertyName": "适配方式 responsive",
-            "displayName": "适配方式 responsive",
-            "type": "VARIANT",
-            "defaultValue": "固定柱宽 fixed width",
-            "options": [
-              "固定柱宽 fixed width",
-              "固定间距 fixed gap"
-            ]
-          }
-        ]
-      }
     }
   },
   "text": {
@@ -558,13 +426,11 @@ export const basicComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-display-tag",
-      "componentKey": "19089a80333c317accdfb64ccd31736c7fef9dbd",
       "inspectedAt": "2026-03-09T12:55:10.925Z",
       "source": "discover_component_props",
       "properties": [
         {
           "propertyName": "Close 关闭",
-          "displayName": "Close 关闭",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -574,7 +440,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Disabled 禁用",
-          "displayName": "Disabled 禁用",
           "type": "VARIANT",
           "defaultValue": "Off",
           "options": [
@@ -584,7 +449,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Dot 点",
-          "displayName": "Dot 点",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -594,7 +458,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Dropdown 下拉",
-          "displayName": "Dropdown 下拉",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -604,7 +467,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Icon 图标",
-          "displayName": "Icon 图标",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -614,7 +476,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 20",
           "options": [
@@ -626,7 +487,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -637,7 +497,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Type 类型",
-          "displayName": "Type 类型",
           "type": "VARIANT",
           "defaultValue": "Default 默认标签",
           "options": [
@@ -908,13 +767,11 @@ export const basicComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-basic-button",
-      "componentKey": "a539f78c79dc3ab8df6c18d806b0666f64fae1ab",
       "inspectedAt": "2026-03-05T11:21:17.019Z",
       "source": "discover_component_props",
       "properties": [
         {
           "propertyName": "PrefixIcon 前置图标#118251:241",
-          "displayName": "PrefixIcon 前置图标",
           "type": "BOOLEAN",
           "defaultValue": false,
           "options": [
@@ -924,7 +781,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "SuffixIcon 后置图标#118251:964",
-          "displayName": "SuffixIcon 后置图标",
           "type": "BOOLEAN",
           "defaultValue": false,
           "options": [
@@ -934,19 +790,16 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "prefixIcon 前置图标#118251:0",
-          "displayName": "prefixIcon 前置图标",
           "type": "INSTANCE_SWAP",
           "defaultValue": "13:8327"
         },
         {
           "propertyName": "suffixIcon 后置图标#118251:482",
-          "displayName": "suffixIcon 后置图标",
           "type": "INSTANCE_SWAP",
           "defaultValue": "13:1867"
         },
         {
           "propertyName": "Disable 禁用",
-          "displayName": "Disable 禁用",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -956,7 +809,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "IconOnly 仅图标",
-          "displayName": "IconOnly 仅图标",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -966,7 +818,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Language",
-          "displayName": "Language",
           "type": "VARIANT",
           "defaultValue": "CN",
           "options": [
@@ -976,7 +827,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Size 尺寸",
-          "displayName": "Size 尺寸",
           "type": "VARIANT",
           "defaultValue": "Default 32",
           "options": [
@@ -988,7 +838,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "State 状态",
-          "displayName": "State 状态",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1000,7 +849,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Theme 主题",
-          "displayName": "Theme 主题",
           "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
@@ -1012,7 +860,6 @@ export const basicComponents: ComponentRegistry["components"] = {
         },
         {
           "propertyName": "Type 类型",
-          "displayName": "Type 类型",
           "type": "VARIANT",
           "defaultValue": "Primary 主要",
           "options": [

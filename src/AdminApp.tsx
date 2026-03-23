@@ -115,7 +115,11 @@ const css = `
   .description { font-size: 12px; color: #4e5969; line-height: 1.6; margin-bottom: 12px; }
 
   /* Table */
-  .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; border: 1px solid #e5e8ef; border-radius: 8px; overflow: hidden; margin: 0; }
+  .table th:first-child { border-top-left-radius: 8px; }
+  .table th:last-child { border-top-right-radius: 8px; }
+  .table tr:last-child td:first-child { border-bottom-left-radius: 8px; }
+  .table tr:last-child td:last-child { border-bottom-right-radius: 8px; }
   .table th {
     text-align: left; font-weight: 600;
     padding: 6px 10px; background: #f7f8fa;
