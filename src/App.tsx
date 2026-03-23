@@ -63,6 +63,18 @@ interface AgentPlanState {
   updatedAt: string;
 }
 
+function isMultiTaskExecutionActive(
+  deferSelectionAutoSwitch: boolean,
+  loading: boolean,
+  agentPlan: AgentPlanState | null
+): boolean {
+  if (!deferSelectionAutoSwitch) return false;
+  if (!loading) return false;
+  if (!agentPlan) return false;
+  if (!Array.isArray(agentPlan.tasks) || agentPlan.tasks.length <= 1) return false;
+  return agentPlan.tasks.some((task) => task.status === 'pending' || task.status === 'in_progress');
+}
+
 const TASK_MAX_RETRIES = 2;
 const MAX_VARIANTS_IN_STRUCTURE_JSON = 4;
 const MAX_EXPAND_DEPTH_IN_STRUCTURE_JSON = 2;
@@ -2045,13 +2057,12 @@ function App() {
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
         const nextTab = data?.componentId === 'figma-component' ? 'chat' : 'selection';
-        const isMultiTaskExecutionActive =
-          Boolean(deferSelectionAutoSwitchRef.current) &&
-          loading &&
-          agentPlan?.tasks?.length &&
-          agentPlan.tasks.length > 1 &&
-          agentPlan.tasks.some((task) => task.status === 'pending' || task.status === 'in_progress');
-        if (!isMultiTaskExecutionActive || nextTab === 'chat') {
+        const multiTaskActive = isMultiTaskExecutionActive(
+          Boolean(deferSelectionAutoSwitchRef.current),
+          loading,
+          agentPlan
+        );
+        if (!multiTaskActive || nextTab === 'chat') {
           setActiveTab(nextTab);
         }
         if (data.componentId) {
@@ -2064,13 +2075,12 @@ function App() {
       if (type === 'selection-multi-update') {
         setSelectionCount(data?.count ?? 0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        const isMultiTaskExecutionActive =
-          Boolean(deferSelectionAutoSwitchRef.current) &&
-          loading &&
-          agentPlan?.tasks?.length &&
-          agentPlan.tasks.length > 1 &&
-          agentPlan.tasks.some((task) => task.status === 'pending' || task.status === 'in_progress');
-        if (!isMultiTaskExecutionActive) {
+        const multiTaskActive = isMultiTaskExecutionActive(
+          Boolean(deferSelectionAutoSwitchRef.current),
+          loading,
+          agentPlan
+        );
+        if (!multiTaskActive) {
           setActiveTab('selection');
         }
         setSelectedComponent(null);
