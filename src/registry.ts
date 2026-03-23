@@ -4011,6 +4011,62 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
         }
       }
     },
+    "checkbox": {
+      "id": "checkbox",
+      "name": "复选框",
+      "category": "Form",
+      "description": "复选框控件（自定义包装）",
+      "schemaVersion": "2.0.0",
+      "renderNotes": {
+        "actionHint": "Checkbox/radio 视觉敏感，优先复用真实 Figma 组件；不要用 vector/svg/path/text 手工绘制勾选。"
+      },
+      "params": {
+        "label": {
+          "type": "string",
+          "default": "选项一",
+          "description": "选项文案"
+        },
+        "showLabel": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否显示标签"
+        },
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否勾选"
+        },
+        "indeterminate": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否半选"
+        },
+        "hover": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否悬浮态"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "禁用"
+        }
+      },
+      "capabilities": {
+        "allowChildren": false,
+        "allowSwapVariant": false,
+        "allowSetProps": true,
+        "allowSetLayout": true,
+        "allowSetStyle": true,
+        "allowBindData": false,
+        "allowRemove": true
+      },
+      "figmaBinding": {
+        "nodeType": "INSTANCE",
+        "preferredLayoutMode": "HORIZONTAL",
+        "renderKey": "aa349dbe87d0e3691206728b8aaea198db839ead"
+      }
+    },
     "checkbox-group": {
       "id": "checkbox-group",
       "name": "复选框组",

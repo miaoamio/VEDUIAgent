@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { useState, useMemo } from 'react';
 import { COMPONENT_REGISTRY } from './registry';
-import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme.color-tokens';
+import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme/volcengine-design/color-tokens';
 import { BASE_TYPOGRAPHY_TOKEN_PACK } from './theme/volcengine-design/typography';
-import { BASE_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
+import { BASE_COMPONENT_TOKEN_PACK } from './theme/volcengine-design/component-tokens';
 import type { ComponentDefinition, ParamDefinition, SizeMetricDefinition } from './registry.types';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -1649,15 +1649,221 @@ function OverviewView() {
   );
 }
 
+// ── Prompt View ───────────────────────────────────────────────────────────────
+
+const PROMPT_SECTIONS = [
+  {
+    id: 'identity',
+    title: '身份 & 组件索引',
+    color: '#1664ff',
+    content: `你是一个高级 Figma 助手 (Agent)。你的任务是根据用户需求，逐步构建 Figma 组件树。
+
+由于组件库很大，你不能一次性获取所有组件的详细文档。你需要通过"工具调用"的方式来获取所需组件的详细信息，然后逐步创建组件。
+
+可用组件列表 (Component Index): [动态生成，包含所有已启用组件的 id 和 description]`,
+  },
+  {
+    id: 'workflow',
+    title: '工作流 (Workflow)',
+    color: '#059669',
+    content: `1. 若用户输入包含"表单/筛选/图表"等明确组件关键词，直接调用 read_specs 获取对应组件信息。
+   ⚠️ 例外：创建表格（Table）时，直接使用 draw_table，无需读取 spec。
+
+2. 其他情况先分析用户需求，必须从 Component Index 里选择可用组件，再决定需要使用哪些组件。
+   - 必须调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
+   - 例外：表格组件（table/table-column等）无需读取 spec，直接使用 draw_table。
+   - 禁止在未读取 spec 的情况下直接猜测组件参数（表格除外）。
+   - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
+   - 当要复用 Figma 设计系统组件时，先 read_specs(["figma-component"]) 获取 ComponentTokenCatalog。
+   - 若需要给 figma-component 传 variantCriteria，先调用 discover_component_props 探测目标 token 的真实可设置属性。
+   - 如果未探测到属性，先只摆放组件本体（componentToken），不要猜测属性名。
+   - 禁止臆造 componentKey；只有 token 不可用时再回退 componentKey。
+   - 对于 boolean 参数，不要显式输出默认值；仅当用户强行指定时才写入 true/false。
+   - 对于 figma-component，不要输出 width/height，除非用户明确要求尺寸。
+
+3. 表格创建优先走 draw_table(payload)（不要输出冗长 table 子树）。
+4. 标准表单/筛选表单创建优先走 draw_form(payload)。
+5. 当需要复刻设计系统组件内部结构时，先调用 inspect_component_structure 获取内部层级。
+6. 对于非表格复杂结构或增量编辑，优先调用 apply_scene(payload)。
+7. 当你只需要创建一个简单节点时，也可以调用 create_node(componentId, params, parentId?, children?)。
+8. 只有当必须依赖父节点 ID 且无法一次性构建时，才分步执行。
+9. 当任务包含多区块下钻，必须先建立外部计划队列（set_plan / plan_next / update_plan）。
+10. 不要依赖你自己的记忆来追踪待办，下钻待办以系统计划队列为准。
+11. 系统在复杂请求时可能自动初始化计划队列（auto plan）。
+12. 对于已知任务类型，优先调用 execute_task(payload)（或 run_task）让系统按 task.type 执行。
+    - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
+13. 用户当前轮消息可能包含"用户提供内容"摘要、表格结构(JSON)和图片附件。`,
+  },
+  {
+    id: 'table',
+    title: 'draw_table 详细规则',
+    color: '#7c3aed',
+    content: `payload 使用紧凑结构，例如：
+{
+  "headers": ["姓名", "年龄", "城市"],
+  "rows": [["张三", "28", "北京"], ["李四", "32", "上海"]],
+  "columnTypes": ["Text", "Text", "Text"],
+  "tabs": ["全部", "进行中"],
+  "filters": ["状态", "城市", "关键词"],
+  "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" },
+  "pagination": true,
+  "rowHeight": { "header": 40, "body": 40 }
+}
+
+- 若表格存在"多选/勾选/选择列"，在 payload 顶层加入 "rowAction": "multiple"。
+- 单选列请使用 "rowAction": "single"。
+- 不要把勾选列写进 headers/rows/columnTypes。
+- 标签列（Tag）分为 StatusTag（状态）和 TypeTag（类型/分类）。
+  - StatusTag 示例: { "text": "启用", "statusTheme": "Success 成功" }
+  - TypeTag 示例: { "text": "企业", "tagType": "Outline 线型标签" }
+- 若表格包含操作列特征（表头为"操作/Action/Actions"，或单元格包含编辑/删除等动词），columnTypes 设为 "ActionText" 或 "ActionIcon"。
+- draw_table 与 draw_tabl 等价；为兼容旧接口，优先使用 draw_tabl。
+- draw_table payload 禁止包含 nodeId/componentId/props/children。`,
+  },
+  {
+    id: 'form',
+    title: 'draw_form 详细规则',
+    color: '#c05621',
+    content: `payload 使用紧凑结构，例如：
+{
+  "align": "top",
+  "labelWidthPreset": "fill",
+  "rows": [
+    [{ "componentId": "input", "label": "姓名", "props": { "placeholder": "请输入姓名" } }],
+    [{ "componentId": "select", "label": "城市", "props": { "value": "请选择" } }]
+  ]
+}
+
+- 默认优先每行一个字段（单列）：除非用户明确要求"双列/多列"，否则 rows 的每个子数组只放 1 个字段。
+- 当根据图片生成表单时，必须输出图片中所有字段。
+- 图片场景禁止只输出 fields：必须输出 rows[][] 以保证多行字段被逐行渲染。
+- 字段类型不确定时优先用 input，有明确选项/状态时再用 select / checkbox-group / radio-group / switch。
+- rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
+- 若参考图里出现标准复选框/单选框/开关/勾选列表，不要手工画 vector/svg/path/text 勾号。
+- 多选项优先使用 checkbox-group；若是零散多选项行，也可以直接组合多个 checkbox。`,
+  },
+  {
+    id: 'plan',
+    title: '计划队列规则',
+    color: '#0891b2',
+    content: `当任务包含多区块下钻（如：页面 + 表格区 + 图表区 + 表单区），必须先建立外部计划队列：
+
+- set_plan(payload): 初始化任务清单（pending/in_progress/done/failed）。
+- plan_next(payload): 让系统返回下一个可执行任务（考虑 dependsOn）。
+- update_plan(payload): 更新任务状态，可追加新下钻任务。
+  - 状态更新：payload.updates=[{taskId,status,notes?}]
+  - 追加任务：payload.addTasks=[...]（兼容 appendTasks / tasks）
+- 执行中的动作尽量带 taskId（action.taskId 或 action.payload.taskId）。
+- 对于已知任务类型，优先调用 execute_task(payload)。
+  - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block
+  - 禁止使用未实现类型（如 expand_header_block / expand_actions_block）
+  - 表格+筛选器/分页器请求（单区块）不要 set_plan，直接 draw_tabl 带参数即可`,
+  },
+  {
+    id: 'format',
+    title: '回复格式 (Response Format)',
+    color: '#374151',
+    content: `只回复一个 JSON 对象，包含 "thought" 和 "action"。
+
+- "thought" 必须极短，优先 4-12 个汉字或等价短语。
+- 不要复述用户需求，不要写"首先/现在/已获取/成功/需要"等空话。
+- 用动作短语即可，例如：读input spec / 建基础input / 结束。
+- 优先输出紧凑 JSON；不要使用 Markdown code block，不要输出 JSON 之外的解释。
+
+重要限制：
+- 创建新表格时优先 draw_table，避免输出冗长 table 子树。
+- 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
+- 多区块复杂任务必须先 set_plan，并通过 plan_next / update_plan 驱动执行。
+- 复杂结构优先用 apply_scene，一次提交完整 scene 或 patch。
+- 简单创建可用 create_node。
+- 每次只执行一个动作。
+- "thought" 只保留当前动作意图，越短越好。
+- 如果所有步骤都已完成，调用 { "type": "finish" }。`,
+  },
+];
+
+function PromptView() {
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['identity', 'workflow']));
+  const toggle = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const expandAll = () => setExpanded(new Set(PROMPT_SECTIONS.map(s => s.id)));
+  const collapseAll = () => setExpanded(new Set());
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <div style={{ flex: 1, fontSize: 12, color: '#86909c' }}>
+          Runtime AI 收到的 system prompt — 由 <code>generateMasterPrompt()</code> 动态生成（组件索引部分随 registry 变化）
+        </div>
+        <button
+          onClick={expandAll}
+          style={{ fontSize: 11, padding: '3px 8px', border: '1px solid #e5e8ef', borderRadius: 4, cursor: 'pointer', background: '#fff', color: '#4e5969' }}
+        >
+          全部展开
+        </button>
+        <button
+          onClick={collapseAll}
+          style={{ fontSize: 11, padding: '3px 8px', border: '1px solid #e5e8ef', borderRadius: 4, cursor: 'pointer', background: '#fff', color: '#4e5969' }}
+        >
+          全部折叠
+        </button>
+      </div>
+
+      {PROMPT_SECTIONS.map(section => {
+        const open = expanded.has(section.id);
+        return (
+          <div key={section.id} className="card">
+            <div className="card-header" onClick={() => toggle(section.id)}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: section.color, flexShrink: 0 }} />
+              <h3 style={{ fontSize: 13 }}>{section.title}</h3>
+              <span className="chevron" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+            </div>
+            {open && (
+              <div style={{ padding: '12px 16px' }}>
+                <pre style={{
+                  margin: 0,
+                  fontFamily: 'Menlo, Monaco, Consolas, monospace',
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: '#1d2129',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  background: '#f8f9fc',
+                  border: '1px solid #eef0f5',
+                  borderRadius: 6,
+                  padding: '10px 12px',
+                }}>
+                  {section.content}
+                </pre>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div style={{ marginTop: 16, padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, fontSize: 11, color: '#92400e', lineHeight: 1.6 }}>
+        <strong>注意：</strong>上方内容为静态展示，组件索引部分（身份 & 组件索引）会随 registry 启用状态动态变化。
+        修改规则请直接编辑 <code>src/App.tsx</code> 中的 <code>generateMasterPrompt()</code> 函数。
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 
-type NavPage = 'overview' | 'registry' | 'theme' | 'skills';
+type NavPage = 'overview' | 'registry' | 'theme' | 'skills' | 'prompt';
 
 const NAV_ITEMS: { id: NavPage; label: string; dot: string; desc: string }[] = [
   { id: 'overview', label: '总览', dot: '#1d2129', desc: '项目架构概览' },
   { id: 'registry', label: 'Layer 1 — 组件规范', dot: '#1664ff', desc: 'registry.ts' },
   { id: 'theme', label: 'Layer 2 — 主题包', dot: '#059669', desc: 'theme.*.ts' },
   { id: 'skills', label: 'Layer 3 — 技能包', dot: '#c05621', desc: 'renderNotes & skills' },
+  { id: 'prompt', label: 'System Prompt', dot: '#7c3aed', desc: 'generateMasterPrompt()' },
 ];
 
 export default function AdminApp() {
@@ -1669,6 +1875,7 @@ export default function AdminApp() {
     registry: <RegistryView />,
     theme: <ThemeView />,
     skills: <SkillsView />,
+    prompt: <PromptView />,
   };
 
   return (

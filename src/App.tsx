@@ -23,7 +23,7 @@ import {
   TextInputControl
 } from './ui/PropertyControls';
 import { Tooltip } from './ui/Tooltip';
-import { BASE_COMPONENT_TOKEN_PACK } from './theme.component-tokens';
+import { BASE_COMPONENT_TOKEN_PACK } from './theme/volcengine-design/component-tokens';
 import { SPEC_COMPONENT_TOKEN_MAP } from './spec.component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
 import { buildFormComponentFromPayload as buildFormComponentFromPayloadSkill } from './engine/skills/form.skill';
@@ -1312,6 +1312,9 @@ function App() {
   const [attachmentMenuOpen, setAttachmentMenuOpen] = React.useState(false);
   const composerAttachRef = React.useRef<HTMLDivElement | null>(null);
   const chartDropdownRef = React.useRef<HTMLDivElement | null>(null);
+  const [figmaInstanceInfo, setFigmaInstanceInfo] = React.useState<{
+    componentKey: string; componentName: string; componentSetName: string; nodeName: string;
+  } | null>(null);
   const quickComponentDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const quickComponentMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [quickComponentActiveCategory, setQuickComponentActiveCategory] = React.useState<string | null>(null);
@@ -1461,7 +1464,7 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTab('selection');
+        setActiveTab(data?.componentId === 'figma-component' ? 'chat' : 'selection');
         if (data.componentId) {
           setSelectedComponent(data);
           setSelectionVersion((prev) => prev + 1);
@@ -1483,6 +1486,10 @@ function App() {
         setActiveTab('chat');
         setSelectedComponent(null);
         setChartOverlayOpen(false);
+      }
+
+      if (type === 'figma-instance-info') {
+        setFigmaInstanceInfo(data?.componentKey ? data : null);
       }
 
     };
@@ -5484,6 +5491,30 @@ StepD:
     }
   };
 
+  const handleInspectByComponentKey = async (componentKey: string) => {
+    if (componentInspectionRunning || loading || !componentKey) return;
+    setComponentInspectionRunning(true);
+    setComponentInspectionSummary('反查中…');
+    try {
+      const inspectResult = await inspectFigmaComponentStructure({
+        keys: [componentKey],
+        includeErrors: true,
+        maxDepth: 6,
+        maxChildren: 24
+      });
+      const summary = inspectResult?.summary || {};
+      const success = Number(summary.success || 0);
+      const failed = Number(summary.failed || 0);
+      const summaryText = `反查完成：success=${success}, failed=${failed}`;
+      setComponentInspectionSummary(summaryText);
+      setComponentInspectJson(buildComponentInspectJson(inspectResult));
+    } catch (e) {
+      setComponentInspectionSummary(`反查失败: ${String(e)}`);
+    } finally {
+      setComponentInspectionRunning(false);
+    }
+  };
+
   const executeTaskByType = async (
     task: PlanTask,
     payload: any,
@@ -7837,6 +7868,7 @@ StepD:
 
   const renderSelectionEditor = () => {
     if (!selectedComponent) return null;
+    if (selectedComponent.componentId === 'figma-component') return null;
     if (selectedComponent.componentId === 'table') {
       return renderTablePropertyEditor();
     }
@@ -7847,410 +7879,109 @@ StepD:
   };
 
   const renderDocs = () => {
-    try {
-      const registry = loadRegistry() ?? { version: 'unknown', components: {} as Record<string, ComponentDefinition> };
-      const components = registry.components ?? {};
-      const allDefs = Object.values(components).filter(isEnabledComponent);
-      const defsById = components;
+    // Generate figmaPropertySnapshot snippet from inspected JSON or current figmaInstanceInfo
+    const generateSnapshotSnippet = () => {
+      const key = figmaInstanceInfo?.componentKey ?? '';
+      const name = figmaInstanceInfo?.componentSetName || figmaInstanceInfo?.componentName || '';
+      if (!key) return '';
+      // Try to pull properties from componentInspectJson if it was just inspected for this key
+      let propertiesArr: any[] = [];
+      try {
+        if (componentInspectJson) {
+          const parsed = JSON.parse(componentInspectJson);
+          const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (entry?.properties) propertiesArr = entry.properties;
+        }
+      } catch {}
+      const snapshot = {
+        token: '',
+        componentKey: key,
+        inspectedAt: new Date().toISOString().slice(0, 10),
+        source: 'discover_component_props',
+        componentSetName: name,
+        properties: propertiesArr,
+        propertyMap: {}
+      };
+      return JSON.stringify(snapshot, null, 2);
+    };
 
-      const grouped: {[key: string]: ComponentDefinition[]} = {};
-      allDefs.forEach(def => {
-          const cat = def.category || 'Other';
-          if (!grouped[cat]) grouped[cat] = [];
-          grouped[cat].push(def);
-      });
+    return (
+      <div className="docs-container">
+        <h3 style={{ margin: '0 0 12px 0' }}>Figma Key 登记助手</h3>
 
-      return (
-        <div className="docs-container">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-          <h3 style={{ margin: 0 }}>组件库</h3>
-          <label style={{ fontSize: '12px', color: '#666', display: 'inline-flex', alignItems: 'center', gap: '6px', userSelect: 'none' }}>
-            <input
-              type="checkbox"
-              checked={showInheritedParams}
-              onChange={(e) => setShowInheritedParams(e.target.checked)}
-            />
-            显示继承参数
-          </label>
-        </div>
-
-        {selectedComponent?.params?.componentKey && (
-          <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px', background: '#f8f9fa', border: '1px solid #e9ecef' }}>
-            <div className="component-header">
-              <span className="component-name">当前选中组件 Key</span>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
-              <code style={{ flex: 1, background: '#fff', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', wordBreak: 'break-all' }}>
-                {selectedComponent.params.componentKey}
-              </code>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedComponent.params.componentKey).then(() => {
+        <div className="component-card" style={{ marginBottom: '12px' }}>
+          {/* 选中实例信息 + 反查 + snapshot，合为一张卡 */}
+          {figmaInstanceInfo ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '4px', fontSize: '12px' }}>
+                <span style={{ color: '#777' }}>组件集</span>
+                <span>{figmaInstanceInfo.componentSetName || figmaInstanceInfo.componentName || '—'}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <code style={{ flex: 1, background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', wordBreak: 'break-all' }}>
+                  {figmaInstanceInfo.componentKey}
+                </code>
+                <button onClick={() => {
+                  navigator.clipboard.writeText(figmaInstanceInfo.componentKey);
+                  const btn = document.activeElement as HTMLButtonElement;
+                  if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                }} style={{ flexShrink: 0 }}>复制 Key</button>
+                <button
+                  onClick={() => handleInspectByComponentKey(figmaInstanceInfo.componentKey)}
+                  disabled={componentInspectionRunning || loading}
+                  style={{ flexShrink: 0 }}
+                >{componentInspectionRunning ? '…' : '反查属性'}</button>
+              </div>
+              {componentInspectionSummary && (
+                <div style={{ fontSize: '11px', color: '#777' }}>{componentInspectionSummary}</div>
+              )}
+              {componentInspectJson && (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={handleCopyInspectJson} style={{ flex: 1 }}>复制反查 JSON</button>
+                  <button onClick={() => {
+                    const snippet = generateSnapshotSnippet();
+                    navigator.clipboard.writeText(snippet);
                     const btn = document.activeElement as HTMLButtonElement;
-                    if (btn) {
-                      const oldText = btn.innerText;
-                      btn.innerText = '已复制';
-                      setTimeout(() => { btn.innerText = oldText; }, 2000);
-                    }
-                  });
-                }}
-              >
-                复制
-              </button>
+                    if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                  }} style={{ flex: 1 }}>复制 snapshot 片段</button>
+                </div>
+              )}
+              {componentInspectJson && (
+                <textarea readOnly value={componentInspectJson} rows={8}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box' }} />
+              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
+              在 Figma 画布中选中任意组件实例，自动读取 componentKey 并支持一键反查属性。
+            </div>
+          )}
 
-        <div className="component-card" style={{ marginTop: '12px', marginBottom: '16px' }}>
-          <div className="component-header">
-            <span className="component-name">Figma 属性反查自动化</span>
-            <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>
-              inspect_component_structure
-            </span>
-          </div>
-          <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-            支持按 token 自动反查真实属性和内部结构，用于把设计系统表单组件复刻为可扩展的自定义组件。结构反查会自动抽取默认态和关键状态，不需要手填变体条件。
-          </p>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+          {/* 手动 token 输入（次要） */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
             <input
               type="text"
               value={componentInspectTokenInput}
               onChange={(e) => setComponentInspectTokenInput(e.target.value)}
-              placeholder="输入 token，支持逗号/空格分隔"
+              placeholder="或输入 token 名反查"
               style={{ flex: 1 }}
             />
-            <button
-              onClick={handleInspectStructureByTokenInput}
-              disabled={componentInspectionRunning || loading}
-            >
-              自动反查
-            </button>
+            <button onClick={handleInspectStructureByTokenInput} disabled={componentInspectionRunning || loading}>反查</button>
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-            <button
-              onClick={handleCopyInspectJson}
-              disabled={!componentInspectJson}
-            >
-              复制 Unified Inspect JSON
-            </button>
-          </div>
-          {componentInspectionSummary && (
-            <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>
-              {componentInspectionSummary}
-            </div>
-          )}
-          {componentInspectJson && (
-            <textarea
-              readOnly
-              value={componentInspectJson}
-              rows={10}
-              style={{ width: '100%', fontFamily: 'monospace', fontSize: '12px', marginTop: '8px' }}
-            />
-          )}
         </div>
 
-
-        {Object.keys(grouped).length === 0 && (
-          <div className="component-card" style={{ marginTop: '12px' }}>
+        {/* snapshot 预览（有 key 且有反查结果时） */}
+        {figmaInstanceInfo?.componentKey && componentInspectJson && (
+          <div className="component-card">
             <div className="component-header">
-              <span className="component-name">组件定义</span>
+              <span className="component-name">figmaPropertySnapshot 片段</span>
             </div>
-            <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-              registry.components 为空，暂无组件定义可展示。
-            </p>
+            <textarea readOnly value={generateSnapshotSnippet()} rows={10}
+              style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }} />
           </div>
         )}
-
-        {Object.keys(grouped).sort().map(category => (
-            <div key={category} className="category-section">
-                <h4 style={{ 
-                    borderBottom: '1px solid #eee', 
-                    paddingBottom: '8px', 
-                    marginTop: '24px',
-                    color: '#666'
-                }}>{category}</h4>
-                {grouped[category].map((def: ComponentDefinition) => (
-                  <div key={def.id} className="component-card" style={{ marginBottom: '16px' }}>
-                    {(() => {
-                      const legacyDef = COMPONENT_DEFS[def.id];
-                      const familyDef = def.family ? defsById[def.family] : undefined;
-                      const inheritedParamKeys = new Set<string>();
-                      const defParams = def.params || {};
-                      const familyParams = familyDef?.params || {};
-                      if (familyDef && familyDef.id !== def.id) {
-                        Object.entries(defParams).forEach(([key, paramDef]) => {
-                          const familyParamDef = familyParams[key];
-                          if (familyParamDef && isSameParamDefinition(paramDef, familyParamDef)) {
-                            inheritedParamKeys.add(key);
-                          }
-                        });
-                      }
-                      const displayedParamEntries = Object.entries(defParams).filter(([key]) => (
-                        showInheritedParams || !inheritedParamKeys.has(key)
-                      ));
-                      const editableParamKeys = new Set(
-                        Object.keys(defParams).filter((key) =>
-                          isParamEditable(def, key, defParams[key])
-                        )
-                      );
-
-                      const isRebuilt = def.isRebuilt ?? Boolean(def.figmaPropertySnapshot || def.figmaBinding?.nodeType === 'INSTANCE');
-                      return (
-                        <>
-                    <div className="component-header">
-                      <span className="component-name">{def.name}</span>
-                      {isRebuilt && (
-                        <span style={{
-                          fontSize: '11px',
-                          padding: '2px 6px',
-                          borderRadius: '10px',
-                          background: '#FFF4E5',
-                          color: '#B65D00',
-                          border: '1px solid #FFD8A8',
-                          marginLeft: '8px'
-                        }}>
-                          复刻
-                        </span>
-                      )}
-                      <span className="component-id" style={{ fontSize: '12px', color: '#999' }}>ID: {def.id}</span>
-                    </div>
-                    <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>{def.description}</p>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '4px', fontSize: '12px', marginBottom: '10px' }}>
-                      <span style={{ color: '#777' }}>schemaVersion</span><code>{def.schemaVersion}</code>
-                      <span style={{ color: '#777' }}>family</span><span>{def.family || '-'}</span>
-                      <span style={{ color: '#777' }}>renderKey</span><code>{def.figmaBinding?.renderKey || '-'}</code>
-                      <span style={{ color: '#777' }}>nodeType</span><code>{def.figmaBinding?.nodeType || '-'}</code>
-                      <span style={{ color: '#777' }}>layoutMode</span><code>{def.figmaBinding?.preferredLayoutMode || '-'}</code>
-                    </div>
-
-                    <div style={{ marginBottom: '10px' }}>
-                      <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Capabilities</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {Object.entries(def.capabilities || {}).map(([k, v]) => (
-                          <span key={k} style={{
-                            fontSize: '11px',
-                            padding: '2px 6px',
-                            borderRadius: '10px',
-                            background: v ? '#E8F7ED' : '#F3F4F6',
-                            color: v ? '#1F7A3D' : '#6B7280',
-                            border: `1px solid ${v ? '#B7E4C4' : '#E5E7EB'}`
-                          }}>
-                            {k}: {String(v)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="params-table-wrapper">
-                      {!showInheritedParams && inheritedParamKeys.size > 0 && (
-                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
-                          已隐藏继承自 <code>{familyDef?.id}</code> 的参数：{inheritedParamKeys.size} 项
-                        </div>
-                      )}
-                      {legacyDef && (
-                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
-                          属性面板可编辑参数：{editableParamKeys.size} 项
-                        </div>
-                      )}
-                      <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                            <th style={{ padding: '4px' }}>参数</th>
-                            <th style={{ padding: '4px' }}>类型</th>
-                            <th style={{ padding: '4px' }}>默认值</th>
-                            <th style={{ padding: '4px' }}>必填</th>
-                            <th style={{ padding: '4px' }}>可编辑</th>
-                            <th style={{ padding: '4px' }}>说明</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayedParamEntries.map(([key, param]) => {
-                            const editable = legacyDef ? editableParamKeys.has(key) : true;
-                            return (
-                              <tr key={key} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                <td style={{ padding: '4px' }}>{key}</td>
-                                <td style={{ padding: '4px' }}><code style={{ background: '#eee', padding: '2px 4px', borderRadius: '3px' }}>{param.type}</code></td>
-                                <td style={{ padding: '4px' }}>{String(param.default)}</td>
-                                <td style={{ padding: '4px' }}>{param.required ? 'yes' : 'no'}</td>
-                                <td style={{ padding: '4px', color: editable ? '#1F7A3D' : '#999' }}>
-                                  {editable ? 'yes' : 'no'}
-                                </td>
-                                <td style={{ padding: '4px' }}>{param.description}</td>
-                              </tr>
-                            );
-                          })}
-                          {displayedParamEntries.length === 0 && (
-                            <tr>
-                              <td colSpan={6} style={{ padding: '8px', color: '#999' }}>
-                                当前组件无差异参数（均继承自 <code>{familyDef?.id || '-'}</code>）。
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {def.slots && Object.keys(def.slots).length > 0 && (
-                      <div style={{ marginTop: '10px' }}>
-                        <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Slots</div>
-                        <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                              <th style={{ padding: '4px' }}>slot</th>
-                              <th style={{ padding: '4px' }}>allowedComponents</th>
-                              <th style={{ padding: '4px' }}>required</th>
-                              <th style={{ padding: '4px' }}>min/max</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(def.slots).map(([slotKey, slotDef]) => (
-                              <tr key={slotKey} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                <td style={{ padding: '4px' }}><code>{slotKey}</code></td>
-                                <td style={{ padding: '4px' }}>{slotDef.allowedComponents.join(', ')}</td>
-                                <td style={{ padding: '4px' }}>{slotDef.required ? 'yes' : 'no'}</td>
-                                <td style={{ padding: '4px' }}>{slotDef.minItems ?? 0} / {slotDef.maxItems ?? '∞'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    {(() => {
-                      const colorVariableBindings = def.colorVariableBindings;
-                      if (!colorVariableBindings || Object.keys(colorVariableBindings).length === 0) return null;
-                      return (
-                        <div style={{ marginTop: '10px' }}>
-                          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Color Variable Bindings</div>
-                          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                                <th style={{ padding: '4px' }}>semanticKey</th>
-                                <th style={{ padding: '4px' }}>token</th>
-                                <th style={{ padding: '4px' }}>enabled</th>
-                                <th style={{ padding: '4px' }}>variableRef</th>
-                                <th style={{ padding: '4px' }}>candidates</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.entries(colorVariableBindings).map(([semanticKey, binding]) => {
-                                const candidates = [
-                                  binding.keyCandidates?.length ? `key: ${binding.keyCandidates.join(', ')}` : null,
-                                  binding.idCandidates?.length ? `id: ${binding.idCandidates.join(', ')}` : null,
-                                  binding.nameCandidates?.length ? `name: ${binding.nameCandidates.join(', ')}` : null
-                                ].filter(Boolean).join(' | ');
-                                return (
-                                  <tr key={semanticKey} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                    <td style={{ padding: '4px' }}><code>{semanticKey}</code></td>
-                                    <td style={{ padding: '4px' }}><code>{binding.token || '-'}</code></td>
-                                    <td style={{ padding: '4px' }}>{binding.enabled ? 'yes' : 'no'}</td>
-                                    <td style={{ padding: '4px' }}><code>{binding.variableRef || '-'}</code></td>
-                                    <td style={{ padding: '4px' }}>{candidates || '-'}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()}
-
-                    {(() => {
-                      const typographyBindings = def.typographyBindings;
-                      if (!typographyBindings || Object.keys(typographyBindings).length === 0) return null;
-                      return (
-                        <div style={{ marginTop: '10px' }}>
-                          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Typography Bindings</div>
-                          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                                <th style={{ padding: '4px' }}>semanticKey</th>
-                                <th style={{ padding: '4px' }}>token</th>
-                                <th style={{ padding: '4px' }}>enabled</th>
-                                <th style={{ padding: '4px' }}>textStyleRef</th>
-                                <th style={{ padding: '4px' }}>candidates</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.entries(typographyBindings).map(([semanticKey, binding]) => {
-                                const candidates = [
-                                  binding.keyCandidates?.length ? `key: ${binding.keyCandidates.join(', ')}` : null,
-                                  binding.idCandidates?.length ? `id: ${binding.idCandidates.join(', ')}` : null,
-                                  binding.nameCandidates?.length ? `name: ${binding.nameCandidates.join(', ')}` : null
-                                ].filter(Boolean).join(' | ');
-                                return (
-                                  <tr key={semanticKey} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                    <td style={{ padding: '4px' }}><code>{semanticKey}</code></td>
-                                    <td style={{ padding: '4px' }}><code>{binding.token || '-'}</code></td>
-                                    <td style={{ padding: '4px' }}>{binding.enabled ? 'yes' : 'no'}</td>
-                                    <td style={{ padding: '4px' }}><code>{binding.textStyleRef || '-'}</code></td>
-                                    <td style={{ padding: '4px' }}>{candidates || '-'}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()}
-
-                    {(() => {
-                      const themeBindings = (def as ComponentDefinition & {
-                        themeBindings?: Array<{ propKey: string; tokenRef: string }>
-                      }).themeBindings;
-                      if (!themeBindings || themeBindings.length === 0) return null;
-                      return (
-                        <div style={{ marginTop: '10px' }}>
-                          <div style={{ fontSize: '12px', color: '#777', marginBottom: '4px' }}>Theme Bindings</div>
-                          <table className="params-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ textAlign: 'left', background: '#f5f5f5' }}>
-                                <th style={{ padding: '4px' }}>propKey</th>
-                                <th style={{ padding: '4px' }}>tokenRef</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {themeBindings.map((item, index) => (
-                                <tr key={`${item.propKey}-${index}`} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                  <td style={{ padding: '4px' }}><code>{item.propKey}</code></td>
-                                  <td style={{ padding: '4px' }}><code>{item.tokenRef}</code></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ))}
-            </div>
-        ))}
       </div>
-      );
-    } catch (error) {
-      return (
-        <div className="docs-container">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <h3 style={{ margin: 0 }}>组件库</h3>
-          </div>
-          <div className="component-card" style={{ marginTop: '12px' }}>
-            <div className="component-header">
-              <span className="component-name">加载失败</span>
-            </div>
-            <p className="component-desc" style={{ fontSize: '13px', color: '#555' }}>
-              组件库渲染出现异常，请检查 registry 或 token 数据。
-            </p>
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#999' }}>
-              {String(error)}
-            </pre>
-          </div>
-        </div>
-      );
-    }
+    );
   };
 
   const handleClearPlan = () => {
@@ -8908,7 +8639,7 @@ StepD:
                         ? ''
                         : selectionCount > 0
                           ? '请输入需要调整的地方...'
-                          : '让 VED UI Agent 绘制...'
+                          : '让 VED UI Agent 绘制... ✦'
                     }
                     disabled={loading}
                     rows={4}

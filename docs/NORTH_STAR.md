@@ -121,14 +121,14 @@ Figma 节点落地
 
 | 层级 | 名称 | 定义 | 是否经过 AI | 例子 |
 |------|------|------|------------|------|
-| 0 | **Utils / Helpers（工具函数）** | 纯函数，不暴露给 AI | 否 | `setFillWidth(node)`, `applyColorVariable(node, token)`, `resolveTableHeaderHeight(params)` |
-| 1 | **Tool / Action（动作）** | AI 可调用的最小执行单元，via `action.type` | AI 触发，代码执行 | `draw_table`, `draw_form`, `apply_scene`, `create_node`, `read_specs` |
-| 2 | **Skill（技能包）** | 封装完整业务逻辑的代码单元，可被 Tool 调用 | 否 | `buildTableComponentFromPayload()`, `buildFormComponentFromPayload()` |
-| 3 | **Agentic Recovery（Agent 自愈）** | AI 读错误信息 → 推理 → 重新调用 Tool，自动修复 | AI 主导 | 遇到 "columnWidths mismatch" 错误后自动修正后重试 |
+| E0 | **Utils / Helpers（工具函数）** | 纯函数，不暴露给 AI | 否 | `setFillWidth(node)`, `applyColorVariable(node, token)`, `resolveTableHeaderHeight(params)` |
+| E1 | **Tool / Action（动作）** | AI 可调用的最小执行单元，via `action.type` | AI 触发，代码执行 | `draw_table`, `draw_form`, `apply_scene`, `create_node`, `read_specs` |
+| E2 | **Skill（技能包）** | 封装完整业务逻辑的代码单元，可被 Tool 调用 | 否 | `buildTableComponentFromPayload()`, `buildFormComponentFromPayload()` |
+| E3 | **Agentic Recovery（Agent 自愈）** | AI 读错误信息 → 推理 → 重新调用 Tool，自动修复 | AI 主导 | 遇到 "columnWidths mismatch" 错误后自动修正后重试 |
 
 ---
 
-### 层级 0 — Utils / Helpers（工具函数）
+### E0 — Utils / Helpers（工具函数）
 
 **定义**：纯粹的工具函数。不暴露给 AI，只被 Skill 或 code.ts 内部调用。
 
@@ -150,11 +150,11 @@ function resolveTableHeaderHeight(params: any) {
 }
 ```
 
-**文件位置（目标）**：`skills/code/resolve/*.ts`
+**文件位置**：`engine/skills/resolve/*.ts`（调用 Figma API 的除外，留在 `code.ts`）
 
 ---
 
-### 层级 1 — Tool / Action（动作）
+### E1 — Tool / Action（动作）
 
 **定义**：AI 可以调用的最小执行单元。AI 通过输出 `action.type` 触发，代码负责执行。是 AI 和代码层的**唯一接口边界**。
 
@@ -176,24 +176,24 @@ function resolveTableHeaderHeight(params: any) {
 
 ---
 
-### 层级 2 — Skill（技能包）
+### E2 — Skill（技能包）
 
 **定义**：封装完整业务逻辑的代码单元。有语义名称，对应一类完整任务。被 Tool 的 case handler 调用，不直接暴露给 AI。
 
 ```
-典型例子：
-- buildTableComponentFromPayload()   — 表格完整渲染逻辑（从 App.tsx 迁入目标位置）
-- buildFormComponentFromPayload()    — 表单完整渲染逻辑
-- applyFigmaComponentProps()         — 通用 Figma 组件属性应用（读 figmaPropertySnapshot）
+当前已有的 Skill：
+- buildTableComponentFromPayload()   — 表格完整渲染逻辑（engine/skills/table.skill.ts）
+- buildFormComponentFromPayload()    — 表单完整渲染逻辑（engine/skills/form.skill.ts）
+- applyFigmaComponentProps()         — 通用 Figma 组件属性应用（code.ts，读 figmaPropertySnapshot.propertyMap）
 ```
 
 **和 Utils 的区别**：Utils 是通用小函数，Skill 是有业务语义的完整任务包。`applyColorVariable` 是 Utils；`buildFormComponentFromPayload` 是 Skill。
 
-**文件位置（目标）**：`skills/code/*.skill.ts`
+**文件位置**：`engine/skills/*.skill.ts`
 
 ---
 
-### 层级 3 — Agentic Recovery（Agent 自愈）
+### E3 — Agentic Recovery（Agent 自愈）
 
 **定义**：AI 遇到错误时，读取错误信息 → 推理原因 → 重新调用 Tool 修复，形成 Reason + Act 循环。这不是你需要写的代码，是 AI 在 good tooling 下的自然能力。
 
@@ -219,11 +219,11 @@ AI 行为：thought → 找到原因 → 修正 payload → 重新 draw_table/ap
 
 | 我要写的是... | 它叫 | 放哪里 |
 |-------------|------|--------|
-| `setFillWidth(node)` | Utils | `skills/code/resolve/` 或 `code.ts` 内部 |
-| `applyColorVariable(node, token)` | Utils | `skills/code/resolve/color.ts` |
-| `draw_form` case handler | Tool（的实现） | `App.tsx` action dispatch |
-| `buildFormComponentFromPayload()` | Skill | `skills/code/form.skill.ts` |
-| AI 遇错自动修复 | Agentic Recovery | 无需写代码，靠好的 Tool 错误信息 |
+| `setFillWidth(node)` | E0 Utils | `engine/skills/resolve/` 或 `code.ts` 内部 |
+| `applyColorVariable(node, token)` | E0 Utils | `engine/skills/resolve/color.ts` |
+| `draw_form` case handler | E1 Tool（的实现） | `App.tsx` action dispatch |
+| `buildFormComponentFromPayload()` | E2 Skill | `engine/skills/form.skill.ts` |
+| AI 遇错自动修复 | E3 Agentic Recovery | 无需写代码，靠好的 Tool 错误信息 |
 | `renderNotes.commonErrors` | 给 AI 的 Spec | `registry.ts` |
 
 ---
@@ -241,13 +241,13 @@ AI 行为：thought → 找到原因 → 修正 payload → 重新 draw_table/ap
 ### 换主题的操作
 
 ```
-themes/
-  volcengine-design.theme.ts    ← 当前主题
-  ant.theme.ts                  ← 备用主题
-  custom.theme.ts               ← 自定义主题
+theme/
+  volcengine-design/    ← 当前主题
+  ant/                  ← 备用主题
+  custom/               ← 自定义主题
 ```
 
-换主题 = 在配置里换一行：`activeTheme = antTheme`。
+换主题 = 在 `theme/active.ts` 里换一行：`export { antTheme as activeTheme } from './ant'`。
 
 ### Registry 里只写 token key，不写实际值
 
@@ -259,7 +259,7 @@ themes/
   "card.bg":          { "enabled": true }
 }
 
-// themes/volcengine-design.theme.ts — 写实际值
+// theme/volcengine-design/colors.ts — 写实际值
 "table.border":    { variableRef: "VariableID:xxx", fallbackHex: "#EAEDF1" },
 "table.header-bg": { variableRef: "VariableID:yyy", fallbackHex: "#F7F8FA" },
 "card.bg":         { variableRef: "VariableID:zzz", fallbackHex: "#FFFFFF" }
@@ -396,7 +396,7 @@ theme/volcengine-design/components.ts      → 组件 componentKey（属于主�
 **渲染引擎怎么读**：通过通用函数 `applyFigmaComponentProps(instance, componentId, params)` 驱动，不再为每个 Figma 组件单独写一个更新函数。
 
 ```ts
-// 目标写法（通用）：
+// 通用写法：
 function applyFigmaComponentProps(instance, componentId, params) {
   const { propertyMap } = getComponentDefinition(componentId).figmaPropertySnapshot;
   const props: Record<string, any> = {};
@@ -406,9 +406,6 @@ function applyFigmaComponentProps(instance, componentId, params) {
   }
   instance.setProperties(props);
 }
-
-// 不再出现：
-// updateInputControlTemplateInPlace(node, params) { ... 'Size', 'State', 'Filled' 硬写 ... }
 ```
 
 ---
@@ -423,31 +420,23 @@ runtime: {
   layoutModes: {
     vertical: {
       direction: "VERTICAL",
-      gap: 16,          // 字段间的纵向间距
+      gap: 16,
       paddingX: 0,
       paddingY: 0
     },
     horizontal: {
       direction: "HORIZONTAL",
-      gap: 24,          // 横向排列时字段间距
+      gap: 24,
       paddingX: 0,
       paddingY: 0,
-      labelWidth: 80    // 横向时 label 固定宽度（纵向时不需要）
+      labelWidth: 80
     }
   },
   defaultLayout: "vertical"
 }
 ```
 
-渲染时：
-```ts
-const layout = params.layout ?? getRegistryRuntime('form').defaultLayout;
-const layoutSpec = getRegistryRuntime('form').layoutModes[layout];
-frameNode.layoutMode = layoutSpec.direction;
-frameNode.itemSpacing = layoutSpec.gap;
-```
-
-**为什么不写在 `params` 里**：`params.layout` 是"用户选的值"（vertical/horizontal），`runtime.layoutModes` 是"这个值对应的渲染数字"。两者分离，换设计规范时只改 runtime，不动 params 定义。
+**为什么不写在 `params` 里**：`params.layout` 是"用户选的值"，`runtime.layoutModes` 是"这个值对应的渲染数字"。两者分离，换设计规范时只改 runtime，不动 params 定义。
 
 ---
 
@@ -508,10 +497,6 @@ buildSpecsInfo(ids: string[], options?: {
 其他已完成：
 - App.tsx 里所有 ActionHint 硬编码块已删除，全部迁移到各组件 `renderNotes`
 - AI 收到的 spec 不含 `capabilities`、`figmaBinding` 原始 JSON
-
-### Phase 2：AI 主动按需读取（未来）
-
-当前 level 需调用方显式指定。未来目标：复杂多组件任务时 AI 自己决定读哪层：
 
 ### Phase 2：AI 主动按需读取（未来规划）
 
@@ -595,67 +580,21 @@ renderNotes: {
 
 ## 十一、待完成事项
 
-> 顺序即优先级，前一项完成后再开始下一项。
+> 顺序即优先级。
 
 ### Step 3：renderNotes 持续填充（进行中）
 
-把"反复对话才生效的那些细节"逐步写进各组件的 `renderNotes`。
-
-table/form/form-field/figma-component/filter-group/checkbox-group 已完成首批填充。
-
+每次 vibe coding 发现新的 AI 犯错模式，立刻补进对应组件的 `renderNotes.commonErrors`。
+当前已覆盖：table / form / form-field / figma-component / filter-group / checkbox-group。
 优先级：table > form > button/tag（按出错频率排序）。
-每次 vibe coding 发现新的 AI 犯错模式，立刻补进对应组件的 `renderNotes.commonErrors`，不要去 App.tsx 加 if 判断。
 
-### Step 4：theme 文件补全（已完成）
+### Step 7：多主题切换（未来）
 
-`theme/volcengine-design/` 全部就位，`activeTheme` 已包含三个子层：
+支持运行时切换：`activeTheme = antTheme`。前提：theme 层完整，无旧文件残留。
 
-- `theme/volcengine-design/colors.ts`：颜色 token（`ColorTheme`）
-- `theme/volcengine-design/spacing.ts`：全局设计 token（圆角系列 2/4/8/16px，间距系列 xs–xxl，字体大小系列）
-- `theme/volcengine-design/components.ts`：全部 Figma componentKey（表格 26 个 + 通用库 100 个，以 token→key 格式存储）
+### Step 8：Phase 2 — AI 自主选层读取（未来）
 
-`Theme` 接口已更新为 `{ colors, spacing, components }`；换主题只需改 `theme/active.ts` 一行。
-
-### Step 4：theme 文件补全（已完成）
-
-`theme/volcengine-design/` 全部就位，`activeTheme` 已包含三个子层：
-
-- `theme/volcengine-design/colors.ts`：颜色 token（`ColorTheme`）
-- `theme/volcengine-design/spacing.ts`：全局设计 token（圆角系列 2/4/8/16px，间距系列 xs–xxl，字体大小系列）
-- `theme/volcengine-design/components.ts`：全部 Figma componentKey（表格 26 个 + 通用库 100 个，以 token→key 格式存储）
-
-`Theme` 接口已更新为 `{ colors, spacing, components }`；换主题只需改 `theme/active.ts` 一行。
-
-### Step 5：Skill 层建立（已完成）
-
-`src/engine/skills/` 目录已建立，核心业务逻辑从 App.tsx 迁出：
-
-- `block.helpers.ts`：共用 Utils（`isObject`、`getBlockSource`、`toButtonFromItem`、`buildHeaderSectionChildren` 等）
-- `form.skill.ts`：`buildFormComponentFromPayload()` — draw_form 完整执行逻辑
-- `table.skill.ts`：`buildTableComponentFromPayload()` — draw_tabl 完整执行逻辑
-
-App.tsx 的 draw_form / draw_tabl case handler 已改为调用对应 skill 导出，原有 ~1500 行闭包函数已清除。
-
-### Step 6（已完成）：通用 applyFigmaComponentProps
-
-当前每个 Figma library 组件都有独立的 `updateXxxTemplateInPlace` 函数，Figma 属性名硬写在函数体里。
-
-已完成：
-- 在 `registry.types.ts` 新增 `FigmaPropertyMap` 接口，`FigmaPropertySnapshot` 添加 `propertyMap` 可选字段
-- 在 `registry.ts` 的 `input`、`select`、`switch` 的 `figmaPropertySnapshot` 中添加 `propertyMap`
-- 在 `code.ts` 实现 `applyFigmaComponentProps(instance, componentId, params)` — 读 `registry.figmaPropertySnapshot.propertyMap`，通过 `findInstanceComponentPropertyName` 查找实际属性名，调用 `instance.setProperties()`
-- `updateInputControlTemplateInPlace` / `updateSelectControlTemplateInPlace` / `updateSwitchControlTemplateInPlace` 均已改用 `applyFigmaComponentProps`
-- 同时修复了 `updateSwitchControlTemplateInPlace` 的 bug：原来硬编码的 `'Status 状态'` 不存在于 Figma 组件中，正确属性名是 `'Checked 开关'`，现在通过 `propertyMap` 声明后自动修复
-
-checkbox-group / radio-group 的 `propertyMap` 迁移可在后续逐步完成（它们的属性名不是固定映射，涉及动态 items 数量，暂时保留原有写法）。
-
-### Step 7（未来）：多主题切换
-
-Step 4 完成后，支持运行时切换：`activeTheme = antTheme`。
-
-### Step 8（未来）：Phase 2 — AI 自主选层读取
-
-`buildSpecsInfo` 三层（index/params/runtime）接口均已实现。Phase 2 目标是让 AI 在多步任务中自主决定读哪层，而不是由调用方显式指定 level。前提：Step 3 全部完成（registry 规范准确，AI 读到的是真实数据）。
+`buildSpecsInfo` 三层接口均已实现。Phase 2 目标是让 AI 在多步任务中自主决定读哪层，而不是由调用方显式指定 level。前提：Step 3 全部完成（registry 规范准确，AI 读到的是真实数据）。
 
 ---
 
@@ -665,132 +604,51 @@ Step 4 完成后，支持运行时切换：`activeTheme = antTheme`。
 
 ### 2026-03-22：确立 Registry 为唯一事实来源
 
-**背景**：vibe coding 过程中规范散落三处（registry/code/prompt），改了一处不知道另一处有没有跟上，反复对话才能生效。
+**背景**：vibe coding 过程中规范散落三处（registry/code/prompt），改了一处不知道另一处有没有跟上。
 
 **决策**：所有设计规范只在 Registry 定义一次。`code.ts` 只读 registry，不重新定义规范数字。
 
-**代价**：需要渐进迁移现有硬编码，约 5 个步骤。
-
 ### 2026-03-22：Skill 分两种形态，不强制统一
-
-**背景**：讨论"文档型 Skill vs 代码型 Skill"。
 
 **决策**：不强制统一。需要 AI 判断的用 `renderNotes`（文档型），不需要判断的用读 registry 的函数（代码型）。判断标准：是否需要 AI 理解意图。
 
 ### 2026-03-22：主题替换通过 theme 文件整包替换
 
-**背景**：希望支持多主题切换。
-
 **决策**：registry 只存 token key（语义），不存 variableRef 和 fallbackHex。实际值放在 theme 文件里。换主题只换 theme 文件，registry 不动。
 
 ### 2026-03-22：runtime 按组件类型分子字段，不强制统一格式
 
-**背景**：讨论"input 的高度"、"form-field 对子控件的裁剪规则"、"form 横纵向切换的间距"该放哪里时，发现三者性质不同，不能用同一个字段格式描述。
+**决策**：`runtime` 字段按需取用子字段：叶子控件 → `sizeMetrics`；控件容器 → `controlDefaults` + `controlClipRules`；布局容器 → `layoutModes` + `defaultLayout`。
 
-**决策**：`runtime` 字段按需取用子字段，不同组件类型使用不同子字段：
-- 叶子控件 → `sizeMetrics`
-- 控件容器（form-field）→ `controlDefaults` + `controlClipRules`
-- 布局容器（form）→ `layoutModes` + `defaultLayout`
+**关键判断**：`params.layout = 'horizontal'` 是"用户选的值"，`runtime.layoutModes.horizontal.gap = 24` 是"这个值对应的渲染数字"。前者在 params，后者在 runtime。
 
-**关键判断**：`params.layout = 'horizontal'` 是"用户选的值"，`runtime.layoutModes.horizontal.gap = 24` 是"这个值对应的渲染数字"。前者在 params，后者在 runtime，改规范只改 runtime。
+### 2026-03-22：Figma library 组件属性映射写入 figmaPropertySnapshot.propertyMap
 
-### 2026-03-22：Figma library 组件的属性映射写入 figmaPropertySnapshot
+**背景**：`updateInputControlTemplateInPlace` 等函数把 Figma 属性名硬写在函数体里，无处查阅且容易出错（switch 的 `'Status 状态'` 实际不存在，正确是 `'Checked 开关'`）。
 
-**背景**：`updateInputControlTemplateInPlace` 等函数把 Figma 属性名（'Size'、'State'、'Filled'）硬写在函数体里，导致每个 Figma 组件都需要一个专属更新函数，且"Figma 叫什么名字"这条规范无处查阅。
+**决策**：在 registry 的 `figmaPropertySnapshot.propertyMap` 里声明映射。渲染引擎改用通用函数 `applyFigmaComponentProps(instance, componentId, params)` 驱动。input / select / switch 已完成。checkbox-group / radio-group 保留原有写法（动态 items，不适合纯映射）。
 
-**决策**：在 registry 的 `figmaPropertySnapshot.propertyMap` 里声明 Figma 属性名 ↔ 我方 params 名的映射。渲染引擎改用通用函数 `applyFigmaComponentProps(instance, componentId, params)` 驱动，读 registry 而不是硬编码。
+### 2026-03-22：执行层概念分类（E0–E3）
 
-**代价**：需要为 input / button / tag / select 等补充 `figmaPropertySnapshot.propertyMap` 字段，可渐进完成。
-
-### 2026-03-22：Spec 推送分两阶段，Phase 1 系统主动推送，Phase 2 AI 主动读取
-
-**背景**：现在 `buildSpecsInfo` 把所有字段一股脑序列化发给 AI（params 完整 JSON + slots + capabilities + figmaBinding + App.tsx 里 if 拼接的 ActionHint 字符串），上下文混乱，AI 不知道哪些字段对当前任务有用。且所有规则硬写在 App.tsx 代码里，改规则必须改代码。
-
-**决策**：
-1. **Phase 1（当前）**：系统识别用户意图（正则判断），主动推送对应规范的 `params + renderNotes` 层，删除 capabilities/figmaBinding 等渲染层字段。
-2. **Phase 2（未来）**：AI 主动调用 `read_specs(id, level)` 按阶段读取，level 分 `index / params / runtime` 三层。
-3. App.tsx 里所有 `ActionHint` 硬编码字符串迁移到各组件 registry 的 `renderNotes` 字段，App.tsx 只负责统一序列化，不再包含任何组件特定规则。
-
-**边界**：`buildSpecsInfo` 的 `level` 参数现在只实现 `'params'`（默认），`'index'` 和 `'runtime'` 接口占位，Phase 2 再填充实现。
-
-### 2026-03-22：Spec 序列化格式从 JSON 改为 Markdown
-
-**背景**：`buildSpecsInfo` 输出 `Params: {...}` 大段 JSON，AI 读到的上下文冗长且格式不友好，token 消耗大，且 AI 难以快速定位关键参数。
-
-**决策**：`buildSpecsInfo` 的 params-level 输出改为 Markdown 格式：
-- params → Markdown 表格（Param | Type | Default | Description）
-- slots → 一行文本汇总
-- renderNotes → 分行 bullet points（不再是 JSON block）
-- prompts.usage / examples → 直接输出（已是 Markdown 格式）
-
-**影响**：减少约 40-60% token，格式更易读，AI 响应更准确。
-
-### 2026-03-22：表单按钮区作为独立 footer 属性，不放进 rows
-
-**背景**：AI 经常把提交/重置按钮作为 form-row 放进 rows 里，导致按钮和字段混在一起，布局混乱。
-
-**决策**：与表格的 `footer.pagination`、`footer.buttonGroup` 一致，表单的操作按钮通过 `footer.actions` 独立声明，渲染时追加在所有字段行之后。
-
-```
-draw_form payload 结构：
-{
-  rows: FieldItem[][],   // 字段行，不包含按钮
-  footer?: {
-    actions: ActionItem[],   // 提交/重置等操作按钮
-    align?: 'end' | 'start' | 'center'
-  }
-}
-```
-
-`buildFormComponentFromPayload` 已支持 `footer.actions`，AI 只需按此格式输出。
-
-**渲染引擎**：`footerRow` 作为独立 children 项追加在 form 末尾（已实现）。
-
-### 2026-03-22：表单默认单列布局，禁止在 rows 子数组放多个字段（除非用户明确要求）
-
-**背景**：AI 生成的表单经常把多个字段放在同一行，导致布局拥挤、不稳定。
-
-**决策**：registry form 的 `renderNotes.paramRules` 明确：`rows` 每个子数组默认只放 1 个字段，用户明确要求"双列/多列/紧凑"才放 2 个以上。`commonErrors` 里加了违规案例。
-
-### 2026-03-22：form spec 预推送精简为 ["form", "form-field"]
-
-**背景**：原本预推送 5 个组件（form/form-row/form-field/input/select），AI 收到大量与当前任务无关的信息。
-
-**决策**：精简为 2 个（form/form-field），删除 form-row（不需要手动创建）、input/select（draw_form 的 rows 里直接用 componentId 指定，不需要知道这些组件的完整 spec）。
-
-### 2026-03-22：执行层概念分类（Utils / Tool / Skill / Agentic Recovery）
-
-**背景**：之前把所有代码层执行单元统称"代码型 Skill"，不够准确。`applyColorVariable(node, token)` 和 `buildFormComponentFromPayload()` 性质完全不同；AI 调用的 `draw_form` 和内部工具函数 `setFillWidth` 也需要区分。
-
-**决策**：采用四层命名（见第五节完整定义）：
-- **Utils / Helpers**：纯函数，不暴露给 AI，e.g. `setFillWidth(node)`, `applyColorVariable(node, token)`
-- **Tool / Action**：AI 可调用的最小执行单元，via `action.type`，e.g. `draw_form`, `apply_scene`
-- **Skill**：封装完整业务逻辑的代码单元，被 Tool 调用，e.g. `buildFormComponentFromPayload()`
-- **Agentic Recovery**：AI 读语义错误信息后自动推理修复，不需要写代码，靠 Tool 返回可读错误 + `renderNotes.commonErrors` 启用
-
-**影响**：文档（NORTH_STAR.md 第五节 + FILE_STRUCTURE.md 第五节）和系统 prompt（App.tsx）均已更新术语。
+**决策**：采用四层命名（见第五节）：E0 Utils / E1 Tool / E2 Skill / E3 Agentic Recovery。
+文档（NORTH_STAR.md §5 + FILE_STRUCTURE.md §5）和系统 prompt（App.tsx）均已更新术语。
 
 ### 2026-03-22：Skill 层落地（form.skill.ts + table.skill.ts）
 
-**背景**：`buildFormComponentFromPayload`、`buildTableComponentFromPayload` 等约 1500 行核心业务逻辑以闭包形式散落在 App.tsx 中，与 UI 状态、React hooks 混在一起，无法独立测试，也不符合四层命名中"Skill 放 `engine/skills/`"的约定。
+**决策**：建立 `src/engine/skills/` 目录，form 和 table 的完整执行逻辑从 App.tsx 迁出，原有 ~1500 行闭包函数全部删除。App.tsx 的 draw_form / draw_tabl case handler 只保留 dispatch 逻辑。
 
-**决策**：建立 `src/engine/skills/` 目录，将 form 和 table 的完整执行逻辑迁出：
-- `block.helpers.ts`：共用 Utils（`isObject`、`getBlockSource`、`toButtonFromItem` 等）
-- `form.skill.ts`：`buildFormComponentFromPayload()` + 全部 form 专属工具函数
-- `table.skill.ts`：`buildTableComponentFromPayload()` + 全部 table 专属工具函数
+### 2026-03-22：Spec 推送分两阶段，Phase 1 系统主动推送，Phase 2 AI 主动读取
 
-App.tsx 的 draw_form / draw_tabl case handler 只保留 dispatch 逻辑，原有闭包函数全部删除。
+**决策**：Phase 1（当前）系统识别意图主动推 `params + renderNotes`；Phase 2（未来）AI 主动按需读层。App.tsx 里所有 ActionHint 硬编码迁移到各组件 `renderNotes`，App.tsx 只做统一序列化。
 
-**代价**：`form.skill.ts` 仍依赖旧 `theme.component-tokens.ts` 做 token 校验，待后续替换为 `activeTheme.components`。（已完成：2026-03-22 已替换）
+### 2026-03-22：Spec 序列化格式从 JSON 改为 Markdown
 
-### 2026-03-22：applyFigmaComponentProps + propertyMap（Step 6）
+**决策**：params-level 输出改为 Markdown 表格 + bullet points，减少约 40-60% token，格式更易读。
 
-**背景**：`updateInputControlTemplateInPlace` / `updateSelectControlTemplateInPlace` / `updateSwitchControlTemplateInPlace` 等函数把 Figma 属性显示名（`'Disable 禁用'`、`'Size 尺寸'` 等）硬写在代码里，无法通过 registry 查阅，且容易出错（switch 函数中 `'Status 状态'` 实际不存在，正确是 `'Checked 开关'`）。
+### 2026-03-22：表单按钮区作为独立 footer.actions，不放进 rows
 
-**决策**：
-1. `registry.types.ts` 新增 `FigmaPropertyMap` 接口；`FigmaPropertySnapshot` 添加 `propertyMap` 可选字段
-2. `registry.ts` 的 `input`、`select`、`switch` 添加 `propertyMap`，声明 Figma 显示名 → `{ sourceParam, transform }` 映射
-3. `code.ts` 新增 `applyFigmaComponentProps(instance, componentId, params)`，读 `propertyMap`，通过 `findInstanceComponentPropertyName` 解析实际属性名，调用 `instance.setProperties()`
-4. 三个 update 函数改用通用函数，同时修复了 switch 的属性名 bug
+**决策**：与表格的 `footer.pagination` 一致，表单操作按钮通过 `footer.actions` 独立声明，追加在所有字段行之后。
 
-**边界**：checkbox-group / radio-group 保留原有写法，因为其属性值需要动态计算（items 数量），不适合纯 param→prop 映射。
+### 2026-03-22：表单默认单列，禁止在 rows 子数组放多个字段（除非用户明确要求）
+
+**决策**：写入 `renderNotes.paramRules`，AI 不再自作主张双列排列。

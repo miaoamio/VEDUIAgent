@@ -1,7 +1,6 @@
 import {
-  BASE_LIBRARY_COMPONENT_TOKEN_PACK,
-  SEMANTIC_LIBRARY_COMPONENT_TOKEN_PACK
-} from './theme.component-library-tokens';
+  BASE_LIBRARY_COMPONENT_TOKEN_PACK
+} from './component-library-tokens';
 
 export interface BaseComponentTokenProfile {
   token: string;
@@ -31,8 +30,6 @@ function baseComponentToken(
   };
 }
 
-// Layer 1: Base component tokens
-// Only this layer stores real Figma component keys.
 const BASE_TABLE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile> = {
   'table-header-main': baseComponentToken(
     'table-header-main',
@@ -186,8 +183,6 @@ const BASE_TABLE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile>
   )
 };
 
-// Layer 2: Semantic component tokens
-// Semantic tokens are used in specs and resolved to base tokens.
 const SEMANTIC_TABLE_COMPONENT_TOKEN_PACK: Record<string, SemanticComponentTokenProfile> = {
   'table.header.main': { token: 'table.header.main', baseToken: 'table-header-main' },
   'table.cell.main': { token: 'table.cell.main', baseToken: 'table-cell-main' },
@@ -220,8 +215,6 @@ export const BASE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile
   ...BASE_TABLE_COMPONENT_TOKEN_PACK,
   ...BASE_LIBRARY_COMPONENT_TOKEN_PACK
 };
-
-
 
 export interface ResolvedComponentTokenProfile {
   token: string;

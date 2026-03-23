@@ -1,8 +1,3 @@
-// Inspect-derived fallback for tag components.
-// Source snapshots:
-// - lib-data-display-tag, inspected 2026-03-09
-// - lib-data-display-other-tag, inspected 2026-03-09
-
 type TagComponentFamily = "default" | "other";
 type DefaultTagType = "default" | "solid" | "outline" | "text";
 type OtherTagType = "marketing" | "group";

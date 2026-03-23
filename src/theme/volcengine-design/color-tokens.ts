@@ -46,8 +46,6 @@ function baseTokenWithVariableId(
   };
 }
 
-// Layer 1: Base color tokens
-// Only this layer should hold real VariableID/key candidates.
 export const BASE_COLOR_TOKEN_PACK: Record<string, BaseColorTokenProfile> = {
   'color-bg-1': {
     token: 'color-bg-1'
@@ -67,8 +65,6 @@ export const BASE_COLOR_TOKEN_PACK: Record<string, BaseColorTokenProfile> = {
   'color-border-2': {
     token: 'color-border-2'
   },
-  // Alias for design token naming consistency (e.g. in Figma Variables).
-  // Prefer using `border-2` for component border bindings (table, etc.).
   'border-2': {
     token: 'border-2',
     nameCandidates: ['border-2', 'color-border-2', '@border-2', '@color-border-2']
@@ -117,13 +113,10 @@ export const BASE_COLOR_TOKEN_PACK: Record<string, BaseColorTokenProfile> = {
   })
 };
 
-// Layer 2: Semantic color tokens
-// Semantic tokens map to base tokens and are used by component specs.
 export const SEMANTIC_COLOR_TOKEN_PACK: Record<string, SemanticColorTokenProfile> = {
   'layout.bg': { token: 'layout.bg', baseToken: 'bg-base' },
   'layout.border': { token: 'layout.border', baseToken: 'border-base' },
   'table.cell.bg': { token: 'table.cell.bg', baseToken: 'bg-base' },
-  // Table grid/border should use the stronger border token.
   'table.border': { token: 'table.border', baseToken: 'border-2' },
   'table.cell.text': { token: 'table.cell.text', baseToken: 'text-1' },
   'table.header.bg': { token: 'table.header.bg', baseToken: 'color-bg-4' },

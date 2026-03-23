@@ -1,7 +1,7 @@
 import type { LayoutSpec, SceneNode as ProtocolSceneNode, StyleSpec } from "../protocol/scene";
 import type { ComponentDefinition } from "../registry.types";
 import { createFigmaComponentInstance, findFigmaVariant, loadFigmaComponentByKey, parseVariantCriteria } from "../figmaComponent";
-import { createInspectDrivenTagFallbackNode } from "../tag.fallback";
+import { createInspectDrivenTagFallbackNode } from "../theme/volcengine-design/tag-fallback";
 import { activeTheme } from "../theme/active";
 import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
 import { resolveComponentDefinition, toUnknownComponentError } from "./registryResolver";

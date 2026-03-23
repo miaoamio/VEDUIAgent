@@ -1,6 +1,6 @@
 import { ComponentInstance } from './types';
 import { COMPONENT_REGISTRY } from './registry';
-import { getDefaultParams } from './registry.helpers';
+import { getDefaultParams, getRegistrySizeMetrics } from './registry.helpers';
 import type { ComponentDefinition } from './registry.types';
 import { FULL_RERENDER_COMPONENT_IDS } from './editability';
 import { applyEnvelopeUnknown } from './engine/applyEnvelope';
@@ -17,8 +17,8 @@ import { resolveTypographyTokenProfile } from './theme/volcengine-design/typogra
 import {
   BASE_COMPONENT_TOKEN_PACK,
   resolveComponentTokenProfile
-} from './theme.component-tokens';
-import { createInspectDrivenTagFallbackNode } from './tag.fallback';
+} from './theme/volcengine-design/component-tokens';
+import { createInspectDrivenTagFallbackNode } from './theme/volcengine-design/tag-fallback';
 import {
   applyColorVariable,
   applyEffectColorVariable,
@@ -350,6 +350,14 @@ function checkSelection() {
           componentId === 'tag'
             ? normalizeUnifiedTagParams(liveParams)
             : liveParams;
+        if (componentId === 'figma-component') {
+          const paramKey = typeof normalizedParams.componentKey === 'string' ? normalizedParams.componentKey.trim() : '';
+          const componentToken = typeof normalizedParams.componentToken === 'string' ? normalizedParams.componentToken.trim() : '';
+          const tokenKey = componentToken ? resolveComponentTokenProfile(componentToken)?.profile.componentKey || '' : '';
+          if (!paramKey && tokenKey) {
+            normalizedParams.componentKey = tokenKey;
+          }
+        }
 
         if (isTableCellComponentId(componentId)) {
           const column = findTableColumnFromNode(effectiveTarget);
@@ -380,8 +388,8 @@ function checkSelection() {
           normalizedParams.hasPagination = actualState.hasPagination;
         }
 
-        figma.ui.postMessage({ 
-          type: 'selection-update', 
+        figma.ui.postMessage({
+          type: 'selection-update',
           data: {
             selectionCount: selection.length,
             canvasHint,
@@ -391,12 +399,55 @@ function checkSelection() {
             nodeName: effectiveTarget.name
           }
         });
+
+        // Also emit figma-instance-info so the Docs tab can show the Figma key.
+        // For figma-component, read from params; for other INSTANCE nodes, read from mainComponent.
+        if (effectiveTarget.type === 'INSTANCE') {
+          const inst = effectiveTarget as InstanceNode;
+          const key = inst.mainComponent?.key ?? '';
+          const compName = inst.mainComponent?.name ?? '';
+          const setName = inst.mainComponent?.parent?.type === 'COMPONENT_SET'
+            ? (inst.mainComponent.parent as ComponentSetNode).name
+            : '';
+          if (key) {
+            figma.ui.postMessage({
+              type: 'figma-instance-info',
+              data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name }
+            });
+          }
+        } else if (componentId === 'figma-component') {
+          // AI-managed figma-component stored as FRAME — get key from params
+          const storedKey = typeof normalizedParams.componentKey === 'string' ? normalizedParams.componentKey.trim() : '';
+          const storedToken = typeof normalizedParams.componentToken === 'string' ? normalizedParams.componentToken.trim() : '';
+          const resolvedKey = storedKey || (storedToken ? resolveComponentTokenProfile(storedToken)?.profile.componentKey || '' : '');
+          if (resolvedKey) {
+            figma.ui.postMessage({
+              type: 'figma-instance-info',
+              data: { componentKey: resolvedKey, componentName: normalizedParams.componentToken || resolvedKey, componentSetName: '', nodeName: effectiveTarget.name }
+            });
+          }
+        }
+
         return;
       }
     }
   }
   // Clear selection if not an AI container
   figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
+
+  // If the selected node is a plain Figma INSTANCE (not AI-managed), send its key info
+  if (selection.length === 1 && selection[0].type === 'INSTANCE') {
+    const inst = selection[0] as InstanceNode;
+    const key = inst.mainComponent?.key ?? '';
+    const compName = inst.mainComponent?.name ?? '';
+    const setName = inst.mainComponent?.parent?.type === 'COMPONENT_SET'
+      ? (inst.mainComponent.parent as ComponentSetNode).name
+      : '';
+    figma.ui.postMessage({
+      type: 'figma-instance-info',
+      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name }
+    });
+  }
 }
 
 // Listen for selection changes
@@ -459,35 +510,7 @@ figma.on('documentchange', async (event) => {
   }, 120);
 });
 
-const THEME_CONSTANTS: { [key: string]: { [key: string]: number } } = {
-    'input': {
-        'cornerRadius': 6,
-        'paddingLeft': 12,
-        'paddingRight': 12,
-        'fontSize': 13
-    },
-    'button': {
-        'cornerRadius': 6,
-        'paddingTop': 8,
-        'paddingBottom': 8,
-        'paddingLeft': 16,
-        'paddingRight': 16,
-        'fontSize': 13
-    },
-    'card': {
-        'cornerRadius': 8,
-        'padding': 20
-    }
-};
-
-const TABLE_DEFAULT_HEADER_HEIGHT = 40;
-const TABLE_DEFAULT_BODY_HEIGHT = 40;
-const TABLE_SIZE_PRESETS: Record<string, number> = {
-    mini: 32,
-    default: 40,
-    medium: 48,
-    large: 56
-};
+const TABLE_DEFAULT_PARAMS = getDefaultParams('table');
 const FORM_FIELD_HORIZONTAL_COMPONENT_KEY = '621ab3ad5d95d291cb6d31438dbad667594ae098';
 
 function toPositiveNumber(value: unknown): number | null {
@@ -496,8 +519,8 @@ function toPositiveNumber(value: unknown): number | null {
 }
 
 function resolveTableSizeHeight(params: Record<string, any>): number | null {
-    const size = typeof params.size === 'string' ? params.size.trim().toLowerCase() : '';
-    const height = TABLE_SIZE_PRESETS[size];
+    const metrics = getRegistrySizeMetrics('table', params.size);
+    const height = metrics?.height;
     return typeof height === 'number' ? height : null;
 }
 
@@ -505,7 +528,9 @@ function resolveTableHeaderHeight(params: Record<string, any>): number {
     return resolveTableSizeHeight(params)
         ?? toPositiveNumber(params.height)
         ?? toPositiveNumber(params.headerHeight)
-        ?? TABLE_DEFAULT_HEADER_HEIGHT;
+        ?? toPositiveNumber(getRegistrySizeMetrics('table', params.size)?.height)
+        ?? toPositiveNumber(TABLE_DEFAULT_PARAMS.headerHeight)
+        ?? 0;
 }
 
 function resolveTableBodyHeight(params: Record<string, any>): number {
@@ -513,7 +538,9 @@ function resolveTableBodyHeight(params: Record<string, any>): number {
         ?? toPositiveNumber(params.height)
         ?? toPositiveNumber(params.bodyHeight)
         ?? toPositiveNumber(params.rowHeight)
-        ?? TABLE_DEFAULT_BODY_HEIGHT;
+        ?? toPositiveNumber(getRegistrySizeMetrics('table', params.size)?.height)
+        ?? toPositiveNumber(TABLE_DEFAULT_PARAMS.bodyHeight)
+        ?? 0;
 }
 
 const TABLE_CELL_COMPONENT_PREFIX = 'table-cell';
@@ -2234,16 +2261,11 @@ function resolveInputMetrics(value: unknown): {
     fontSize: number;
     cornerRadius: number;
 } {
-    switch (normalizeInputSize(value)) {
-        case 'mini':
-            return { height: 24, paddingX: 8, paddingY: 3, fontSize: 12, cornerRadius: 4 };
-        case 'small':
-            return { height: 28, paddingX: 10, paddingY: 4, fontSize: 12, cornerRadius: 4 };
-        case 'large':
-            return { height: 36, paddingX: 12, paddingY: 7, fontSize: 14, cornerRadius: 4 };
-        default:
-            return { height: 32, paddingX: 12, paddingY: 5, fontSize: 13, cornerRadius: 4 };
-    }
+    const metrics =
+        getRegistrySizeMetrics('input', value)
+        ?? getRegistrySizeMetrics('input', getDefaultParams('input').size);
+    if (metrics) return metrics;
+    return { height: 32, paddingX: 12, paddingY: 5, fontSize: 13, cornerRadius: 4 };
 }
 
 function hasInputAffix(value: unknown): boolean {
@@ -3263,7 +3285,7 @@ async function createButtonFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const disabled = Boolean(params.disabled);
@@ -3320,7 +3342,7 @@ async function createInputFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const width = Number(params.width) > 0 ? Number(params.width) : 240;
@@ -3725,7 +3747,7 @@ async function createCheckboxFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
 ): Promise<SceneNode | null> {
-    const componentKey = String(def.figmaPropertySnapshot?.componentKey || '').trim();
+    const componentKey = String(def.figmaPropertySnapshot?.componentKey || def.figmaBinding?.renderKey || '').trim();
     if (!componentKey) return null;
 
     const label = String(params.label || '选项一');
@@ -5718,7 +5740,8 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 disabled: Boolean(params.disabled),
                 multiple: Boolean(params.multiple),
                 selectType: params.selectType || 'Default 默认',
-                optionsText: params.optionsText || '选项一,选项二'
+                optionsText: params.optionsText || '选项一,选项二',
+                forceFigmaKey: true
             }
         };
     }
@@ -5732,7 +5755,8 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 checkedValues: params.checkedValues || params.value || '选项一',
                 direction: params.direction || 'horizontal',
                 gap: params.gap,
-                disabled: Boolean(params.disabled)
+                disabled: Boolean(params.disabled),
+                forceFigmaKey: true
             }
         };
     }
@@ -5747,7 +5771,8 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 direction: params.direction || 'horizontal',
                 language: params.language || 'CN',
                 gap: params.gap,
-                disabled: Boolean(params.disabled)
+                disabled: Boolean(params.disabled),
+                forceFigmaKey: true
             }
         };
     }
@@ -5767,7 +5792,8 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 showPrefixIcon: Boolean(params.showPrefixIcon ?? params.prefixIcon),
                 showSuffixIcon: Boolean(params.showSuffixIcon ?? params.suffixIcon),
                 language: params.language || 'CN',
-                width
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -5908,7 +5934,8 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
             showPrefix: Boolean(params.showPrefix ?? params.prefix),
             prefixText: params.prefixText || '',
             showSuffix: Boolean(params.showSuffix ?? params.suffix),
-            suffixText: params.suffixText || ''
+            suffixText: params.suffixText || '',
+            forceFigmaKey: true
         }
     };
 }
@@ -6806,6 +6833,34 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
     return newNode;
 }
 
+async function createMissingFigmaComponentFrame(
+    tokenOrName: string,
+    width?: number,
+    height?: number
+): Promise<FrameNode> {
+    const label = String(tokenOrName || 'Unknown Component').trim() || 'Unknown Component';
+    const errorFrame = figma.createFrame();
+    errorFrame.name = `MISSING: ${label}`;
+    errorFrame.layoutMode = 'HORIZONTAL';
+    errorFrame.primaryAxisAlignItems = 'CENTER';
+    errorFrame.counterAxisAlignItems = 'CENTER';
+    const frameWidth = Number.isFinite(width) && Number(width) > 0 ? Number(width) : 100;
+    const frameHeight = Number.isFinite(height) && Number(height) > 0 ? Number(height) : 32;
+    errorFrame.resize(frameWidth, frameHeight);
+    errorFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 0.95, b: 0.95 } }];
+    errorFrame.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0.5 } }];
+    errorFrame.strokeWeight = 1;
+
+    const errorText = figma.createText();
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+    errorText.characters = `? ${label.split('.').pop() || 'Missing'}`;
+    errorText.fontSize = 10;
+    errorText.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0.2, b: 0.2 } }];
+    errorFrame.appendChild(errorText);
+
+    return errorFrame;
+}
+
 // Recursive function to render a component
 async function renderComponent(
   instance: ComponentInstance,
@@ -6838,25 +6893,7 @@ async function renderComponent(
     const componentKey = componentKeyFromParam || componentKeyFromToken;
     if (!componentKey) {
       console.error(`[FigmaUI] Missing component key for token: ${componentToken}`);
-      // Fallback: Render a placeholder for missing component instead of throwing error
-      const errorFrame = figma.createFrame();
-      errorFrame.name = `MISSING: ${componentToken || 'Unknown Component'}`;
-      errorFrame.layoutMode = 'HORIZONTAL';
-      errorFrame.primaryAxisAlignItems = 'CENTER';
-      errorFrame.counterAxisAlignItems = 'CENTER';
-      errorFrame.resize(params.width || 100, params.height || 32);
-      errorFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 0.95, b: 0.95 } }]; // Light red bg
-      errorFrame.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0.5 } }]; // Red border
-      errorFrame.strokeWeight = 1;
-      
-      const errorText = figma.createText();
-      await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-      errorText.characters = `? ${componentToken?.split('.').pop() || 'Missing'}`;
-      errorText.fontSize = 10;
-      errorText.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0.2, b: 0.2 } }];
-      errorFrame.appendChild(errorText);
-      
-      node = errorFrame;
+      node = await createMissingFigmaComponentFrame(componentToken, params.width, params.height);
     } else {
       const fallbackName =
         typeof params.fallbackName === 'string' && params.fallbackName.trim()
@@ -7570,6 +7607,7 @@ async function renderComponent(
            instance.componentId === 'table-cell-tag' ||
            instance.componentId === 'table-cell-avatar' ||
            instance.componentId === 'table-cell-input' ||
+           instance.componentId === 'table-cell-select' ||
            instance.componentId === 'table-cell-action-text' ||
            instance.componentId === 'table-cell-action-icon') {
     const isHeader = instance.componentId === 'table-header-cell';
@@ -7700,6 +7738,36 @@ async function renderComponent(
         
         inputFrame.appendChild(inputText);
         frame.appendChild(inputFrame);
+    }
+    else if (instance.componentId === 'table-cell-select') {
+        const displayText = params.text || params.value || params.placeholder || '请选择';
+        const selectInstance = await createFigmaComponentInstanceByToken('table.cell.select');
+        if (selectInstance) {
+            selectInstance.layoutGrow = 1;
+            await trySetFirstTextInInstance(selectInstance, displayText);
+            frame.appendChild(selectInstance);
+        } else {
+            const selectFrame = figma.createFrame();
+            selectFrame.layoutMode = 'HORIZONTAL';
+            selectFrame.primaryAxisSizingMode = 'FIXED';
+            selectFrame.counterAxisSizingMode = 'AUTO';
+            selectFrame.layoutGrow = 1;
+            selectFrame.resize(100, 24);
+            selectFrame.paddingLeft = 8;
+            selectFrame.paddingRight = 8;
+            selectFrame.cornerRadius = 4;
+            await applyStrokeColorVariable(selectFrame, 'table-border-key', '#EAEDF1');
+            selectFrame.strokeWeight = 1;
+            selectFrame.counterAxisAlignItems = 'CENTER';
+
+            const selectText = figma.createText();
+            await applyTextStyleBinding(selectText, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
+            selectText.characters = displayText;
+            await applyColorVariable(selectText, 'table-cell-text-key', '#0C0D0E');
+            selectText.layoutGrow = 1;
+            selectFrame.appendChild(selectText);
+            frame.appendChild(selectFrame);
+        }
     }
     // 4. Action Text Cell
     else if (instance.componentId === 'table-cell-action-text') {
@@ -7899,57 +7967,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
 	    } else {
-	        const frame = figma.createFrame();
-	        frame.layoutMode = 'HORIZONTAL';
-	        frame.primaryAxisSizingMode = 'AUTO';
-	        frame.counterAxisSizingMode = 'AUTO';
-	        // Buttons should not clip their own stroke/effects in auto-layout.
-	        frame.clipsContent = false;
-	        frame.paddingTop = THEME_CONSTANTS['button'].paddingTop;
-	        frame.paddingBottom = THEME_CONSTANTS['button'].paddingBottom;
-	        frame.paddingLeft = THEME_CONSTANTS['button'].paddingLeft;
-	        frame.paddingRight = THEME_CONSTANTS['button'].paddingRight;
-	        frame.cornerRadius = THEME_CONSTANTS['button'].cornerRadius;
-	        frame.itemSpacing = 8;
-
-        if (params.variant === 'secondary') {
-            await applyColorVariable(frame, "btn-secondary-bg", "#E6E6E6");
-	        } else if (params.variant === 'outline') {
-	            frame.fills = [];
-	            frame.strokes = [{ type: 'SOLID', color: { r: 0.09, g: 0.63, b: 0.98 } }];
-	            frame.strokeWeight = 1;
-	            frame.strokesIncludedInLayout = true;
-	        } else if (params.variant === 'text') {
-	            frame.fills = [];
-	            frame.strokes = [];
-	            frame.strokeWeight = 0;
-        } else {
-            await applyColorVariable(frame, "btn-primary-bg", "#1890FF");
-        }
-
-        await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-        const text = figma.createText();
-        await applyTextStyleBinding(text, 'button-text-style-key', { family: 'Inter', style: 'Medium', size: THEME_CONSTANTS['button'].fontSize });
-        text.characters = params.label || 'Button';
-        if (!text.fontSize) text.fontSize = THEME_CONSTANTS['button'].fontSize;
-
-        if (params.variant === 'secondary') {
-             await applyColorVariable(text, "btn-secondary-text", "#333333");
-        } else if (params.variant === 'outline' || params.variant === 'text') {
-             await applyColorVariable(text, "btn-outline-text", "#1890FF");
-        } else {
-             await applyColorVariable(text, "btn-primary-text", "#FFFFFF");
-        }
-
-        frame.appendChild(text);
-
-        if (params.width && params.width > 0) {
-            frame.resize(params.width, frame.height);
-            frame.primaryAxisSizingMode = 'FIXED';
-            frame.primaryAxisAlignItems = 'CENTER';
-        }
-        node = frame;
-    }
+        const width = Number(params.width) > 0 ? Number(params.width) : 100;
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
+      }
   }
   // --- INPUT ---
   else if (instance.componentId === 'input') {
@@ -7957,83 +7977,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
-        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-
-        const metrics = resolveInputMetrics(params.size);
         const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        const disabled = Boolean(params.disabled);
-        const error = Boolean(params.error);
-        const state = normalizeInputState(params.state);
-        const hasValue = String(params.value ?? '').length > 0;
-        const filled = Boolean(params.filled) || hasValue;
-        const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
-        const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
-        const outlineSpec = resolveInputOutlineSpec(disabled, error, state);
-
-        const frame = figma.createFrame();
-        frame.layoutMode = 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'FIXED';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.resize(width, metrics.height);
-        frame.fills = [];
-        frame.clipsContent = false;
-
-        const wrapper = figma.createFrame();
-        wrapper.name = 'wrapper';
-        wrapper.layoutMode = 'HORIZONTAL';
-        wrapper.primaryAxisSizingMode = 'FIXED';
-        wrapper.counterAxisSizingMode = 'AUTO';
-        wrapper.counterAxisAlignItems = 'CENTER';
-        wrapper.itemSpacing = 10;
-        wrapper.paddingTop = metrics.paddingY;
-        wrapper.paddingRight = metrics.paddingX;
-        wrapper.paddingBottom = metrics.paddingY;
-        wrapper.paddingLeft = metrics.paddingX;
-        wrapper.resize(width, metrics.height);
-        wrapper.cornerRadius = metrics.cornerRadius;
-        wrapper.strokes = [];
-        wrapper.strokeWeight = 1;
-        wrapper.clipsContent = false;
-
-        if (disabled) {
-            await applyColorVariable(wrapper, 'input-disabled-bg-key', '#F2F3F5');
-        } else if (error) {
-            await applyColorVariable(wrapper, 'input-error-bg-key', '#FFF2F0');
-        } else {
-            await applyColorVariable(wrapper, 'input-bg', '#FFFFFF');
-        }
-        if (!error && state === 'default') {
-            await applyStrokeColorVariable(wrapper, 'select-border-key', '#EAEDF1');
-        } else {
-            await applyStrokeColorVariable(wrapper, outlineSpec.variableKey, outlineSpec.fallbackHex);
-        }
-
-        if (showPrefix) {
-            wrapper.appendChild(await createInputAffixNode(params.prefixText, disabled, metrics.fontSize));
-        }
-
-        const text = figma.createText();
-        text.name = 'text';
-        await applyTextStyleBinding(text, 'input-text-style-key', { family: 'Inter', style: 'Regular', size: metrics.fontSize });
-        text.characters = hasValue ? String(params.value) : (params.placeholder || '请输入');
-        if (!text.fontSize) text.fontSize = metrics.fontSize;
-        text.layoutGrow = 1;
-
-        if (disabled) {
-            await applyColorVariable(text, 'input-disabled-text-key', '#C9CDD4');
-        } else if (!filled) {
-            await applyColorVariable(text, 'input-placeholder', '#737A87');
-        } else {
-            await applyColorVariable(text, 'input-text', '#0C0D0E');
-        }
-        wrapper.appendChild(text);
-
-        if (showSuffix) {
-            wrapper.appendChild(await createInputAffixNode(params.suffixText, disabled, metrics.fontSize));
-        }
-
-        frame.appendChild(wrapper);
-        node = frame;
+        const metrics = resolveInputMetrics(params.size);
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
     }
   }
   // --- SELECT ---
@@ -8042,76 +7988,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
-        await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-
         const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        const currentValue = String(params.value || '').trim();
-        const placeholder = String(params.placeholder || '请选择');
-        const hasValue = currentValue.length > 0;
-        const disabled = Boolean(params.disabled);
-
         const metrics = resolveInputMetrics(params.size);
-
-        const frame = figma.createFrame();
-        frame.layoutMode = 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'FIXED';
-        frame.counterAxisSizingMode = 'AUTO';
-        frame.resize(width, metrics.height);
-        frame.fills = [];
-        frame.clipsContent = false;
-
-        const wrapper = figma.createFrame();
-        wrapper.name = 'wrapper';
-        wrapper.layoutMode = 'HORIZONTAL';
-        wrapper.primaryAxisSizingMode = 'FIXED';
-        wrapper.counterAxisSizingMode = 'AUTO';
-        wrapper.counterAxisAlignItems = 'CENTER';
-        wrapper.itemSpacing = 10;
-        wrapper.paddingTop = metrics.paddingY;
-        wrapper.paddingRight = metrics.paddingX + 8;
-        wrapper.paddingBottom = metrics.paddingY;
-        wrapper.paddingLeft = metrics.paddingX;
-        wrapper.resize(width, metrics.height);
-        wrapper.cornerRadius = metrics.cornerRadius;
-        wrapper.strokes = [];
-        wrapper.strokeWeight = 1;
-        wrapper.clipsContent = false;
-
-        if (disabled) {
-            await applyColorVariable(wrapper, 'input-disabled-bg-key', '#F2F3F5');
-        } else {
-            await applyColorVariable(wrapper, 'input-bg', '#FFFFFF');
-        }
-        await applyStrokeColorVariable(wrapper, 'select-border-key', '#EAEDF1');
-
-        const text = figma.createText();
-        await applyTextStyleBinding(text, 'select-text-style-key', { family: 'Inter', style: 'Regular', size: metrics.fontSize });
-        text.characters = hasValue ? currentValue : placeholder;
-        if (!text.fontSize) text.fontSize = metrics.fontSize;
-        if (disabled) {
-            await applyColorVariable(text, 'input-disabled-text-key', '#C9CDD4');
-        } else {
-            await applyColorVariable(text, hasValue ? 'input-text' : 'input-placeholder', hasValue ? '#0C0D0E' : '#737A87');
-        }
-        text.layoutGrow = 1;
-        wrapper.appendChild(text);
-
-        const icon = figma.createVector();
-        icon.vectorPaths = [{
-            windingRule: "NONZERO",
-            data: "M 0 0 L 4 4 L 8 0"
-        }];
-        icon.strokeWeight = 1.5;
-        icon.strokeCap = "ROUND";
-        icon.strokeJoin = "ROUND";
-        if (disabled) {
-            await applyStrokeColorVariable(icon, 'input-disabled-text-key', '#C9CDD4');
-        } else {
-            await applyStrokeColorVariable(icon, 'select-icon', '#737A87');
-        }
-        wrapper.appendChild(icon);
-        frame.appendChild(wrapper);
-        node = frame;
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
     }
   }
 	  // --- FILTER GROUP ---
@@ -8243,70 +8122,8 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
-        await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-        await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
-
-        const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-        const checked = new Set(parseDelimitedText(params.checkedValues, []));
-        const frame = figma.createFrame();
-        frame.layoutMode = String(params.direction || 'horizontal').trim().toLowerCase() === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'AUTO';
-	        frame.counterAxisSizingMode = 'AUTO';
-	        frame.counterAxisAlignItems = 'MIN';
-	        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-	        frame.fills = [];
-	        frame.clipsContent = false;
-
-	        for (const option of options) {
-	            const item = figma.createFrame();
-	            item.layoutMode = 'HORIZONTAL';
-	            item.primaryAxisSizingMode = 'AUTO';
-            item.counterAxisSizingMode = 'AUTO';
-	            item.counterAxisAlignItems = 'CENTER';
-	            item.itemSpacing = 8;
-	            item.fills = [];
-	            item.clipsContent = false;
-
-            const checkedNow = checked.has(option);
-            const box = figma.createFrame();
-            box.layoutMode = 'VERTICAL';
-            box.primaryAxisSizingMode = 'FIXED';
-            box.counterAxisSizingMode = 'FIXED';
-            box.primaryAxisAlignItems = 'CENTER';
-            box.counterAxisAlignItems = 'CENTER';
-	            box.resize(14, 14);
-	            box.cornerRadius = 3;
-	            box.strokeWeight = 1;
-	            box.clipsContent = false;
-	            box.strokesIncludedInLayout = true;
-            if (checkedNow) {
-                await applyColorVariable(box, 'checkbox-checked-bg', '#1664FF');
-                box.strokes = [];
-
-                const mark = figma.createText();
-                await applyTextStyleBinding(mark, 'text-style-key', { family: 'Inter', style: 'Medium', size: 10 });
-                mark.characters = '✓';
-                await applyColorVariable(mark, 'checkbox-checkmark', '#FFFFFF');
-                box.appendChild(mark);
-            } else {
-                await applyColorVariable(box, 'checkbox-bg', '#FFFFFF');
-                await applyStrokeColorVariable(box, 'checkbox-border', '#EAEDF1');
-            }
-            item.appendChild(box);
-
-            const labelNode = figma.createText();
-            await applyTextStyleBinding(labelNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
-            labelNode.characters = option;
-            await applyColorVariable(labelNode, 'checkbox-label', '#0C0D0E');
-            item.appendChild(labelNode);
-
-            if (params.disabled) {
-                item.opacity = 0.45;
-            }
-            frame.appendChild(item);
-        }
-
-        node = frame;
+        const width = Number(params.width) > 0 ? Number(params.width) : 100;
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
   }
   // --- RADIO GROUP ---
@@ -8315,80 +8132,33 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
-        await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-
-        const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-        const selectedValue = String(params.value || options[0] || '').trim();
-        const frame = figma.createFrame();
-        frame.layoutMode = String(params.direction || 'horizontal').trim().toLowerCase() === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'AUTO';
-	        frame.counterAxisSizingMode = 'AUTO';
-	        frame.counterAxisAlignItems = 'MIN';
-	        frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-	        frame.fills = [];
-	        frame.clipsContent = false;
-
-	        for (const option of options) {
-	            const item = figma.createFrame();
-	            item.layoutMode = 'HORIZONTAL';
-	            item.primaryAxisSizingMode = 'AUTO';
-            item.counterAxisSizingMode = 'AUTO';
-	            item.counterAxisAlignItems = 'CENTER';
-	            item.itemSpacing = 8;
-	            item.fills = [];
-	            item.clipsContent = false;
-
-            const selectedNow = option === selectedValue;
-            const circle = figma.createFrame();
-            circle.layoutMode = 'VERTICAL';
-            circle.primaryAxisSizingMode = 'FIXED';
-            circle.counterAxisSizingMode = 'FIXED';
-            circle.primaryAxisAlignItems = 'CENTER';
-            circle.counterAxisAlignItems = 'CENTER';
-	            circle.resize(14, 14);
-	            circle.cornerRadius = 7;
-	            circle.strokeWeight = 1;
-	            circle.clipsContent = false;
-	            circle.strokesIncludedInLayout = true;
-            await applyColorVariable(circle, 'radio-bg', '#FFFFFF');
-            await applyStrokeColorVariable(circle, selectedNow ? 'radio-selected-border' : 'radio-border', selectedNow ? '#1664FF' : '#EAEDF1');
-
-            if (selectedNow) {
-                const dot = figma.createEllipse();
-                dot.resize(6, 6);
-                await applyColorVariable(dot, 'radio-dot', '#1664FF');
-                circle.appendChild(dot);
-            }
-            item.appendChild(circle);
-
-            const labelNode = figma.createText();
-            await applyTextStyleBinding(labelNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
-            labelNode.characters = option;
-            await applyColorVariable(labelNode, 'radio-label', '#0C0D0E');
-            item.appendChild(labelNode);
-
-            if (params.disabled) {
-                item.opacity = 0.45;
-            }
-            frame.appendChild(item);
-        }
-
-        node = frame;
+        const width = Number(params.width) > 0 ? Number(params.width) : 100;
+        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
   }
   // --- CARD ---
   else if (instance.componentId === 'card') {
+    const cardDefaults = getDefaultParams('card');
+    const cardMetrics =
+      getRegistrySizeMetrics('card', params.size)
+      ?? getRegistrySizeMetrics('card', cardDefaults.size);
+    const cardPadding =
+      toPositiveNumber(params.padding)
+      ?? cardMetrics?.paddingX
+      ?? toPositiveNumber(cardDefaults.padding)
+      ?? 0;
+    const cardCornerRadius = cardMetrics?.cornerRadius ?? 0;
     const frame = figma.createFrame();
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'FIXED';
     frame.resize(params.width || 300, 100);
-    frame.paddingLeft = params.padding || THEME_CONSTANTS['card'].padding;
-    frame.paddingRight = params.padding || THEME_CONSTANTS['card'].padding;
-    frame.paddingTop = params.padding || THEME_CONSTANTS['card'].padding;
-    frame.paddingBottom = params.padding || THEME_CONSTANTS['card'].padding;
+    frame.paddingLeft = cardPadding;
+    frame.paddingRight = cardPadding;
+    frame.paddingTop = cardPadding;
+    frame.paddingBottom = cardPadding;
     frame.itemSpacing = 16;
-    frame.cornerRadius = THEME_CONSTANTS['card'].cornerRadius;
+    frame.cornerRadius = cardCornerRadius;
     frame.clipsContent = false;
     // frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
     await applyColorVariable(frame, "card-bg", "#FFFFFF");
@@ -8484,12 +8254,16 @@ function resolveInspectionTargets(payload: any): Array<{
       const normalized = String(key || '').trim();
       if (!normalized) return;
       const resolved = resolveComponentTokenProfile(normalized);
-      if (!resolved) return;
-      targets.push({
-        token: resolved.token,
-        componentKey: resolved.profile.componentKey,
-        fallbackName: resolved.profile.displayName
-      });
+      if (resolved) {
+        targets.push({
+          token: resolved.token,
+          componentKey: resolved.profile.componentKey,
+          fallbackName: resolved.profile.displayName
+        });
+      } else {
+        // raw componentKey (hash) — no token mapping, use directly
+        targets.push({ componentKey: normalized });
+      }
     });
   } else {
     Object.entries(BASE_COMPONENT_TOKEN_PACK).forEach(([token]) => pushToken(token));

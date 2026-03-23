@@ -7,12 +7,6 @@ export interface BaseLibraryComponentTokenProfile {
   aliases?: string[];
 }
 
-
-
-// Generated from Figma组件库词汇表_ComponentSets.json
-// Rules: remove internal/_components/panel/slot entries; keep main components for agent usage.
-// GeneratedAt: 2026-03-13T13:34:52.000Z
-// Count: 100
 export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryComponentTokenProfile> = {
   'lib-layout-divider': {
     token: 'lib-layout-divider',
@@ -783,4 +777,3 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     aliases: ['figma-set:AI TextArea 智能文本域']
   },
 };
-

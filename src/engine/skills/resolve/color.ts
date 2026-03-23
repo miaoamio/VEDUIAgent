@@ -1,5 +1,5 @@
 import { COMPONENT_REGISTRY } from '../../../registry';
-import { resolveColorTokenProfile } from '../../../theme.color-tokens';
+import { resolveColorTokenProfile } from '../../../theme/volcengine-design/color-tokens';
 
 type ColorVariableHint = {
   keyCandidates?: string[];

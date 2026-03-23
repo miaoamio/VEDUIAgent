@@ -8,7 +8,7 @@
     "dev:admin": "vite --config vite.admin.config.ts",
     "build": "npm run build:ui && npm run build:main",
     "build:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6",
-    "build:ui": "vite build",
+    "build:ui": "vite build && node scripts/copy-ui.js",
     "build:admin": "vite build --config vite.admin.config.ts",
     "watch": "concurrently \"npm run watch:main\" \"npm run watch:ui\"",
     "watch:main": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es6 --watch",
