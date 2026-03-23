@@ -8888,7 +8888,27 @@ async function drawAiChart(data: any, options: any) {
   xAxisFrame.appendChild(xLabelsContainer);
 
   const count = data.labels.length;
-  const stepX = drawW / (count - 1);
+  const isBarChart = options.type === 'bar';
+  
+  // 根据图表类型选择不同的X轴标签布局
+  let labelPositions: number[] = [];
+  
+  if (isBarChart) {
+    // 柱状图：使用boundaryGap=true的布局
+    const barCategoryGap = 0.3;
+    const categorySlotWidth = count > 0 ? drawW / (count + barCategoryGap) : drawW;
+    
+    for (let i = 0; i < count; i++) {
+      const centerX = categorySlotWidth / 2 + i * categorySlotWidth;
+      labelPositions.push(centerX);
+    }
+  } else {
+    // 折线图：使用原有的等距布局
+    const stepX = count > 1 ? drawW / (count - 1) : drawW;
+    for (let i = 0; i < count; i++) {
+      labelPositions.push(count === 1 ? drawW / 2 : i * stepX);
+    }
+  }
 
   // Draw X-Axis Labels (Aligned with PlotFrame structure)
   const showXLabels = true; 
@@ -8930,8 +8950,13 @@ async function drawAiChart(data: any, options: any) {
     
     // Iterate all possible steps to find the smallest s (most labels)
     for (let s = 1; s < count; s++) {
-      const currentStepX = stepX * s;
-      const limitW = (currentStepX - minGap);
+      // 计算步长间距
+      let currentStepDistance = 0;
+      if (s < count) {
+        currentStepDistance = Math.abs(labelPositions[Math.min(s, count - 1)] - labelPositions[0]);
+      }
+      
+      const limitW = (currentStepDistance > 0 ? currentStepDistance : drawW) - minGap;
       
       // 1. Strict Width Constraint (36px)
       if (limitW < 36) continue;
@@ -8948,9 +8973,8 @@ async function drawAiChart(data: any, options: any) {
     // Fallback if nothing fits
     if (bestS === -1) {
       // Force a step that gives ~40px
-      const safeStep = Math.ceil(40 / stepX);
-      bestS = Math.max(1, safeStep);
-      bestMaxW = stepX * bestS - minGap;
+      bestS = Math.max(1, Math.ceil(count / Math.max(1, Math.floor(drawW / 40))));
+      bestMaxW = Math.max(36, drawW / Math.max(1, count / bestS) - minGap);
     }
     
     if (bestS !== -1) {
@@ -8972,7 +8996,7 @@ async function drawAiChart(data: any, options: any) {
       const isLast = index === finalIndices.length - 1;
       const isFirst = index === 0;
       
-      const x = i * stepX; 
+      const x = labelPositions[i];
       
       const label = figma.createText();
       label.characters = text;
@@ -8992,18 +9016,9 @@ async function drawAiChart(data: any, options: any) {
       if (rotateLabels) {
         // Rotated Logic - not used in default mode
       } else {
-        // Standard Horizontal Logic
-        if (isFirst) {
-          label.textAlignHorizontal = "LEFT";
-          label.x = x; 
-        } else if (isLast) {
-          // Cancel right alignment for last label, use CENTER like middle labels
-          label.textAlignHorizontal = "CENTER";
-          label.x = x - (finalMaxLabelW / 2);
-        } else {
-          label.textAlignHorizontal = "CENTER";
-          label.x = x - (finalMaxLabelW / 2);
-        }
+        // Standard Horizontal Logic - 所有标签都居中对齐
+        label.textAlignHorizontal = "CENTER";
+        label.x = x - (finalMaxLabelW / 2);
         label.y = 0; 
         
         // Set width to strict limit to ensure no collision
@@ -9021,22 +9036,24 @@ async function drawAiChart(data: any, options: any) {
   }
 
   // Draw Chart Data (Lines or Bars)
-  const isBarChart = options.type === 'bar';
   const barType = options.barType || 'simple';
   
   if (isBarChart) {
-    // 绘制柱状图
+    // 绘制柱状图 - 严格遵循SKILL规范
     const numCategories = data.labels.length;
     const numSeries = data.datasets.length;
     
-    // 柱状图配置
-    const barCategoryGap = 0.3;
-    const barGap = barType === 'grouped' ? 0.2 : 0;
-    const barWidth = numCategories > 10 ? 0.4 : 0.6;
+    // SKILL规范配置
+    const barCategoryGap = 0.3; // 30%
+    const barGap = barType === 'grouped' ? 0.2 : 0; // 分组时20%，其他0%
+    const barWidthPercent = numCategories > 10 ? 0.5 : 0.7; // >10类目50%，否则70%
     
-    // 计算每个类别的总宽度
-    const categoryWidth = drawW / numCategories;
-    const usableCategoryWidth = categoryWidth * (1 - barCategoryGap);
+    // 使用boundaryGap=true的布局：两端各留半个类目宽度的空间
+    const totalCategoriesWidth = drawW;
+    // 计算每个类目的可用宽度（包含barCategoryGap）
+    const categorySlotWidth = numCategories > 0 ? totalCategoriesWidth / (numCategories + barCategoryGap) : totalCategoriesWidth;
+    // 计算柱子实际占用的宽度（不包含barCategoryGap）
+    const categoryUsableWidth = categorySlotWidth * (1 - barCategoryGap);
     
     if (barType === 'simple') {
       // 基础柱状图
@@ -9046,12 +9063,18 @@ async function drawAiChart(data: any, options: any) {
           const barHeight = normalizedY * plotH;
           const barY = plotH - barHeight;
           
-          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth * barWidth) / 2;
-          const barW = usableCategoryWidth * barWidth;
+          // 计算柱子中心位置 - boundaryGap=true布局
+          const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
+          // 柱子宽度
+          const barW = categoryUsableWidth * barWidthPercent;
+          const barX = categoryCenterX - barW / 2;
+          
+          // 确保柱子不超出画布
+          const safeBarX = Math.max(0, Math.min(barX, drawW - barW));
           
           const rect = figma.createRectangle();
           rect.resize(barW, barHeight);
-          rect.x = barX;
+          rect.x = safeBarX;
           rect.y = barY;
           rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
           rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
@@ -9066,14 +9089,25 @@ async function drawAiChart(data: any, options: any) {
           const barHeight = normalizedY * plotH;
           const barY = plotH - barHeight;
           
-          const groupWidth = usableCategoryWidth;
-          const singleBarWidth = (groupWidth - (numSeries - 1) * groupWidth * barGap) / numSeries;
-          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth) / 2 + 
-                     seriesIndex * (singleBarWidth + groupWidth * barGap);
+          // 计算分组中心位置 - boundaryGap=true布局
+          const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
+          // 分组内所有柱子的总宽度（包含间距）
+          const groupTotalWidth = categoryUsableWidth;
+          // 分组内柱子间距总宽度
+          const totalGapInGroup = (numSeries - 1) * groupTotalWidth * barGap;
+          // 单根柱子宽度
+          const singleBarWidth = (groupTotalWidth - totalGapInGroup) / numSeries;
+          // 分组起始位置
+          const groupStartX = categoryCenterX - groupTotalWidth / 2;
+          // 当前柱子位置
+          const barX = groupStartX + seriesIndex * (singleBarWidth + groupTotalWidth * barGap);
+          
+          // 确保柱子不超出画布
+          const safeBarX = Math.max(0, Math.min(barX, drawW - singleBarWidth));
           
           const rect = figma.createRectangle();
           rect.resize(singleBarWidth, barHeight);
-          rect.x = barX;
+          rect.x = safeBarX;
           rect.y = barY;
           rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
           rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
@@ -9129,13 +9163,19 @@ async function drawAiChart(data: any, options: any) {
           const barHeight = (normalizedTop - normalizedBase) * plotH;
           const barY = plotH - normalizedTop * plotH;
           
-          const barX = i * categoryWidth + (categoryWidth - usableCategoryWidth * barWidth) / 2;
-          const barW = usableCategoryWidth * barWidth;
+          // 计算柱子中心位置 - boundaryGap=true布局
+          const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
+          // 柱子宽度
+          const barW = categoryUsableWidth * barWidthPercent;
+          const barX = categoryCenterX - barW / 2;
+          
+          // 确保柱子不超出画布
+          const safeBarX = Math.max(0, Math.min(barX, drawW - barW));
           
           if (barHeight > 0.1) {
             const rect = figma.createRectangle();
             rect.resize(barW, barHeight);
-            rect.x = barX;
+            rect.x = safeBarX;
             rect.y = barY;
             rect.fills = [{ type: 'SOLID', color: hexToRgb(ds.color) }];
             rect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
