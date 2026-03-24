@@ -9015,9 +9015,12 @@ StepD:
       }, nextPlan);
       setAgentPlan(nextPlan);
 
-      while (true) {
+      const maxRetryRuns = Math.max(10, nextPlan.tasks.length * 3);
+      let retryRuns = 0;
+      while (retryRuns < maxRetryRuns) {
         const task = getNextExecutableTask(nextPlan);
         if (!task) break;
+        retryRuns += 1;
         const depNotDone = task.dependsOn.find((depId) => {
           const dep = findTaskById(nextPlan, depId);
           return !dep || dep.status !== 'done';
@@ -9044,6 +9047,10 @@ StepD:
           nextPlan = updateTaskStatus(nextPlan, task.taskId, 'failed', result.message);
         }
         setAgentPlan(nextPlan);
+      }
+      if (retryRuns >= maxRetryRuns) {
+        const warnMsg = `[System]: 全部重试已停止：超过最大重试步数（${maxRetryRuns}）。`;
+        setResponse((prev) => (prev ? `${prev}\n\n${warnMsg}` : warnMsg));
       }
     } catch (e) {
       const errorMsg = `[System]: 全部重试失败：${e}`;
