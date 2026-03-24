@@ -4096,12 +4096,6 @@ StepD:
       inlineComponentId: 'figma-component'
     },
     {
-      keywords: ['image'],
-      token: 'lib-data-input-image',
-      fieldControlType: 'figma-component',
-      inlineComponentId: 'figma-component'
-    },
-    {
       keywords: ['radio', '单选'],
       token: 'lib-data-input-radio',
       fieldControlType: 'radio-group',
@@ -4153,6 +4147,12 @@ StepD:
       keywords: ['upload', '上传'],
       token: 'lib-data-input-button',
       fieldControlType: 'upload',
+      inlineComponentId: 'figma-component'
+    },
+    {
+      keywords: ['image'],
+      token: 'lib-data-input-image',
+      fieldControlType: 'figma-component',
       inlineComponentId: 'figma-component'
     },
     {

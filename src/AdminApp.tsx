@@ -352,6 +352,13 @@ function FigmaSnapshotView({ comp }: { comp: ComponentDefinition }) {
       {snapshots.map((s, i) => (
         <div key={i} style={{ marginBottom: 12 }}>
           {s.componentName && <div style={{ fontSize: 11, color: '#86909c', marginBottom: 4 }}>组件: {s.componentName}</div>}
+          {(s.token || s.componentSetName || s.inspectedAt) && (
+            <div style={{ fontSize: 11, color: '#86909c', marginBottom: 6 }}>
+              {s.token && <div>Token: <code>{s.token}</code></div>}
+              {s.componentSetName && <div>组件集: {s.componentSetName}</div>}
+              {s.inspectedAt && <div>采样时间: {s.inspectedAt}</div>}
+            </div>
+          )}
           {s.properties?.length > 0 ? (
             <table className="table">
               <thead>

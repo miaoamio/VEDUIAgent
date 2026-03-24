@@ -6,6 +6,7 @@ import { iconComponents } from "./registry/components/icon";
 import { formComponents } from "./registry/components/form";
 import { inputComponents } from "./registry/components/input";
 import { chartComponents } from "./registry/components/chart";
+import { avatarComponents } from "./registry/components/avatar";
 
 export const COMPONENT_REGISTRY: ComponentRegistry = {
   components: {
@@ -15,6 +16,7 @@ export const COMPONENT_REGISTRY: ComponentRegistry = {
     ...iconComponents,
     ...formComponents,
     ...inputComponents,
-    ...chartComponents
+    ...chartComponents,
+    ...avatarComponents
   }
 };

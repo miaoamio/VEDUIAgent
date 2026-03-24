@@ -1111,10 +1111,10 @@ export const formComponents: ComponentRegistry["components"] = {
       },
       "state": {
         "type": "select",
-        "default": "Defalult 默认",
+        "default": "Default 默认",
         "description": "状态",
         "enumValues": [
-          "Defalult 默认",
+          "Default 默认",
           "Hover 悬浮",
           "Active 激活"
         ]
@@ -1215,9 +1215,9 @@ export const formComponents: ComponentRegistry["components"] = {
         {
           "propertyName": "State 状态",
           "type": "VARIANT",
-          "defaultValue": "Defalult 默认",
+          "defaultValue": "Default 默认",
           "options": [
-            "Defalult 默认",
+            "Default 默认",
             "Hover 悬浮",
             "Active 激活"
           ]

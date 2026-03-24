@@ -112,12 +112,6 @@ const FORM_LIBRARY_CONTROL_RULES: Array<{
     inlineComponentId: 'figma-component'
   },
   {
-    keywords: ['image'],
-    token: 'lib-data-input-image',
-    fieldControlType: 'figma-component',
-    inlineComponentId: 'figma-component'
-  },
-  {
     keywords: ['radio', '单选'],
     token: 'lib-data-input-radio',
     fieldControlType: 'radio-group',
@@ -169,6 +163,12 @@ const FORM_LIBRARY_CONTROL_RULES: Array<{
     keywords: ['upload', '上传'],
     token: 'lib-data-input-button',
     fieldControlType: 'upload',
+    inlineComponentId: 'figma-component'
+  },
+  {
+    keywords: ['image'],
+    token: 'lib-data-input-image',
+    fieldControlType: 'figma-component',
     inlineComponentId: 'figma-component'
   },
   {
@@ -723,7 +723,8 @@ export const buildNormalizedFormComponentFromSource = (
             controlType: 'figma-component',
             componentToken,
             ...(segmentedKey ? { componentKey: segmentedKey } : {}),
-            variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || '')
+            variantCriteria: String(props.variantCriteria || itemObj.variantCriteria || ''),
+            disabled: Boolean(props.disabled ?? itemObj.disabled)
           },
           children: inputLayout ? [inputLayout] : undefined
         };

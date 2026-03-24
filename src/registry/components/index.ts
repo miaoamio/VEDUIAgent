@@ -5,3 +5,4 @@ export { iconComponents } from "./icon";
 export { formComponents } from "./form";
 export { inputComponents } from "./input";
 export { chartComponents } from "./chart";
+export { avatarComponents } from "./avatar";

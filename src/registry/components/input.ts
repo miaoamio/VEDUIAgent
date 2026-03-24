@@ -71,7 +71,8 @@ const sliderRenderNotes = {
 const uploadRenderNotes = {
   actionHint: "上传区域使用 Upload 组件。",
   paramRules: [
-    "uploadType 决定拖拽/按钮样式。",
+    "type 控制按钮样式。",
+    "size 控制按钮尺寸。",
     "disabled 控制禁用态。"
   ],
   commonErrors: [
@@ -1178,13 +1179,73 @@ export const inputComponents: ComponentRegistry["components"] = {
     "description": "上传控件",
     "schemaVersion": "2.0.0",
     "params": {
-      "uploadType": {
+      "type": {
         "type": "select",
-        "default": "button",
-        "description": "上传类型",
+        "default": "Primary 主要",
+        "description": "按钮类型",
         "enumValues": [
-          "button",
-          "drag"
+          "Primary 主要",
+          "Secondary 次要",
+          "Outline 线框",
+          "Text 文字"
+        ]
+      },
+      "theme": {
+        "type": "select",
+        "default": "Default 默认",
+        "description": "主题",
+        "enumValues": [
+          "Default 默认",
+          "Primary 强调"
+        ]
+      },
+      "size": {
+        "type": "select",
+        "default": "Default 32",
+        "description": "尺寸",
+        "enumValues": [
+          "Mini 24",
+          "Small 28",
+          "Default 32",
+          "Large 36"
+        ]
+      },
+      "state": {
+        "type": "select",
+        "default": "Before 上传前",
+        "description": "状态",
+        "enumValues": [
+          "Before 上传前",
+          "After 上传后"
+        ]
+      },
+      "hover": {
+        "type": "boolean",
+        "default": false,
+        "description": "悬浮"
+      },
+      "iconOnly": {
+        "type": "boolean",
+        "default": false,
+        "description": "仅图标"
+      },
+      "showPrefixIcon": {
+        "type": "boolean",
+        "default": false,
+        "description": "前置图标"
+      },
+      "showSuffixIcon": {
+        "type": "boolean",
+        "default": false,
+        "description": "后置图标"
+      },
+      "language": {
+        "type": "select",
+        "default": "CN",
+        "description": "语言",
+        "enumValues": [
+          "CN",
+          "EN"
         ]
       },
       "disabled": {
@@ -1194,7 +1255,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       },
       "width": {
         "type": "number",
-        "default": 240,
+        "default": 0,
         "description": "宽度"
       }
     },
@@ -1212,41 +1273,162 @@ export const inputComponents: ComponentRegistry["components"] = {
       "preferredLayoutMode": "HORIZONTAL",
       "renderKey": "upload"
     },
-    "runtime": {
-      "fallback": {
-        "width": 240,
-        "height": 120
-      }
-    },
     "figmaPropertySnapshot": {
-      "token": "lib-data-input-image",
-      "inspectedAt": "2026-03-22T10:56:06.057Z",
+      "token": "lib-data-input-button",
+      "inspectedAt": "2026-03-24T03:40:06.590Z",
       "source": "discover_component_props",
-      "componentSetName": "Image 图片上传",
+      "componentSetName": "Button 按钮上传",
       "properties": [
         {
-          "propertyName": "Type 类型",
-          "type": "VARIANT",
-          "defaultValue": "Button 按钮上传",
+          "propertyName": "PrefixIcon 前置图标",
+          "type": "BOOLEAN",
+          "defaultValue": false,
           "options": [
-            "Button 按钮上传",
-            "Drag 拖拽上传"
+            "True",
+            "False"
+          ]
+        },
+        {
+          "propertyName": "SuffixIcon 后置图标",
+          "type": "BOOLEAN",
+          "defaultValue": false,
+          "options": [
+            "True",
+            "False"
+          ]
+        },
+        {
+          "propertyName": "Instance",
+          "type": "INSTANCE_SWAP",
+          "defaultValue": "13:1964"
+        },
+        {
+          "propertyName": "prefixIcon 前置图标",
+          "type": "INSTANCE_SWAP",
+          "defaultValue": "13:8327"
+        },
+        {
+          "propertyName": "suffixIcon 后置图标",
+          "type": "INSTANCE_SWAP",
+          "defaultValue": "13:1867"
+        },
+        {
+          "propertyName": "Disable 禁用",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Hover",
+          "type": "VARIANT",
+          "defaultValue": "true",
+          "options": [
+            "false",
+            "true"
+          ]
+        },
+        {
+          "propertyName": "IconOnly 仅图标",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Language",
+          "type": "VARIANT",
+          "defaultValue": "CN",
+          "options": [
+            "CN",
+            "EN"
+          ]
+        },
+        {
+          "propertyName": "Property 1",
+          "type": "VARIANT",
+          "defaultValue": "Upload__progress",
+          "options": [
+            "Upload__progress"
+          ]
+        },
+        {
+          "propertyName": "Property 2",
+          "type": "VARIANT",
+          "defaultValue": "toStart",
+          "options": [
+            "finished",
+            "toStart"
+          ]
+        },
+        {
+          "propertyName": "Size 尺寸",
+          "type": "VARIANT",
+          "defaultValue": "Default 32",
+          "options": [
+            "Mini 24",
+            "Small 28",
+            "Default 32",
+            "Large 36"
           ]
         },
         {
           "propertyName": "State 状态",
           "type": "VARIANT",
+          "defaultValue": "Before 上传前",
+          "options": [
+            "Before 上传前",
+            "After 上传后"
+          ]
+        },
+        {
+          "propertyName": "Theme 主题",
+          "type": "VARIANT",
           "defaultValue": "Default 默认",
           "options": [
             "Default 默认",
-            "Hover 悬浮",
-            "Disabled 禁用"
+            "Primary 强调"
+          ]
+        },
+        {
+          "propertyName": "Type 类型",
+          "type": "VARIANT",
+          "defaultValue": "Primary 主要",
+          "options": [
+            "Primary 主要",
+            "Secondary 次要",
+            "Outline 线框",
+            "Text 文字"
+          ]
+        },
+        {
+          "propertyName": "尺寸",
+          "type": "VARIANT",
+          "defaultValue": "12px",
+          "options": [
+            "12px",
+            "14px",
+            "16px",
+            "20px",
+            "24px"
           ]
         }
       ],
       "propertyMap": {
-        "Type 类型": { "sourceParam": "uploadType" },
-        "State 状态": { "sourceParam": "disabled", "transform": "boolean:Disabled?Default" }
+        "Type 类型": { "sourceParam": "type" },
+        "Theme 主题": { "sourceParam": "theme" },
+        "Size 尺寸": { "sourceParam": "size" },
+        "State 状态": { "sourceParam": "state" },
+        "Hover": { "sourceParam": "hover", "transform": "boolean" },
+        "Disable 禁用": { "sourceParam": "disabled", "transform": "boolean" },
+        "IconOnly 仅图标": { "sourceParam": "iconOnly", "transform": "boolean" },
+        "PrefixIcon 前置图标": { "sourceParam": "showPrefixIcon", "transform": "boolean" },
+        "SuffixIcon 后置图标": { "sourceParam": "showSuffixIcon", "transform": "boolean" },
+        "Language": { "sourceParam": "language" }
       }
     },
     "renderNotes": uploadRenderNotes

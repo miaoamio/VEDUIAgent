@@ -1,3 +1,6 @@
+import { activeTheme } from './theme/active';
+import { resolveComponentTokenProfile } from './theme/volcengine-design/component-tokens';
+
 export type VariantCriteria = Record<string, string | boolean>;
 
 interface FigmaComponentLoadOptions {
@@ -50,6 +53,184 @@ function normalizeFigmaComponentKey(raw: string): string {
   if (/^[0-9a-f]{40}$/i.test(trimmed)) return trimmed;
   const normalized = trimmed.toLowerCase();
   return FIGMA_COMPONENT_KEY_ALIASES[normalized] || trimmed;
+}
+
+export function resolveComponentKeyFromToken(token: string): string {
+  const normalized = String(token || '').trim();
+  if (!normalized) return '';
+  const direct = activeTheme.components?.[normalized];
+  if (direct) return normalizeFigmaComponentKey(direct);
+  const kebab = normalized.replace(/\./g, '-');
+  const kebabKey = activeTheme.components?.[kebab];
+  if (kebabKey) return normalizeFigmaComponentKey(kebabKey);
+  const profileKey = resolveComponentTokenProfile(normalized)?.profile.componentKey || '';
+  return profileKey ? normalizeFigmaComponentKey(profileKey) : '';
+}
+
+export function normalizeInputSize(value: unknown): 'mini' | 'small' | 'default' | 'large' {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized.includes('24') || normalized.includes('mini')) return 'mini';
+  if (normalized.includes('28') || normalized.includes('small')) return 'small';
+  if (normalized.includes('36') || normalized.includes('large')) return 'large';
+  return 'default';
+}
+
+export function resolveInputSizeVariantLabel(value: unknown): 'Mini 24' | 'Small 28' | 'Default 32' | 'Large 36' {
+  switch (normalizeInputSize(value)) {
+    case 'mini':
+      return 'Mini 24';
+    case 'small':
+      return 'Small 28';
+    case 'large':
+      return 'Large 36';
+    default:
+      return 'Default 32';
+  }
+}
+
+export function isDateTimePickerToken(value: unknown): boolean {
+  const normalized = String(value || '').trim();
+  if (!normalized) return false;
+  const resolved = resolveComponentTokenProfile(normalized);
+  const baseToken = String(resolved?.baseToken || normalized).toLowerCase();
+  return baseToken.includes('datepicker') || baseToken.includes('timepicker') || baseToken.includes('datetimepicker');
+}
+
+function hasSizeVariantCriteria(criteria?: VariantCriteria): boolean {
+  if (!criteria) return false;
+  return Object.keys(criteria).some((key) => {
+    const normalized = key.trim().toLowerCase();
+    return normalized.includes('size') || normalized.includes('尺寸');
+  });
+}
+
+function hasStateVariantCriteria(criteria?: VariantCriteria): boolean {
+  if (!criteria) return false;
+  return Object.keys(criteria).some((key) => {
+    const normalized = key.trim().toLowerCase();
+    return normalized.includes('state') || normalized.includes('状态') || normalized.includes('status');
+  });
+}
+
+function collectVariantOptionMap(component: ComponentNode | ComponentSetNode): Record<string, Set<string>> {
+  const map: Record<string, Set<string>> = {};
+  if (component.type !== 'COMPONENT_SET') return map;
+  for (const child of component.children) {
+    if (child.type !== 'COMPONENT' || !child.variantProperties) continue;
+    Object.entries(child.variantProperties).forEach(([key, value]) => {
+      const name = String(key || '').trim();
+      if (!name) return;
+      if (!map[name]) map[name] = new Set<string>();
+      map[name].add(String(value || '').trim());
+    });
+  }
+  return map;
+}
+
+function findVariantPropertyNameFromMap(optionMap: Record<string, Set<string>>, candidates: string[]): string | null {
+  const lowered = candidates.map((candidate) => candidate.trim().toLowerCase()).filter(Boolean);
+  const keys = Object.keys(optionMap);
+  for (const key of keys) {
+    const normalized = key.trim().toLowerCase();
+    if (lowered.some((candidate) => normalized.includes(candidate))) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function pickVariantOption(options: string[], candidates: string[]): string | undefined {
+  for (const candidate of candidates) {
+    const normalizedCandidate = candidate.toLowerCase();
+    const matched = options.find((option) => option.toLowerCase().includes(normalizedCandidate));
+    if (matched) return matched;
+  }
+  return undefined;
+}
+
+function buildSizeCandidates(size: 'mini' | 'small' | 'default' | 'large'): string[] {
+  if (size === 'mini') return ['mini', '24'];
+  if (size === 'small') return ['small', '28'];
+  if (size === 'large') return ['large', '36'];
+  return ['default 32', 'default', 'medium', 'normal', '32'];
+}
+
+export function buildDateTimePickerVariantCriteria(
+  component: ComponentNode | ComponentSetNode,
+  params: Record<string, any>,
+  baseCriteria: VariantCriteria | undefined,
+  tokenOrKey: string
+): VariantCriteria | undefined {
+  if (!isDateTimePickerToken(tokenOrKey)) return baseCriteria;
+  const optionMap = collectVariantOptionMap(component);
+  const next: VariantCriteria = { ...(baseCriteria || {}) };
+  if (!hasSizeVariantCriteria(baseCriteria)) {
+    const sizeKey = findVariantPropertyNameFromMap(optionMap, ['size', '尺寸']);
+    if (sizeKey) {
+      const options = Array.from(optionMap[sizeKey] || []);
+      const sizeValue = pickVariantOption(options, buildSizeCandidates(normalizeInputSize(params.size)));
+      if (sizeValue) next[sizeKey] = sizeValue;
+    }
+  }
+  if (!hasStateVariantCriteria(baseCriteria)) {
+    const stateKey = findVariantPropertyNameFromMap(optionMap, ['state', '状态', 'status']);
+    if (stateKey) {
+      const options = Array.from(optionMap[stateKey] || []);
+      const stateValue = pickVariantOption(options, ['default', '默认', 'normal']);
+      if (stateValue) next[stateKey] = stateValue;
+    }
+  }
+  return Object.keys(next).length > 0 ? next : baseCriteria;
+}
+
+export async function createFigmaComponentInstanceFromRef(options: {
+  componentKey?: string;
+  componentToken?: string;
+  fallbackName?: string;
+  componentNodeId?: string;
+  variantCriteria?: VariantCriteria | ((variant: ComponentNode) => boolean);
+  params?: Record<string, any>;
+  tokenOrKey?: string;
+  visible?: boolean;
+}): Promise<InstanceNode> {
+  const componentKey =
+    (typeof options.componentKey === 'string' ? options.componentKey.trim() : '') ||
+    (typeof options.componentToken === 'string' ? resolveComponentKeyFromToken(options.componentToken) : '');
+  if (!componentKey) {
+    throw new Error('Missing componentKey for Figma instance rendering');
+  }
+  const tokenOrKey =
+    (typeof options.tokenOrKey === 'string' && options.tokenOrKey.trim())
+      ? options.tokenOrKey.trim()
+      : (typeof options.componentToken === 'string' && options.componentToken.trim())
+        ? options.componentToken.trim()
+        : componentKey;
+  if (
+    options.params &&
+    typeof options.variantCriteria !== 'function' &&
+    isDateTimePickerToken(tokenOrKey)
+  ) {
+    const loadedComponent = await loadFigmaComponentByKey({
+      componentKey,
+      fallbackName: options.fallbackName,
+      componentNodeId: options.componentNodeId
+    });
+    const variantCriteria = buildDateTimePickerVariantCriteria(
+      loadedComponent,
+      options.params,
+      options.variantCriteria as VariantCriteria | undefined,
+      tokenOrKey
+    );
+    const target = findFigmaVariant(loadedComponent, variantCriteria);
+    return target.createInstance();
+  }
+  return createFigmaComponentInstance({
+    componentKey,
+    fallbackName: options.fallbackName,
+    componentNodeId: options.componentNodeId,
+    variantCriteria: options.variantCriteria,
+    visible: options.visible
+  });
 }
 
 export interface DiscoveredComponentProperty {

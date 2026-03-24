@@ -4,14 +4,14 @@ import { getDefaultParams, getRegistrySizeMetrics } from './registry.helpers';
 import type { ComponentDefinition } from './registry.types';
 import { FULL_RERENDER_COMPONENT_IDS } from './editability';
 import { applyEnvelopeUnknown } from './engine/applyEnvelope';
+import { renderFigmaComponentInstance } from './engine/skills/resolve/figma-component';
 import {
-  createFigmaComponentInstance,
+  createFigmaComponentInstanceFromRef,
   discoverFigmaComponentSchema,
   discoverFigmaComponentSchemaFromSelection,
-  findFigmaVariant,
   inspectFigmaComponentStructure,
-  loadFigmaComponentByKey,
-  parseVariantCriteria,
+  resolveComponentKeyFromToken,
+  resolveInputSizeVariantLabel,
   VariantCriteria
 } from './figmaComponent';
 import { resolveTypographyTokenProfile } from './theme/volcengine-design/typography';
@@ -19,7 +19,6 @@ import {
   BASE_COMPONENT_TOKEN_PACK,
   resolveComponentTokenProfile
 } from './theme/volcengine-design/component-tokens';
-import { activeTheme } from './theme/active';
 import { createInspectDrivenTagFallbackNode } from './theme/volcengine-design/tag-fallback';
 import {
   applyColorVariable,
@@ -57,23 +56,17 @@ const TABLE_CELL_PREWARM_TOKENS = [
   'table-cell-icon-more',
   'table-cell-icon-action-more',
   'lib-data-display-avataricon',
-  'table.header.icon',
-  'table.rowAction.text',
-  'table.rowAction.checkbox',
-  'table.rowAction.radio',
-  'table.rowAction.drag',
-  'table.rowAction.expand',
-  'table.rowAction.switch',
-  'table.rowAction.header'
+  'table-header-icon',
+  'table-row-action-text',
+  'table-row-action-checkbox',
+  'table-row-action-radio',
+  'table-row-action-drag',
+  'table-row-action-expand',
+  'table-row-action-switch',
+  'table-row-action-header'
 ];
 
-const resolveComponentKeyFromToken = (token: string): string => {
-  const normalized = String(token || '').trim();
-  if (!normalized) return '';
-  const themeKey = activeTheme.components?.[normalized];
-  if (themeKey) return themeKey;
-  return resolveComponentTokenProfile(normalized)?.profile.componentKey || '';
-};
+let strictRenderMode = false;
 
 const resolveComponentDisplayNameFromToken = (token: string): string | undefined => {
   const normalized = String(token || '').trim();
@@ -81,10 +74,27 @@ const resolveComponentDisplayNameFromToken = (token: string): string | undefined
   return resolveComponentTokenProfile(normalized)?.profile.displayName;
 };
 
+const resolveComponentIdFromToken = (token: string): string | null => {
+  const normalized = String(token || '').trim();
+  if (!normalized) return null;
+  const resolved = resolveComponentTokenProfile(normalized);
+  const candidates = [normalized, resolved?.baseToken].filter(Boolean) as string[];
+  for (const candidate of candidates) {
+    for (const [componentId, def] of Object.entries(COMPONENT_DEFS)) {
+      const snapshot = (def as any)?.figmaPropertySnapshot as any;
+      const snapshotToken = typeof snapshot?.token === 'string' ? snapshot.token.trim() : '';
+      if (snapshotToken && snapshotToken === candidate) {
+        return componentId;
+      }
+    }
+  }
+  return null;
+};
+
 const normalizeTextareaState = (value: unknown): string => {
   const normalized = String(value || '').trim();
-  if (!normalized) return 'Defalult 默认';
-  if (normalized === 'Default 默认') return 'Defalult 默认';
+  if (!normalized) return 'Default 默认';
+  if (normalized === 'Default 默认') return 'Default 默认';
   return normalized;
 };
 
@@ -501,6 +511,7 @@ figma.on('selectionchange', checkSelection);
 
 let tableRowSyncInProgress = false;
 let tableRowSyncTimer: number | null = null;
+let tableRowSyncMuteUntil = 0;
 let pendingTableRowSync = new Map<
   string,
   { table: FrameNode; rowIndex: number; sourceNodes: SceneNode[] }
@@ -508,6 +519,7 @@ let pendingTableRowSync = new Map<
 
 figma.on('documentchange', async (event) => {
   if (tableRowSyncInProgress) return;
+  if (Date.now() < tableRowSyncMuteUntil) return;
 
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
@@ -568,6 +580,7 @@ figma.on('documentchange', async (event) => {
       }
     } finally {
       tableRowSyncInProgress = false;
+      tableRowSyncMuteUntil = Date.now() + 200;
     }
   }, 120);
 });
@@ -676,7 +689,7 @@ function tryApplyTableHeaderIconVariant(instance: InstanceNode, type: TableHeade
 
 async function createTableHeaderIconInstance(type: TableHeaderElementType): Promise<InstanceNode | null> {
     if (type === 'none') return null;
-    const icon = await createFigmaComponentInstanceByToken('table.header.icon');
+    const icon = await createFigmaComponentInstanceByToken('table-header-icon');
     if (!icon) return null;
     icon.name = `HeaderIcon:${type}`;
     try {
@@ -1640,31 +1653,17 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
             } catch {}
         }
     };
-    const normalizeLineBreakAfterAlign = (cell: SceneNode, target: number) => {
+    const normalizeLineBreakAfterAlign = (cell: SceneNode) => {
         if (!isLineBreakCell(cell)) return;
-        const shouldFix = Math.abs(cell.height - target) > 0.1;
-        if (shouldFix) {
-            if ('counterAxisSizingMode' in cell) {
-                try {
-                    (cell as any).counterAxisSizingMode = 'FIXED';
-                } catch {}
-            }
-            if ('layoutSizingVertical' in cell) {
-                try {
-                    (cell as any).layoutSizingVertical = 'FIXED';
-                } catch {}
-            }
-        } else {
-            if ('counterAxisSizingMode' in cell) {
-                try {
-                    (cell as any).counterAxisSizingMode = 'AUTO';
-                } catch {}
-            }
-            if ('layoutSizingVertical' in cell) {
-                try {
-                    (cell as any).layoutSizingVertical = 'HUG';
-                } catch {}
-            }
+        if ('counterAxisSizingMode' in cell) {
+            try {
+                (cell as any).counterAxisSizingMode = 'FIXED';
+            } catch {}
+        }
+        if ('layoutSizingVertical' in cell) {
+            try {
+                (cell as any).layoutSizingVertical = 'FIXED';
+            } catch {}
         }
     };
 
@@ -1711,12 +1710,15 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
                     // Ignore resize failures for non-resizable nodes.
                 }
             }
-            normalizeLineBreakAfterAlign(cell, maxHeight);
+            normalizeLineBreakAfterAlign(cell);
         }
     }
 }
 
 function alignAllTableRows(table: FrameNode) {
+    const wasSyncing = tableRowSyncInProgress;
+    tableRowSyncInProgress = true;
+    try {
     const columns = getTableColumns(table);
     if (columns.length === 0) return;
 
@@ -1727,6 +1729,9 @@ function alignAllTableRows(table: FrameNode) {
 
     for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
         alignTableRowHeights(table, rowIndex);
+    }
+    } finally {
+        tableRowSyncInProgress = wasSyncing;
     }
 }
 
@@ -2010,7 +2015,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
 	        const componentKey = resolved?.profile.componentKey || '';
 	        if (!componentKey) return null;
 	        try {
-            const inst = await createFigmaComponentInstance({
+            const inst = await createFigmaComponentInstanceFromRef({
                 componentKey,
                 fallbackName: 'Row Action Header',
                 variantCriteria: {
@@ -2112,7 +2117,7 @@ async function applyRowActionColumn(table: FrameNode, action: string) {
         };
 
         try {
-            const inst = await createFigmaComponentInstance({
+            const inst = await createFigmaComponentInstanceFromRef({
                 componentKey,
                 fallbackName: getFallbackName(desired),
                 variantCriteria
@@ -2371,14 +2376,6 @@ function normalizeFormLayout(value: unknown): 'horizontal' | 'vertical' {
     return 'horizontal';
 }
 
-function normalizeInputSize(value: unknown): 'mini' | 'small' | 'default' | 'large' {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized.includes('24') || normalized.includes('mini')) return 'mini';
-    if (normalized.includes('28') || normalized.includes('small')) return 'small';
-    if (normalized.includes('36') || normalized.includes('large')) return 'large';
-    return 'default';
-}
-
 function normalizeInputState(value: unknown): 'default' | 'hover' | 'active' {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized.includes('hover') || normalized.includes('悬浮') || normalized.includes('悬停')) return 'hover';
@@ -2438,147 +2435,6 @@ const INPUT_DEFAULT_EFFECT_STYLE_NAMES = [
 
 function toVariantBoolean(value: boolean): 'True' | 'False' {
     return value ? 'True' : 'False';
-}
-
-function resolveInputSizeVariantLabel(value: unknown): 'Mini 24' | 'Small 28' | 'Default 32' | 'Large 36' {
-    switch (normalizeInputSize(value)) {
-        case 'mini':
-            return 'Mini 24';
-        case 'small':
-            return 'Small 28';
-        case 'large':
-            return 'Large 36';
-        default:
-            return 'Default 32';
-    }
-}
-
-function isDateTimePickerToken(value: unknown): boolean {
-    const normalized = String(value || '').trim();
-    if (!normalized) return false;
-    const resolved = resolveComponentTokenProfile(normalized);
-    const baseToken = String(resolved?.baseToken || normalized).toLowerCase();
-    return baseToken.includes('datepicker') || baseToken.includes('timepicker') || baseToken.includes('datetimepicker');
-}
-
-function hasSizeVariantCriteria(criteria?: VariantCriteria): boolean {
-    if (!criteria) return false;
-    return Object.keys(criteria).some((key) => {
-        const normalized = key.trim().toLowerCase();
-        return normalized.includes('size') || normalized.includes('尺寸');
-    });
-}
-
-function hasStateVariantCriteria(criteria?: VariantCriteria): boolean {
-    if (!criteria) return false;
-    return Object.keys(criteria).some((key) => {
-        const normalized = key.trim().toLowerCase();
-        return normalized.includes('state') || normalized.includes('状态') || normalized.includes('status');
-    });
-}
-
-function collectVariantOptionMap(component: ComponentNode | ComponentSetNode): Record<string, Set<string>> {
-    const map: Record<string, Set<string>> = {};
-    if (component.type !== 'COMPONENT_SET') return map;
-    for (const child of component.children) {
-        if (child.type !== 'COMPONENT' || !child.variantProperties) continue;
-        Object.entries(child.variantProperties).forEach(([key, value]) => {
-            const name = String(key || '').trim();
-            if (!name) return;
-            if (!map[name]) map[name] = new Set<string>();
-            map[name].add(String(value || '').trim());
-        });
-    }
-    return map;
-}
-
-function findVariantPropertyNameFromMap(
-    optionMap: Record<string, Set<string>>,
-    candidates: string[]
-): string | null {
-    const lowered = candidates.map((candidate) => candidate.trim().toLowerCase()).filter(Boolean);
-    const keys = Object.keys(optionMap);
-    for (const key of keys) {
-        const normalized = key.trim().toLowerCase();
-        if (lowered.some((candidate) => normalized.includes(candidate))) {
-            return key;
-        }
-    }
-    return null;
-}
-
-function pickVariantOption(options: string[], candidates: string[]): string | undefined {
-    for (const candidate of candidates) {
-        const normalizedCandidate = candidate.toLowerCase();
-        const matched = options.find((option) => option.toLowerCase().includes(normalizedCandidate));
-        if (matched) return matched;
-    }
-    return undefined;
-}
-
-function buildSizeCandidates(size: 'mini' | 'small' | 'default' | 'large'): string[] {
-    if (size === 'mini') return ['mini', '24'];
-    if (size === 'small') return ['small', '28'];
-    if (size === 'large') return ['large', '36'];
-    return ['default 32', 'default', 'medium', 'normal', '32'];
-}
-
-function buildDateTimePickerVariantCriteria(
-    component: ComponentNode | ComponentSetNode,
-    params: Record<string, any>,
-    baseCriteria: VariantCriteria | undefined,
-    tokenOrKey: string
-): VariantCriteria | undefined {
-    if (!isDateTimePickerToken(tokenOrKey)) return baseCriteria;
-    const optionMap = collectVariantOptionMap(component);
-    const next: VariantCriteria = { ...(baseCriteria || {}) };
-    if (!hasSizeVariantCriteria(baseCriteria)) {
-        const sizeKey = findVariantPropertyNameFromMap(optionMap, ['size', '尺寸']);
-        if (sizeKey) {
-            const options = Array.from(optionMap[sizeKey] || []);
-            const sizeValue = pickVariantOption(options, buildSizeCandidates(normalizeInputSize(params.size)));
-            if (sizeValue) next[sizeKey] = sizeValue;
-        }
-    }
-    if (!hasStateVariantCriteria(baseCriteria)) {
-        const stateKey = findVariantPropertyNameFromMap(optionMap, ['state', '状态', 'status']);
-        if (stateKey) {
-            const options = Array.from(optionMap[stateKey] || []);
-            const stateValue = pickVariantOption(options, ['default', '默认', 'normal']);
-            if (stateValue) next[stateKey] = stateValue;
-        }
-    }
-    return Object.keys(next).length > 0 ? next : baseCriteria;
-}
-
-function normalizeTimepickerIconHitArea(root: SceneNode): void {
-    if (typeof (root as any).findAll !== 'function') return;
-    const targets = (root as any).findAll((node: SceneNode) => {
-        if (node.type !== 'RECTANGLE' && node.type !== 'SLICE') return false;
-        const width = 'width' in node ? (node as any).width : 0;
-        const height = 'height' in node ? (node as any).height : 0;
-        if (!(width > 24 || height > 24)) return false;
-        const fills = 'fills' in node ? (node as any).fills : [];
-        const strokes = 'strokes' in node ? (node as any).strokes : [];
-        const hasVisibleFill = Array.isArray(fills) && fills.some((fill) => fill?.visible !== false);
-        const hasVisibleStroke = Array.isArray(strokes) && strokes.some((stroke) => stroke?.visible !== false);
-        if (hasVisibleFill || hasVisibleStroke) return false;
-        return true;
-    });
-    targets.forEach((node: SceneNode) => {
-        const width = (node as any).width;
-        const height = (node as any).height;
-        const centerX = (node as any).x + width / 2;
-        const centerY = (node as any).y + height / 2;
-        if (typeof (node as any).resize === 'function') {
-            (node as any).resize(16, 16);
-        } else {
-            (node as any).width = 16;
-            (node as any).height = 16;
-        }
-        (node as any).x = centerX - 8;
-        (node as any).y = centerY - 8;
-    });
 }
 
 function resolveInputStateVariantLabel(value: unknown): 'Default 默认' | 'Hover 悬浮' | 'Active 激活' {
@@ -3271,7 +3127,7 @@ async function createTagFromFigmaTemplate(
         let importedInstance: InstanceNode | null = null;
 
         try {
-            importedInstance = await createFigmaComponentInstance({
+            importedInstance = await createFigmaComponentInstanceFromRef({
                 componentKey,
                 fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
                 variantCriteria: criteria,
@@ -3317,7 +3173,7 @@ async function createTagFromFigmaTemplate(
             cloned.name = def.name;
             return cloned;
         }
-        const fallbackInstance = await createFigmaComponentInstance({
+        const fallbackInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             visible: false
@@ -3430,7 +3286,7 @@ async function createButtonFromFigmaTemplate(
     const width = toPositiveNumber(params.width);
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
@@ -3484,7 +3340,7 @@ async function createTextareaFromFigmaTemplate(
     if (!componentKey) return null;
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: snapshot?.componentSetName || def.name,
             variantCriteria: {}
@@ -3534,37 +3390,14 @@ async function createSwitchFromFigmaTemplate(
     if (!componentKey) return null;
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: snapshot?.componentSetName || def.name,
             variantCriteria: {}
         });
 
+        // 严格遵循注册表快照进行属性应用
         applyFigmaComponentProps(importedInstance, 'switch', params);
-        
-        const checked = Boolean(params.checked);
-        const props = importedInstance.componentProperties;
-        const nextProps: Record<string, any> = {};
-        for (const key of Object.keys(props)) {
-            const lowerKey = key.toLowerCase();
-            if (lowerKey.includes('check') || lowerKey.includes('选中') || lowerKey.includes('on') || lowerKey.includes('status')) {
-                if (props[key].type === 'BOOLEAN') {
-                    nextProps[key] = checked;
-                } else if (props[key].type === 'VARIANT') {
-                    const options = def.figmaPropertySnapshot?.properties?.find(p => p.propertyName === key)?.options || [];
-                    if (options.includes('True') && options.includes('False')) {
-                        nextProps[key] = checked ? 'True' : 'False';
-                    } else if (options.includes('On') && options.includes('Off')) {
-                        nextProps[key] = checked ? 'On' : 'Off';
-                    } else if (options.includes('开') && options.includes('关')) {
-                        nextProps[key] = checked ? '开' : '关';
-                    }
-                }
-            }
-        }
-        if (Object.keys(nextProps).length > 0) {
-            try { importedInstance.setProperties(nextProps); } catch(e) {}
-        }
 
         importedInstance.name = def.name;
         return importedInstance;
@@ -3593,7 +3426,7 @@ async function createInputFromFigmaTemplate(
     const effectiveFilled = filled || hasValue;
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
@@ -3745,7 +3578,7 @@ async function createSelectFromFigmaTemplate(
     const multiple = Boolean(params.multiple);
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
@@ -3789,14 +3622,36 @@ function normalizeFilterGroupItemType(value: unknown): FilterGroupItemType {
 }
 
 function parseFilterGroupItems(value: unknown): FilterGroupItemSpec[] {
-    const fallback: FilterGroupItemSpec[] = [
-        { label: '状态', type: 'select' },
-        { label: '城市', type: 'select' },
-        { label: '关键词', type: 'search' }
-    ];
-
+    const errorMessage = JSON.stringify({
+        errorType: 'RenderError',
+        componentId: 'filter-group',
+        field: 'items',
+        where: '输出 JSON 中 component.params.itemsText 或 component.params.items 为空或无有效条目',
+        reason: 'empty',
+        sourceFields: ['component.params.itemsText', 'component.params.items'],
+        format: '标签[:type]',
+        separators: ['逗号', '换行'],
+        allowedTypes: ['select', 'input', 'search'],
+        examples: {
+            itemsText: '状态:select, 城市:select, 关键词:search',
+            items: [
+                { label: '状态', type: 'select' },
+                { label: '城市', type: 'select' },
+                { label: '关键词', type: 'search' }
+            ]
+        },
+        correctExampleJson: {
+            id: 'filter-group-1',
+            componentId: 'filter-group',
+            params: {
+                itemsText: '状态:select, 城市:select, 关键词:search'
+            }
+        }
+    });
     const raw = String(value || '').trim();
-    if (!raw) return fallback;
+    if (!raw) {
+        throw new Error(errorMessage);
+    }
 
     const chunks = raw.split(/[\n\r,，]/).map((item) => item.trim()).filter(Boolean);
     const items: FilterGroupItemSpec[] = [];
@@ -3815,7 +3670,11 @@ function parseFilterGroupItems(value: unknown): FilterGroupItemSpec[] {
         items.push({ label, type: normalizeFilterGroupItemType(typeRaw) });
     });
 
-    return items.length > 0 ? items : fallback;
+    if (items.length === 0) {
+        throw new Error(errorMessage);
+    }
+
+    return items;
 }
 
 function getNodeApproxX(node: SceneNode): number {
@@ -4013,7 +3872,7 @@ async function createCheckboxFromFigmaTemplate(
     const showLabel = params.showLabel !== false;
 
     try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
             variantCriteria: {
@@ -4185,7 +4044,7 @@ async function createCheckboxGroupFromFigmaTemplate(
     const itemCount = Math.min(8, Math.max(2, options.length));
 
     try {
-	        const importedInstance = await createFigmaComponentInstance({
+	        const importedInstance = await createFigmaComponentInstanceFromRef({
 	            componentKey,
 	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
 	            variantCriteria: {
@@ -4296,7 +4155,7 @@ async function createRadioGroupFromFigmaTemplate(
     const itemCount = Math.min(8, Math.max(2, options.length));
 
     try {
-	        const importedInstance = await createFigmaComponentInstance({
+	        const importedInstance = await createFigmaComponentInstanceFromRef({
 	            componentKey,
 	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
 	            variantCriteria: {
@@ -4460,16 +4319,107 @@ function isFormFieldDescriptionInstance(node: SceneNode): boolean {
     return String(node.name || '').includes('Description 解释说明');
 }
 
-function isLikelyFormFieldControlNode(node: SceneNode): boolean {
+function isFormFieldControlNode(node: SceneNode): boolean {
+    if ('getPluginData' in node) {
+        const role = node.getPluginData('form-field-role');
+        if (role === 'control') return true;
+        const componentId = node.getPluginData('component-id');
+        if (
+            componentId === 'input' ||
+            componentId === 'select' ||
+            componentId === 'checkbox-group' ||
+            componentId === 'radio-group' ||
+            componentId === 'checkbox' ||
+            componentId === 'radio' ||
+            componentId === 'switch' ||
+            componentId === 'textarea' ||
+            componentId === 'datepicker' ||
+            componentId === 'timepicker' ||
+            componentId === 'inputnumber' ||
+            componentId === 'slider' ||
+            componentId === 'segmented-picker' ||
+            componentId === 'upload' ||
+            componentId === 'button' ||
+            componentId === 'figma-component'
+        ) {
+            return true;
+        }
+    }
     const name = String(node.name || '').trim();
     return (
         name.includes('Input 输入框') ||
         name.includes('Select 选择器') ||
+        name.includes('DatePicker 日期') ||
+        name.includes('TimePicker 时间') ||
+        name.includes('InputNumber 数字') ||
+        name.includes('Slider 滑动') ||
+        name.includes('Segmented Picker') ||
+        name.includes('Upload 上传') ||
         name.includes('Checkbox Group 复选框组') ||
         name.includes('Radio Group 单选框组') ||
         name.includes('Checkbox 复选框') ||
-        name.includes('Radio 单选框')
+        name.includes('Radio 单选框') ||
+        name.includes('Switch 开关') ||
+        name.includes('TextArea 文本域') ||
+        name.includes('Textarea 文本域') ||
+        name.includes('Textarea') ||
+        name.includes('多行文本') ||
+        name.includes('多行')
     );
+}
+
+function findFormFieldControlNode(container: SceneNode & ChildrenMixin): SceneNode | null {
+    // 优先通过 pluginData 查找深度嵌套的控件节点
+    if ('findAll' in container) {
+        const markedNode = container.findAll(n => n.getPluginData('form-field-role') === 'control')[0];
+        if (markedNode) return markedNode;
+    }
+
+    // 其次通过特定组件 ID 查找
+    if ('findAll' in container) {
+        const knownComponentNode = container.findAll(n => {
+            const componentId = n.getPluginData('component-id');
+            return !!componentId && componentId !== 'form-field' && componentId !== 'form-row' && componentId !== 'form';
+        })[0];
+        if (knownComponentNode) return knownComponentNode;
+    }
+
+    // 再次通过名称关键字查找
+    if ('findAll' in container) {
+        const matchedByName = container.findAll(n => isLikelyFormFieldControlNode(n))[0];
+        if (matchedByName) return matchedByName;
+    }
+
+    // 兜底：查找非标签、非描述的第一个有意义节点
+    const candidates = container.children.filter(child => {
+        if (isFormFieldLabelInstance(child)) return false;
+        if (isFormFieldDescriptionInstance(child)) return false;
+        return true;
+    });
+
+    return candidates[0] || null;
+}
+
+function isLikelyFormFieldControlNode(node: SceneNode): boolean {
+    const name = String(node.name || '').trim();
+    const componentId = node.getPluginData('component-id');
+    
+    const knownIds = [
+        'input', 'select', 'checkbox-group', 'radio-group', 'checkbox', 'radio', 
+        'switch', 'textarea', 'datepicker', 'timepicker', 'inputnumber', 
+        'slider', 'segmented-picker', 'upload', 'button', 'figma-component'
+    ];
+    if (componentId && knownIds.includes(componentId)) return true;
+
+    const keywords = [
+        'Input 输入框', 'Select 选择器', 'DatePicker 日期', 'TimePicker 时间', 
+        'InputNumber 数字', 'Slider 滑动', 'Segmented Picker', 'Upload 上传', 
+        'Checkbox Group 复选框组', 'Radio Group 单选框组', 'Checkbox 复选框', 
+        'Radio 单选框', 'Switch 开关', 'TextArea 文本域', 'Textarea 文本域', 
+        'Textarea', '多行文本', '多行', 'Control'
+    ];
+    
+    return keywords.some(k => name.includes(k));
 }
 
 function getFormFieldMessageText(params: Record<string, any>): string {
@@ -4781,16 +4731,14 @@ function syncFormFieldParamsFromNode(currentParams: Record<string, any>, node: S
 
     const contentContainer = findFormFieldContentContainer(node);
     if (!contentContainer) return nextParams;
-    const controlNode =
-        contentContainer.children.find(
-            (child) => !isFormFieldLabelInstance(child) && !isFormFieldDescriptionInstance(child)
-        ) || contentContainer.children.find(isLikelyFormFieldControlNode);
+    const controlNode = findFormFieldControlNode(contentContainer);
     if (!controlNode) return nextParams;
 
     const controlType = normalizeFormFieldControlType(currentParams.controlType);
     if (controlType === 'input') {
         return syncInputParamsFromNode(nextParams, controlNode);
     }
+
     if (controlType === 'select') {
         return syncSelectParamsFromNode(nextParams, controlNode);
     }
@@ -5084,45 +5032,18 @@ async function updateRadioGroupControlTemplateInPlace(node: SceneNode, params: R
     return true;
 }
 
-async function updateSwitchControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
-    if (node.type !== 'INSTANCE') return false;
-    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
-    // 注：Figma 属性为 'Checked 开关'（非 'Status 状态'），propertyMap 已在 registry 中声明
-    applyFigmaComponentProps(node, 'switch', {
-        checked: Boolean(params.checked),
-        disabled: Boolean(params.disabled),
-    });
-    return true;
-}
-
 async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Record<string, any>): Promise<boolean> {
     const contentContainer = findFormFieldContentContainer(root);
     if (!contentContainer) return false;
 
-    const existingControlNode = contentContainer.children.find(
-        (child) => !isFormFieldLabelInstance(child) && !isFormFieldDescriptionInstance(child)
-    ) || contentContainer.children.find(isLikelyFormFieldControlNode);
+    const existingControlNode = findFormFieldControlNode(contentContainer);
     if (!existingControlNode) return false;
 
     // #endregion
     setNodeClipsContent(existingControlNode, false);
 
     const controlType = normalizeFormFieldControlType(params.controlType);
-    if (controlType === 'input') {
-        return await updateInputControlTemplateInPlace(existingControlNode, params);
-    }
-    if (controlType === 'select') {
-        return await updateSelectControlTemplateInPlace(existingControlNode, params);
-    }
-    if (controlType === 'checkbox-group') {
-        return await updateCheckboxGroupControlTemplateInPlace(existingControlNode, params);
-    }
-    if (controlType === 'radio-group') {
-        return await updateRadioGroupControlTemplateInPlace(existingControlNode, params);
-    }
-    if (controlType === 'switch') {
-        return await updateSwitchControlTemplateInPlace(existingControlNode, params);
-    }
+    
     return false;
 }
 
@@ -5134,11 +5055,12 @@ function shouldUseChildControlInstance(
     const child = instance.children[0];
     if (!child) return false;
     const controlType = normalizeFormFieldControlType(params.controlType);
-    if (controlType === 'input') return child.componentId === 'input';
-    if (controlType === 'select') return child.componentId === 'select';
-    if (controlType === 'checkbox-group') return child.componentId === 'checkbox-group';
-    if (controlType === 'radio-group') return child.componentId === 'radio-group';
-    if (controlType === 'button') return child.componentId === 'button';
+    if (controlType === 'input') return child.componentId === 'input' || child.componentId === 'figma-component';
+    if (controlType === 'select') return child.componentId === 'select' || child.componentId === 'figma-component';
+    if (controlType === 'textarea') return child.componentId === 'textarea' || child.componentId === 'figma-component';
+    if (controlType === 'checkbox-group') return child.componentId === 'checkbox-group' || child.componentId === 'figma-component';
+    if (controlType === 'radio-group') return child.componentId === 'radio-group' || child.componentId === 'figma-component';
+    if (controlType === 'button') return child.componentId === 'button' || child.componentId === 'figma-component';
     if (controlType === 'text') return child.componentId === 'text';
     if (controlType === 'figma-component') {
         const token = String(params.componentToken || '').trim();
@@ -5156,12 +5078,16 @@ async function replaceFormFieldControlTemplate(
     params: Record<string, any>
 ): Promise<void> {
     const contentContainer = findFormFieldContentContainer(root);
-    if (!contentContainer) return;
+    if (!contentContainer) {
+        throw new Error('[FormField] Failed to find content container in template shell');
+    }
 
-    const existingControlNode = contentContainer.children.find(
-        (child) => !isFormFieldLabelInstance(child) && !isFormFieldDescriptionInstance(child)
-    ) || contentContainer.children.find(isLikelyFormFieldControlNode);
-    if (!existingControlNode) return;
+    const existingControlNode = findFormFieldControlNode(contentContainer);
+    if (!existingControlNode) {
+        // 如果找不到占位符，输出容器内的所有子节点名称方便调试
+        const childNames = contentContainer.children.map(c => c.name).join(', ');
+        throw new Error(`[FormField] Failed to find control placeholder in container. Children: ${childNames}`);
+    }
 
     const controlType = normalizeFormFieldControlType(params.controlType);
     const controlWidthMode = resolveFormControlWidthMode(params);
@@ -5181,14 +5107,38 @@ async function replaceFormFieldControlTemplate(
             });
 
     const controlNode = await renderComponent(controlInstance, { isRoot: false });
+    if (!controlNode) {
+        throw new Error(`[FormField] Failed to render control node for type: ${controlType}`);
+    }
+    
+    controlNode.name = 'form-field-control';
+    if ('setPluginData' in controlNode) {
+        controlNode.setPluginData('form-field-role', 'control');
+    }
     setNodeClipsContent(controlNode, false);
+    
     // 优先从注册表读取默认高度，作为真正的“原始高度”兜底
     const controlDef = COMPONENT_DEFS[controlType];
     const defaultHeight = controlDef?.runtime?.fallback?.height ?? null;
     const recordedHeight = 'height' in controlNode ? controlNode.height : 0;
     const targetHeight = (defaultHeight && defaultHeight > 1) ? defaultHeight : (recordedHeight > 1 ? recordedHeight : 32);
 
-    replaceSceneNode(existingControlNode, controlNode);
+    // 执行替换
+    const replaced = replaceSceneNode(existingControlNode, controlNode);
+    if (!replaced) {
+        try {
+            controlNode.remove();
+        } catch {}
+        throw new Error(`[FormField] Failed to replace old control node (${existingControlNode.name}) with new control node (${controlNode.name})`);
+    }
+
+    // 确保节点确实在容器中，且坐标归零
+    if (controlNode.parent !== contentContainer) {
+        contentContainer.appendChild(controlNode);
+    }
+    if ('x' in controlNode) controlNode.x = 0;
+    if ('y' in controlNode) controlNode.y = 0;
+
     if (controlType === 'input' || controlType === 'select' || controlType === 'textarea' || controlType === 'datepicker' || controlType === 'timepicker') {
         applyFormControlWidthModeToNode(controlNode, params);
     }
@@ -5209,7 +5159,7 @@ async function replaceFormFieldControlTemplate(
 async function extractHorizontalFormFieldShell(
     params: Record<string, any>
 ): Promise<InstanceNode | null> {
-    const importedForm = await createFigmaComponentInstance({
+    const importedForm = await createFigmaComponentInstanceFromRef({
         componentKey: FORM_FIELD_HORIZONTAL_COMPONENT_KEY,
         fallbackName: 'Horizontal Form 横向表单',
         variantCriteria: {
@@ -5247,6 +5197,7 @@ async function createFormFieldFromFigmaTemplate(
         controlType === 'slider' ||
         controlType === 'textarea' ||
         controlType === 'timepicker' ||
+        controlType === 'switch' ||
         controlType === 'upload';
     if (!supportsTemplateControl) return null;
 
@@ -5257,7 +5208,7 @@ async function createFormFieldFromFigmaTemplate(
             const componentKey = resolveComponentKeyFromToken('lib-data-input-vertical-form')
                 || String((fieldDef?.figmaPropertySnapshot as any)?.componentKey || '').trim();
             if (!componentKey) return null;
-            templateInstance = await createFigmaComponentInstance({
+            templateInstance = await createFigmaComponentInstanceFromRef({
                 componentKey,
                 fallbackName: fieldDef?.name,
                 variantCriteria: {
@@ -5305,6 +5256,10 @@ async function createFormFieldFromFigmaTemplate(
         try {
             templateInstance?.remove();
         } catch {}
+        const message = String(e || '');
+        if (message.includes('[FormField] failed to replace control node')) {
+            throw e;
+        }
         return null;
     }
 }
@@ -6083,195 +6038,210 @@ function mapFormRowAlignment(value: unknown): 'MIN' | 'CENTER' | 'MAX' | 'SPACE_
     return 'MIN';
 }
 
+function resolveComponentTokenForControl(componentId: string): string {
+    const def = COMPONENT_DEFS[componentId] as any;
+    const token = typeof def?.figmaPropertySnapshot?.token === 'string' ? def.figmaPropertySnapshot.token.trim() : '';
+    return token;
+}
+
+function buildFigmaControlInstance(componentId: string, params: Record<string, any>): ComponentInstance {
+    const componentToken = resolveComponentTokenForControl(componentId);
+    if (!componentToken) {
+        return {
+            id: 'form-field-control',
+            componentId,
+            params
+        };
+    }
+    return {
+        id: 'form-field-control',
+        componentId: 'figma-component',
+        params: {
+            ...params,
+            componentToken
+        }
+    };
+}
+
 function createControlInstanceFromFormFieldParams(params: Record<string, any>): ComponentInstance {
     const controlType = normalizeFormFieldControlType(params.controlType);
     const controlWidthMode = resolveFormControlWidthMode(params);
     const explicitControlWidth = toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
     const width = controlWidthMode === 'fill' ? undefined : (explicitControlWidth !== null ? explicitControlWidth : undefined);
 
-    if (controlType === 'select') {
-        return {
-            id: 'form-field-control',
-            componentId: 'select',
-            params: {
-                placeholder: params.placeholder || '请选择',
-                value: params.value || '',
-                width,
-                size: params.size || 'Default 32',
-                state: params.state || 'Default 默认',
-                filled: Boolean(params.filled),
-                disabled: Boolean(params.disabled),
-                multiple: Boolean(params.multiple),
-                selectType: params.selectType || 'Default 默认',
-                optionsText: params.optionsText || '选项一,选项二',
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'checkbox-group') {
-        return {
-            id: 'form-field-control',
-            componentId: 'checkbox-group',
-            params: {
-                optionsText: params.optionsText || '选项一,选项二',
-                checkedValues: params.checkedValues || params.value || '选项一',
-                direction: params.direction || 'horizontal',
-                gap: params.gap,
-                disabled: Boolean(params.disabled),
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'radio-group') {
-        return {
-            id: 'form-field-control',
-            componentId: 'radio-group',
-            params: {
-                optionsText: params.optionsText || '选项一,选项二',
-                value: params.value || '选项一',
-                direction: params.direction || 'horizontal',
-                language: params.language || 'CN',
-                gap: params.gap,
-                disabled: Boolean(params.disabled),
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'button') {
-        return {
-            id: 'form-field-control',
-            componentId: 'button',
-            params: {
-                label: params.buttonLabel || params.value || '按钮',
-                variant: params.buttonVariant || 'secondary',
-                theme: params.theme || 'default',
-                size: params.size || 'Default 32',
-                state: params.state || 'Default 默认',
-                disabled: Boolean(params.disabled),
-                iconOnly: Boolean(params.iconOnly),
-                showPrefixIcon: Boolean(params.showPrefixIcon ?? params.prefixIcon),
-                showSuffixIcon: Boolean(params.showSuffixIcon ?? params.suffixIcon),
-                language: params.language || 'CN',
-                width,
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'datepicker') {
-        return {
-            id: 'form-field-control',
-            componentId: 'datepicker',
-            params: {
-                placeholder: params.placeholder || '请选择日期',
-                value: params.value || '',
-                size: params.size || 'Default 32',
-                state: params.state || 'Default 默认',
-                disabled: Boolean(params.disabled),
-                width,
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'inputnumber') {
-        return {
-            id: 'form-field-control',
-            componentId: 'inputnumber',
-            params: {
-                placeholder: params.placeholder || '请输入数字',
-                value: params.value || '',
-                size: params.size || 'Default 32',
-                state: params.state || 'Default 默认',
-                disabled: Boolean(params.disabled),
-                width,
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'slider') {
-        return {
-            id: 'form-field-control',
-            componentId: 'slider',
-            params: {
-                value: Number(params.value) || 50,
-                disabled: Boolean(params.disabled),
-                width,
-                forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'switch') {
-        return {
-            id: 'form-field-control',
-            componentId: 'switch',
-            params: {
-                checked: Boolean(params.checked),
-                disabled: Boolean(params.disabled),
-                forceFigmaKey: true
-            }
-        };
+    if (controlType === 'input') {
+        return buildFigmaControlInstance('input', {
+            placeholder: params.placeholder || '请输入',
+            value: params.value || '',
+            width,
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            filled: Boolean(params.filled),
+            disabled: Boolean(params.disabled),
+            showPrefix: Boolean(params.showPrefix ?? params.prefix),
+            prefixText: params.prefixText || '',
+            showSuffix: Boolean(params.showSuffix ?? params.suffix),
+            suffixText: params.suffixText || '',
+            forceFigmaKey: true
+        });
     }
 
     if (controlType === 'textarea') {
-        const componentToken = 'lib-data-input-textarea';
-        return {
-            id: 'form-field-control',
-            componentId: 'figma-component',
-            params: {
-                componentToken,
-                componentKey: resolveComponentKeyFromToken(componentToken),
-                width,
-                forceFigmaKey: true,
-                fallbackName: 'TextArea 文本域'
-            }
-        };
+        return buildFigmaControlInstance('textarea', {
+            placeholder: params.placeholder || '请输入内容',
+            value: params.value || '',
+            wordLimit: params.wordLimit,
+            resizable: params.resizable,
+            filled: Boolean(params.filled),
+            error: Boolean(params.error),
+            state: params.state || 'Default 默认',
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'select') {
+        return buildFigmaControlInstance('select', {
+            placeholder: params.placeholder || '请选择',
+            value: params.value || '',
+            width,
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            filled: Boolean(params.filled),
+            disabled: Boolean(params.disabled),
+            multiple: Boolean(params.multiple),
+            selectType: params.selectType || 'Default 默认',
+            optionsText: params.optionsText || '选项一,选项二',
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'checkbox-group') {
+        return buildFigmaControlInstance('checkbox-group', {
+            optionsText: params.optionsText || '选项一,选项二',
+            checkedValues: params.checkedValues || params.value || '选项一',
+            direction: params.direction || 'horizontal',
+            gap: params.gap,
+            disabled: Boolean(params.disabled),
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'radio-group') {
+        return buildFigmaControlInstance('radio-group', {
+            optionsText: params.optionsText || '选项一,选项二',
+            value: params.value || '选项一',
+            direction: params.direction || 'horizontal',
+            language: params.language || 'CN',
+            gap: params.gap,
+            disabled: Boolean(params.disabled),
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'button') {
+        return buildFigmaControlInstance('button', {
+            label: params.buttonLabel || params.value || '按钮',
+            variant: params.buttonVariant || 'secondary',
+            theme: params.theme || 'default',
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            disabled: Boolean(params.disabled),
+            iconOnly: Boolean(params.iconOnly),
+            showPrefixIcon: Boolean(params.showPrefixIcon ?? params.prefixIcon),
+            showSuffixIcon: Boolean(params.showSuffixIcon ?? params.suffixIcon),
+            language: params.language || 'CN',
+            width,
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'datepicker') {
+        return buildFigmaControlInstance('datepicker', {
+            placeholder: params.placeholder || '请选择日期',
+            value: params.value || '',
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'inputnumber') {
+        return buildFigmaControlInstance('inputnumber', {
+            placeholder: params.placeholder || '请输入数字',
+            value: params.value || '',
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'slider') {
+        return buildFigmaControlInstance('slider', {
+            value: Number(params.value) || 50,
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'switch') {
+        return buildFigmaControlInstance('switch', {
+            checked: Boolean(params.checked),
+            disabled: Boolean(params.disabled),
+            forceFigmaKey: true
+        });
+    }
+
+    if (controlType === 'textarea') {
+        return buildFigmaControlInstance('textarea', {
+            placeholder: params.placeholder || '请输入内容',
+            value: params.value || '',
+            wordLimit: params.wordLimit,
+            resizable: params.resizable,
+            filled: Boolean(params.filled),
+            error: Boolean(params.error),
+            state: params.state,
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
     }
 
     if (controlType === 'timepicker') {
-        return {
-            id: 'form-field-control',
-            componentId: 'timepicker',
-            params: {
-                placeholder: params.placeholder || '请选择时间',
-                value: params.value || '',
-                size: params.size || 'Default 32',
-                state: params.state || 'Default 默认',
-                disabled: Boolean(params.disabled),
-                width,
-                forceFigmaKey: true
-            }
-        };
+        return buildFigmaControlInstance('timepicker', {
+            placeholder: params.placeholder || '请选择时间',
+            value: params.value || '',
+            size: params.size || 'Default 32',
+            state: params.state || 'Default 默认',
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
     }
 
     if (controlType === 'segmented-picker') {
-        return {
-            id: 'form-field-control',
-            componentId: 'figma-component',
-            params: {
-                componentToken: 'lib-data-input-segmented-picker',
-                componentKey: '94125fa758354931512313d1bb6ce37aae02b8c7',
-                optionsText: params.optionsText || '选项一,选项二',
-                value: params.value || '选项一',
-                width
-            }
-        };
+        return buildFigmaControlInstance('segmented-picker', {
+            optionsText: params.optionsText || '选项一,选项二',
+            value: params.value || '选项一',
+            size: params.size || 'Default 32',
+            disabled: Boolean(params.disabled),
+            width,
+            forceFigmaKey: true
+        });
     }
 
     if (controlType === 'upload') {
-        return {
-            id: 'form-field-control',
-            componentId: 'figma-component',
-            params: {
-                componentToken: 'lib-data-input-button',
-                width
-            }
-        };
+        return buildFigmaControlInstance('upload', {
+            uploadType: params.uploadType,
+            disabled: Boolean(params.disabled),
+            forceFigmaKey: true
+        });
     }
 
     if (controlType === 'figma-component') {
@@ -6282,7 +6252,9 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 componentToken: params.componentToken || '',
                 componentKey: params.componentKey || '',
                 variantCriteria: params.variantCriteria || '',
-                width
+                disabled: Boolean(params.disabled),
+                width,
+                forceFigmaKey: true
             }
         };
     }
@@ -6421,11 +6393,17 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
     if (preserveAbsolutePosition) {
         newNode.x = oldX;
         newNode.y = oldY;
+    } else {
+        // 当插入自动布局容器时重置坐标，防止保留创建时的远端坐标导致“掉在画布外”
+        newNode.x = 0;
+        newNode.y = 0;
     }
     if ('rotation' in newNode) {
         newNode.rotation = oldRotation;
     }
-    newNode.name = oldName;
+    if (!isFormFieldControl) {
+        newNode.name = oldName;
+    }
     newNode.locked = oldLocked;
     newNode.visible = oldVisible;
 
@@ -6776,7 +6754,7 @@ async function createFigmaTagInstanceByToken(token: string): Promise<InstanceNod
         return null;
     }
     try {
-        return await createFigmaComponentInstance({
+        return await createFigmaComponentInstanceFromRef({
             componentKey,
             fallbackName: resolveComponentDisplayNameFromToken(normalized)
         });
@@ -6817,8 +6795,9 @@ async function createFigmaComponentInstanceByToken(
     }
 
     try {
-        const instance = await createFigmaComponentInstance({
+        const instance = await createFigmaComponentInstanceFromRef({
             componentKey,
+            componentToken: normalized,
             fallbackName: resolveComponentDisplayNameFromToken(normalized),
             variantCriteria: options?.variantCriteria,
             visible: options?.visible
@@ -6984,7 +6963,7 @@ function applyNodeSize(node: SceneNode, width: number | null, height: number | n
   }
 }
 
-function collectTextNodes(root: SceneNode): TextNode[] {
+function collectTextNodes(root: SceneNode, options: { skipInstances?: boolean } = { skipInstances: false }): TextNode[] {
   const results: TextNode[] = [];
   const stack: SceneNode[] = [root];
   while (stack.length > 0) {
@@ -6994,8 +6973,10 @@ function collectTextNodes(root: SceneNode): TextNode[] {
       results.push(node);
     }
     if ('children' in node) {
-      for (const child of node.children) {
-        stack.push(child);
+      if (node === root || !options.skipInstances || node.type !== 'INSTANCE') {
+        for (const child of node.children) {
+          stack.push(child);
+        }
       }
     }
   }
@@ -7003,7 +6984,7 @@ function collectTextNodes(root: SceneNode): TextNode[] {
 }
 
 function applyCellAutoWidth(cell: SceneNode) {
-  const textNodes = collectTextNodes(cell);
+  const textNodes = collectTextNodes(cell, { skipInstances: true });
   for (const textNode of textNodes) {
     try {
       textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
@@ -7023,7 +7004,7 @@ async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'ce
       cell.primaryAxisAlignItems = 'MIN';
     }
   }
-  const textNodes = collectTextNodes(cell);
+  const textNodes = collectTextNodes(cell, { skipInstances: true });
   for (const textNode of textNodes) {
     try {
       await figma.loadFontAsync(textNode.fontName as FontName);
@@ -7069,7 +7050,7 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
       : 'paddingBottom' in cell
         ? Number((cell as any).paddingBottom || 0)
         : 0;
-  const textNodes = collectTextNodes(cell);
+  const textNodes = collectTextNodes(cell, { skipInstances: true });
   for (const textNode of textNodes) {
     try {
       if (isTagCell) {
@@ -7385,62 +7366,17 @@ async function renderComponent(
       // But we can do it immediately after creation below.
     }
 
-    const componentKeyFromParam = typeof params.componentKey === 'string' ? params.componentKey.trim() : '';
     const componentToken = typeof params.componentToken === 'string' ? params.componentToken.trim() : '';
-    const componentKeyFromToken = componentToken ? resolveComponentKeyFromToken(componentToken) : '';
-    const componentKey = componentKeyFromParam || componentKeyFromToken;
-    if (!componentKey) {
-      console.error(`[FigmaUI] Missing component key for token: ${componentToken}`);
-      node = await createMissingFigmaComponentFrame(componentToken, params.width, params.height);
-    } else {
-      const fallbackName =
-        typeof params.fallbackName === 'string' && params.fallbackName.trim()
-          ? params.fallbackName.trim()
-          : undefined;
-
-      const tokenOrKey = componentToken || componentKeyFromParam;
-      const parsedCriteria = parseVariantCriteria(params.variantCriteria);
-      let importedInstance: InstanceNode;
-      if (isDateTimePickerToken(tokenOrKey)) {
-        const loadedComponent = await loadFigmaComponentByKey({ componentKey, fallbackName });
-        const variantCriteria = buildDateTimePickerVariantCriteria(
-            loadedComponent,
-            params,
-            parsedCriteria,
-            tokenOrKey
-        );
-        const target = findFigmaVariant(loadedComponent, variantCriteria);
-        importedInstance = target.createInstance();
-      } else {
-        const imported = await createFigmaComponentInstance({
-            componentKey,
-            fallbackName,
-            variantCriteria: parsedCriteria
-        });
-        importedInstance = imported;
-      }
-
-      const width = Number(params.width);
-      const height = Number(params.height);
-      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
-        importedInstance.resize(width, height);
-      } else if (Number.isFinite(width) && width > 0) {
-        importedInstance.resize(width, importedInstance.height);
-      } else if (Number.isFinite(height) && height > 0) {
-        importedInstance.resize(importedInstance.width, height);
-      }
-      let renderedNode: SceneNode = importedInstance;
-      if (isDateTimePickerToken(tokenOrKey)) {
-        try {
-          const detached = importedInstance.detachInstance();
-          normalizeTimepickerIconHitArea(detached);
-          renderedNode = detached;
-        } catch (error) {
-          renderedNode = importedInstance;
+    node = await renderFigmaComponentInstance(params, {
+      onApplyProps: (importedInstance, nextParams) => {
+        if (nextParams.forceFigmaKey && componentToken) {
+          const resolvedComponentId = resolveComponentIdFromToken(componentToken);
+          if (resolvedComponentId) {
+            applyFigmaComponentProps(importedInstance, resolvedComponentId, nextParams);
+          }
         }
       }
-      node = renderedNode;
-    }
+    });
   }
   // --- PAGE ---
   else if (instance.componentId === 'page') {
@@ -7729,7 +7665,7 @@ async function renderComponent(
             const requiredIconDef = COMPONENT_DEFS['icon-asterisk'];
             const requiredIconKey = requiredIconDef?.figmaBinding?.renderKey;
             if (requiredIconKey) {
-                const requiredIcon = await createFigmaComponentInstance({
+                const requiredIcon = await createFigmaComponentInstanceFromRef({
                     componentKey: requiredIconKey,
                     fallbackName: requiredIconDef?.name || 'icon-asterisk'
                 });
@@ -8224,13 +8160,16 @@ async function renderComponent(
     }
     // 2. Avatar Cell
     else if (instance.componentId === 'table-cell-avatar') {
-        const avatarInstance = await createFigmaComponentInstanceByToken('lib-data-display-avataricon');
+        let avatarInstance: SceneNode | null = null;
+        try {
+            avatarInstance = await renderFigmaComponentInstance({
+                componentToken: 'lib-data-display-avataricon'
+            });
+        } catch (e) {
+            console.warn('[AvatarCell] render figma component failed', e);
+        }
+
         if (avatarInstance) {
-            try {
-                avatarInstance.resize(20, 20);
-            } catch {
-                // ignore
-            }
             frame.appendChild(avatarInstance);
         } else {
             const avatar = figma.createEllipse();
@@ -8278,7 +8217,7 @@ async function renderComponent(
     }
     else if (instance.componentId === 'table-cell-select') {
         const displayText = params.text || params.value || params.placeholder || '请选择';
-        const selectInstance = await createFigmaComponentInstanceByToken('table.cell.select');
+        const selectInstance = await createFigmaComponentInstanceByToken('table-cell-select');
         if (selectInstance) {
             selectInstance.layoutGrow = 1;
             await trySetFirstTextInInstance(selectInstance, displayText);
@@ -8504,6 +8443,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
 	    } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing button component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 100;
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
       }
@@ -8514,6 +8456,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing input component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 240;
         const metrics = resolveInputMetrics(params.size);
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
@@ -8525,6 +8470,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing select component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 240;
         const metrics = resolveInputMetrics(params.size);
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
@@ -8663,6 +8611,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing checkbox-group component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 100;
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
@@ -8673,6 +8624,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing radio-group component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 100;
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
     }
@@ -8683,6 +8637,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing textarea component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         const width = Number(params.width) > 0 ? Number(params.width) : 240;
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 96);
     }
@@ -8693,6 +8650,9 @@ async function renderComponent(
     if (templateNode) {
         node = templateNode;
     } else {
+        if (strictRenderMode) {
+          throw new Error(`[Render] Missing switch component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
+        }
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, 44, 22);
     }
   }
@@ -8700,11 +8660,14 @@ async function renderComponent(
   else if (['datepicker', 'timepicker', 'inputnumber', 'slider', 'segmented-picker', 'upload'].includes(instance.componentId)) {
     const snapshot = def.figmaPropertySnapshot as any;
     const componentKey = (snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '') || String(snapshot?.componentKey || '').trim();
-    const fallbackWidth = Number(params.width) > 0 ? Number(params.width) : (def.runtime?.fallback?.width ?? 240);
-    const fallbackHeight = def.runtime?.fallback?.height ?? 32;
+    const fallbackWidth = Number(params.width) > 0 ? Number(params.width) : def.runtime?.fallback?.width;
+    const fallbackHeight = def.runtime?.fallback?.height;
+    const canFallback =
+      Number.isFinite(fallbackWidth) ||
+      Number.isFinite(fallbackHeight);
     if (componentKey) {
       try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
           componentKey,
           fallbackName: snapshot?.componentSetName || def.name,
           variantCriteria: {}
@@ -8714,10 +8677,16 @@ async function renderComponent(
         importedInstance.resize(targetWidth, importedInstance.height);
         node = importedInstance;
       } catch (e) {
+        if (strictRenderMode || !canFallback) {
+          throw new Error(`[Render] Failed to create ${instance.componentId} for token: ${snapshot?.token || def.name}`);
+        }
         console.warn(`[FigmaUI] failed to create ${instance.componentId} from Figma component`, e);
         node = await createMissingFigmaComponentFrame(snapshot?.token || def.name, fallbackWidth, fallbackHeight);
       }
     } else {
+      if (strictRenderMode || !canFallback) {
+        throw new Error(`[Render] Missing ${instance.componentId} component key for token: ${snapshot?.token || def.name}`);
+      }
       node = await createMissingFigmaComponentFrame(snapshot?.token || def.name, fallbackWidth, fallbackHeight);
     }
   }
@@ -8860,7 +8829,7 @@ async function renderComponent(
 
     if (componentKey) {
       try {
-        const importedInstance = await createFigmaComponentInstance({
+        const importedInstance = await createFigmaComponentInstanceFromRef({
           componentKey,
           fallbackName: snapshot?.componentSetName || def.name,
           variantCriteria
@@ -9959,6 +9928,7 @@ figma.ui.onmessage = async (msg) => {
     // Reset theme on new creation for consistency, or read from UI settings
     // currentTheme = 'light'; 
     try {
+      strictRenderMode = true;
       // Explicitly pass isRoot: true to trigger early viewport movement
       const node = await renderComponent(component, { isRoot: true });
       if (!appendToResolvedParent(node, parentId)) {
@@ -9974,6 +9944,8 @@ figma.ui.onmessage = async (msg) => {
       figma.ui.postMessage({ type: 'create-success', nodeId: node.id, componentId: component.componentId });
     } catch (e) {
       figma.ui.postMessage({ type: 'error', message: String(e) });
+    } finally {
+      strictRenderMode = false;
     }
   }
 
@@ -9994,19 +9966,6 @@ figma.ui.onmessage = async (msg) => {
         let shouldRefreshSelection = true;
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
           const previousParams = readNodeParams(node);
-          if (componentId === 'form-field') {
-            const controlType = normalizeFormFieldControlType(params.controlType);
-            if (controlType === 'switch') {
-              const updated = await updateFormFieldControlTemplateInPlace(node, params);
-              if (updated) {
-                node.setPluginData('params', JSON.stringify(params));
-                figma.currentPage.selection = [node];
-                checkSelection();
-                figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
-                return;
-              }
-            }
-          }
           if (componentId === 'form' && node.type === 'FRAME' && areFormParamsEquivalent(previousParams, params)) {
             const updated = await updateFormItemCount(node, previousParams, params);
             if (updated) {
@@ -10052,6 +10011,12 @@ figma.ui.onmessage = async (msg) => {
         }
 
         node.setPluginData('params', JSON.stringify(params));
+        
+        // --- 业务属性应用 (针对 Figma Key 控件) ---
+        if (node.type === 'INSTANCE') {
+          // 严格遵循注册表中的 propertyMap 进行映射
+          applyFigmaComponentProps(node, componentId, params);
+        }
         
         // Simplified update for demo: just update basic props if possible
         // A real system would need to re-render or carefully patch properties
