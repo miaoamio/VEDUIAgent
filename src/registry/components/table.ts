@@ -1063,7 +1063,7 @@ export const tableComponents: ComponentRegistry["components"] = {
     "family": "table-cell",
     "prompts": {
       "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。",
-      "usage": "用于表格“操作/Action”列：用 3 个图标（编辑、删除、更多）展示操作，图标默认 16px，图标间距 24px，整体默认右对齐。优先复用 Figma token：`table.cell.icon.edit`、`table.cell.icon.delete`、`table.cell.icon.actionMore`。",
+      "usage": "用于表格“操作/Action”列：用 3 个图标（编辑、删除、更多）展示操作，图标默认 16px，图标间距 24px，整体默认右对齐。优先复用 Figma token：`table-cell-icon-edit`、`table-cell-icon-delete`、`table-cell-icon-action-more`。",
       "examples": [
         "操作列(图标): { \"componentId\": \"table-cell-action-icon\", \"params\": { \"width\": 0 } }"
       ]

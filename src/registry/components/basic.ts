@@ -45,7 +45,7 @@ export const basicComponents: ComponentRegistry["components"] = {
       "description": "通过 componentToken 或 componentKey 导入并创建指定的 Figma 组件或变体",
       "usage": "当你需要直接复用设计系统中的已发布 Figma 组件时使用。优先传入 componentToken（来自 theme/volcengine-design/component-tokens），也可直接传 componentKey。可选 fallbackName 和 variantCriteria（JSON 字符串或 key=value 形式）。",
       "examples": [
-        "按 token 导入表头组件: { \"componentId\": \"figma-component\", \"params\": { \"componentToken\": \"table.header.main\" } }",
+        "按 token 导入表头组件: { \"componentId\": \"figma-component\", \"params\": { \"componentToken\": \"table-header-main\" } }",
         "按 key 导入指定变体: { \"componentId\": \"figma-component\", \"params\": { \"componentKey\": \"YOUR_COMPONENT_SET_KEY\", \"variantCriteria\": \"{\\\"Size\\\":\\\"Large\\\",\\\"State\\\":\\\"Default\\\"}\" } }"
       ]
     },

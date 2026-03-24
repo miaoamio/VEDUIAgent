@@ -8351,7 +8351,8 @@ async function renderComponent(
         let avatarInstance: SceneNode | null = null;
         try {
             avatarInstance = await renderFigmaComponentInstance({
-                componentToken: 'lib-data-display-avataricon'
+                componentToken: 'lib-data-display-avataricon',
+                variantCriteria: { 'Size 尺寸': 'Default 20' }
             });
         } catch (e) {
             console.warn('[AvatarCell] render figma component failed', e);

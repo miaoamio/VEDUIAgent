@@ -11,11 +11,6 @@ export interface BaseComponentTokenProfile {
   category?: string;
 }
 
-export interface SemanticComponentTokenProfile {
-  token: string;
-  baseToken: string;
-}
-
 function baseComponentToken(
   token: string,
   componentKey: string,
@@ -183,34 +178,6 @@ const BASE_TABLE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile>
   )
 };
 
-const SEMANTIC_TABLE_COMPONENT_TOKEN_PACK: Record<string, SemanticComponentTokenProfile> = {
-  'table.header.main': { token: 'table.header.main', baseToken: 'table-header-main' },
-  'table.cell.main': { token: 'table.cell.main', baseToken: 'table-cell-main' },
-  'table.top.tabs': { token: 'table.top.tabs', baseToken: 'table-top-tabs' },
-  'table.top.filter': { token: 'table.top.filter', baseToken: 'table-top-filter' },
-  'table.top.filter.item': { token: 'table.top.filter.item', baseToken: 'table-top-filter-item' },
-  'table.top.actions': { token: 'table.top.actions', baseToken: 'table-top-button-group' },
-  'table.footer.pagination': { token: 'table.footer.pagination', baseToken: 'table-footer-pagination' },
-  'table.rowAction.text': { token: 'table.rowAction.text', baseToken: 'table-row-action-text' },
-  'table.rowAction.checkbox': { token: 'table.rowAction.checkbox', baseToken: 'table-row-action-checkbox' },
-  'table.rowAction.radio': { token: 'table.rowAction.radio', baseToken: 'table-row-action-radio' },
-  'table.rowAction.drag': { token: 'table.rowAction.drag', baseToken: 'table-row-action-drag' },
-  'table.rowAction.expand': { token: 'table.rowAction.expand', baseToken: 'table-row-action-expand' },
-  'table.rowAction.switch': { token: 'table.rowAction.switch', baseToken: 'table-row-action-switch' },
-  'table.rowAction.header': { token: 'table.rowAction.header', baseToken: 'table-row-action-header' },
-  'table.cell.tag': { token: 'table.cell.tag', baseToken: 'table-cell-tag' },
-  'table.cell.tag.counter': { token: 'table.cell.tag.counter', baseToken: 'table-cell-tag-counter' },
-  'table.cell.avatar': { token: 'table.cell.avatar', baseToken: 'table-cell-avatar' },
-  'table.cell.icon.more': { token: 'table.cell.icon.more', baseToken: 'table-cell-icon-more' },
-  'table.cell.icon.edit': { token: 'table.cell.icon.edit', baseToken: 'table-cell-icon-edit' },
-  'table.cell.icon.delete': { token: 'table.cell.icon.delete', baseToken: 'table-cell-icon-delete' },
-  'table.cell.icon.actionMore': { token: 'table.cell.icon.actionMore', baseToken: 'table-cell-icon-action-more' },
-  'table.cell.input': { token: 'table.cell.input', baseToken: 'table-cell-input' },
-  'table.cell.select': { token: 'table.cell.select', baseToken: 'table-cell-select' },
-  'table.cell.state': { token: 'table.cell.state', baseToken: 'table-cell-state' },
-  'table.header.icon': { token: 'table.header.icon', baseToken: 'table-header-icon' }
-};
-
 export const BASE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile> = {
   ...BASE_TABLE_COMPONENT_TOKEN_PACK,
   ...BASE_LIBRARY_COMPONENT_TOKEN_PACK
@@ -225,14 +192,11 @@ export interface ResolvedComponentTokenProfile {
 export function resolveComponentTokenProfile(token: string): ResolvedComponentTokenProfile | undefined {
   const normalized = String(token || '').trim();
   if (!normalized) return undefined;
-
-  const semantic = SEMANTIC_TABLE_COMPONENT_TOKEN_PACK[normalized];
-  const baseToken = semantic?.baseToken || normalized;
-  const baseProfile = BASE_COMPONENT_TOKEN_PACK[baseToken];
+  const baseProfile = BASE_COMPONENT_TOKEN_PACK[normalized];
   if (baseProfile) {
     return {
       token: normalized,
-      baseToken,
+      baseToken: normalized,
       profile: baseProfile
     };
   }

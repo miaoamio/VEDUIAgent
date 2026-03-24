@@ -50,13 +50,6 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'table-row-action-expand': ['table'],
   'table-row-action-switch': ['table'],
   'table-row-action-header': ['table'],
-  'table.rowAction.text': ['table'],
-  'table.rowAction.checkbox': ['table'],
-  'table.rowAction.radio': ['table'],
-  'table.rowAction.drag': ['table'],
-  'table.rowAction.expand': ['table'],
-  'table.rowAction.switch': ['table'],
-  'table.rowAction.header': ['table'],
 
   // Charts
   'lib-data-display-component-piechart': ['chart-pie', 'figma-component'],
