@@ -538,7 +538,147 @@ let pendingTableRowSync = new Map<
   { table: FrameNode; rowIndex: number; sourceNodes: SceneNode[] }
 >();
 
+let formLabelSyncInProgress = false;
+let formLabelSyncTimer: number | null = null;
+let formLabelSyncMuteUntil = 0;
+let pendingFormLabelSync = new Map<
+  string,
+  { form: FrameNode; sourceNodes: SceneNode[] }
+>();
+
+function findFormFrameFromNode(node: BaseNode | null | undefined): FrameNode | null {
+  let current = node;
+  while (current && current.type !== 'PAGE') {
+    if ('getPluginData' in current) {
+      const componentId = current.getPluginData('component-id');
+      if (componentId === 'form') {
+        return current as FrameNode;
+      }
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function isFormLabelWrapNode(node: SceneNode | null | undefined): boolean {
+  if (!node || node.type !== 'FRAME') return false;
+  if (!('getPluginData' in node)) return false;
+  return node.getPluginData('form-label-wrap') === 'true';
+}
+
+function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
+  const labelWraps: FrameNode[] = [];
+  
+  const collectLabelWraps = (frame: FrameNode) => {
+    for (const child of frame.children) {
+      if (child.type === 'FRAME') {
+        if (isFormLabelWrapNode(child)) {
+          labelWraps.push(child);
+        }
+        collectLabelWraps(child as FrameNode);
+      }
+    }
+  };
+  
+  collectLabelWraps(form);
+  if (labelWraps.length <= 1) return;
+  
+  let maxWidth = 0;
+  if (sourceNodes.length > 0) {
+    for (const node of sourceNodes) {
+      if (!node || node.removed) continue;
+      if (node.type === 'FRAME' && isFormLabelWrapNode(node)) {
+        if (node.width > maxWidth) maxWidth = node.width;
+      }
+    }
+  }
+  
+  if (maxWidth <= 0) {
+    for (const wrap of labelWraps) {
+      if (wrap.width > maxWidth) maxWidth = wrap.width;
+    }
+  }
+  
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return;
+  
+  for (const wrap of labelWraps) {
+    if (Math.abs(wrap.width - maxWidth) > 0.1) {
+      try {
+        wrap.resize(maxWidth, wrap.height);
+      } catch {}
+    }
+  }
+}
+
 figma.on('documentchange', async (event) => {
+  for (const change of event.documentChanges) {
+    if (change.type !== 'PROPERTY_CHANGE') continue;
+    const node = change.node;
+    if (!node || node.removed) continue;
+
+    const properties = change.properties || [];
+    const isSizeChange = properties.includes('height') || properties.includes('width');
+    const isTextChange = properties.includes('characters');
+    if (!isSizeChange && !isTextChange) continue;
+
+    // 处理表单标签文本变化（不受表格同步状态影响）
+    if (isTextChange && node.type === 'TEXT') {
+      const parent = node.parent;
+      if (parent && parent.type === 'FRAME') {
+        const isLabelWrap = parent.getPluginData('form-label-wrap') === 'true';
+        if (isLabelWrap) {
+          const minWidthStr = parent.getPluginData('form-label-min-width');
+          const minWidth = minWidthStr ? Number(minWidthStr) : 0;
+          if (Number.isFinite(minWidth) && minWidth > 0) {
+            try {
+              parent.primaryAxisSizingMode = 'AUTO';
+              await new Promise(r => setTimeout(r, 0));
+              const autoWidth = parent.width;
+              parent.primaryAxisSizingMode = 'FIXED';
+              parent.resize(Math.max(minWidth, autoWidth), parent.height);
+              
+              const form = findFormFrameFromNode(parent);
+              if (form) {
+                const key = form.id;
+                const existing = pendingFormLabelSync.get(key);
+                if (existing) {
+                  if (!existing.sourceNodes.includes(parent)) {
+                    existing.sourceNodes.push(parent);
+                  }
+                } else {
+                  pendingFormLabelSync.set(key, { form, sourceNodes: [parent] });
+                }
+              }
+            } catch (e) {
+              console.warn('form-label-wrap resize failed', e);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 表单标签宽度同步
+  if (!formLabelSyncInProgress && Date.now() >= formLabelSyncMuteUntil && pendingFormLabelSync.size > 0) {
+    if (formLabelSyncTimer === null) {
+      formLabelSyncTimer = setTimeout(() => {
+        formLabelSyncInProgress = true;
+        const formsToSync = pendingFormLabelSync;
+        pendingFormLabelSync = new Map();
+        formLabelSyncTimer = null;
+        try {
+          for (const { form, sourceNodes } of formsToSync.values()) {
+            alignFormLabelWidths(form, sourceNodes);
+          }
+        } finally {
+          formLabelSyncInProgress = false;
+          formLabelSyncMuteUntil = Date.now() + 200;
+        }
+      }, 120);
+    }
+  }
+
+  // 表格行同步逻辑（保持原有检查）
   if (tableRowSyncInProgress) return;
   if (Date.now() < tableRowSyncMuteUntil) return;
 
@@ -5509,6 +5649,7 @@ async function resolveAutoFormLabelWidth(
     tempText.fontName = { family: 'Inter', style: 'Regular' };
     tempText.fontSize = 13;
     figma.currentPage.appendChild(tempText);
+    tempText.textAutoResize = 'WIDTH_AND_HEIGHT';
 
     let maxWidth = 0;
     for (const field of fields) {
@@ -5529,7 +5670,8 @@ async function resolveAutoFormLabelWidth(
     }
 
     tempText.remove();
-    return Math.ceil(maxWidth);
+    // Add a 2px safety buffer to ensure alignment doesn't break due to sub-pixel rounding
+    return Math.ceil(maxWidth) + 2;
 }
 
 async function resolveFormContentWidth(
@@ -5546,6 +5688,7 @@ async function resolveFormContentWidth(
     tempText.fontName = { family: 'Inter', style: 'Regular' };
     tempText.fontSize = 13;
     figma.currentPage.appendChild(tempText);
+    tempText.textAutoResize = 'WIDTH_AND_HEIGHT';
 
     let maxWidth = 0;
     for (const field of fields) {
@@ -5557,6 +5700,9 @@ async function resolveFormContentWidth(
         if (label) {
             tempText.characters = `${label}${fieldParams.showColon === false ? '' : '：'}`;
             labelTextWidth = tempText.width;
+            if (fieldParams.required) {
+                labelTextWidth += 14 + 4; // Add width for the required asterisk icon and spacing
+            }
         }
         const controlWidth = resolveFormControlWidth(fieldParams);
         if (layout === 'vertical') {
@@ -7638,7 +7784,9 @@ async function renderComponent(
         const labelWidth = resolveFormLabelWidth(params);
         if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
             labelWrap.primaryAxisSizingMode = 'FIXED';
-            labelWrap.resize(Math.max(labelWidth, labelWrap.width), labelWrap.height);
+            // Use the provided labelWidth directly to ensure alignment. 
+            // The resolveAutoFormLabelWidth function is responsible for ensuring this width is sufficient.
+            labelWrap.resize(labelWidth, labelWrap.height);
         }
         frame.appendChild(labelWrap);
     }

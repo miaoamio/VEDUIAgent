@@ -2150,12 +2150,7 @@ function App() {
       const pluginMessage = event?.data?.pluginMessage;
       if (!pluginMessage || typeof pluginMessage !== 'object') return;
       const { type, message, data } = pluginMessage as any;
-      // #region debug-point A:ui-onmessage
-      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"A",location:"App.tsx:1436",msg:"[DEBUG] ui onmessage",data:{type,message,hasData:typeof data !== 'undefined'}})}).catch(()=>{});
-      // #endregion
       if (type === 'action-done') {
-        if (message === 'Updated properties') return;
-        if (typeof message === 'string' && (/^Applied\b/.test(message) || /^Swapped\b/.test(message))) return;
         setResponse((prev) => (prev ? prev + '\n\n' + `[System]: ${message}` : `[System]: ${message}`));
       }
       
@@ -5661,9 +5656,6 @@ StepD:
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         const { type, nodeId, message } = data;
-        // #region debug-point B:create-component-recv
-        fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:5069",msg:"[DEBUG] create-component recv",data:{type,hasNodeId:Boolean(nodeId),hasMessage:Boolean(message)}})}).catch(()=>{});
-        // #endregion
         if (type === 'create-success') {
           window.removeEventListener('message', handler);
           abortSignal?.removeEventListener('abort', onAbort);
