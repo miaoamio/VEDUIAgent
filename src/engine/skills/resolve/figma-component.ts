@@ -4,6 +4,8 @@ import {
   parseVariantCriteria,
   resolveComponentKeyFromToken
 } from "../../../figmaComponent";
+import { COMPONENT_REGISTRY } from "../../../registry";
+import type { ComponentDefinition } from "../../../registry.types";
 
 function normalizeTimepickerIconHitArea(root: SceneNode): void {
   if (typeof (root as any).findAll !== "function") return;
@@ -35,16 +37,93 @@ function normalizeTimepickerIconHitArea(root: SceneNode): void {
   });
 }
 
+function resolveRegistryDefinition(params: Record<string, any>): ComponentDefinition | undefined {
+  const componentId = typeof params.componentId === "string" ? params.componentId.trim() : "";
+  if (componentId && COMPONENT_REGISTRY.components[componentId]) {
+    return COMPONENT_REGISTRY.components[componentId];
+  }
+  const token = typeof params.componentToken === "string" ? params.componentToken.trim() : "";
+  if (!token) return undefined;
+  const entries = Object.values(COMPONENT_REGISTRY.components);
+  return entries.find((def) => {
+    const snapshot = (def as any).figmaPropertySnapshot as any;
+    const snapshotToken = typeof snapshot?.token === "string" ? snapshot.token.trim() : "";
+    return snapshotToken && snapshotToken === token;
+  });
+}
+
+export function buildSnapshotDrivenCriteria(options: {
+  params: Record<string, any>;
+  snapshot?: {
+    properties?: Array<{ propertyName: string; type: string }>;
+  };
+}): {
+  variantCriteria?: Record<string, string>;
+  booleanProps: Record<string, boolean>;
+} {
+  const { params, snapshot } = options;
+  const knownVariantProps = new Set<string>();
+  const knownBooleanProps = new Set<string>();
+  if (Array.isArray(snapshot?.properties)) {
+    snapshot?.properties?.forEach((p) => {
+      const name = String(p.propertyName || "").trim().toLowerCase();
+      if (!name) return;
+      if (p.type === "VARIANT") {
+        knownVariantProps.add(name);
+      } else if (p.type === "BOOLEAN") {
+        knownBooleanProps.add(name);
+      }
+    });
+  }
+  const explicitCriteria =
+    (parseVariantCriteria(params.variantCriteria) as Record<string, string | boolean> | undefined) || {};
+  const variantOnlyCriteria: Record<string, string> = {};
+  const booleanProps: Record<string, boolean> = {};
+  const reserved = new Set(["height", "componentToken", "componentKey", "fallbackName", "variantCriteria", "componentId"]);
+  const processParam = (key: string, value: any) => {
+    const normalizedKey = key.trim();
+    const keyLower = normalizedKey.toLowerCase();
+    if (typeof value === "boolean") {
+      if (knownBooleanProps.size === 0 || knownBooleanProps.has(keyLower)) {
+        booleanProps[normalizedKey] = value;
+      }
+      return;
+    }
+    const strValue = String(value).trim();
+    const lowerValue = strValue.toLowerCase();
+    if ((lowerValue === "true" || lowerValue === "false") && knownBooleanProps.has(keyLower)) {
+      booleanProps[normalizedKey] = lowerValue === "true";
+      return;
+    }
+    if (knownVariantProps.size === 0 || knownVariantProps.has(keyLower)) {
+      variantOnlyCriteria[normalizedKey] = strValue;
+    }
+  };
+  Object.entries(explicitCriteria).forEach(([key, value]) => processParam(key, value));
+  Object.entries(params).forEach(([key, value]) => {
+    if (reserved.has(key) || value === undefined || value === null) return;
+    processParam(key, value);
+  });
+  return {
+    variantCriteria: Object.keys(variantOnlyCriteria).length > 0 ? variantOnlyCriteria : undefined,
+    booleanProps
+  };
+}
+
 export async function renderFigmaComponentInstance(
   params: Record<string, any>,
   options?: {
     onApplyProps?: (instance: InstanceNode, params: Record<string, any>) => void;
   }
 ): Promise<SceneNode> {
+  const definition = resolveRegistryDefinition(params);
+  const snapshot = (definition as any)?.figmaPropertySnapshot as any;
   const componentKeyFromParam = typeof params.componentKey === "string" ? params.componentKey.trim() : "";
   const componentToken = typeof params.componentToken === "string" ? params.componentToken.trim() : "";
   const componentKeyFromToken = componentToken ? resolveComponentKeyFromToken(componentToken) : "";
-  const componentKey = componentKeyFromParam || componentKeyFromToken;
+  const componentKeyFromSnapshot =
+    typeof snapshot?.componentKey === "string" ? snapshot.componentKey.trim() : "";
+  const componentKey = componentKeyFromParam || componentKeyFromToken || componentKeyFromSnapshot;
   if (!componentKey) {
     const tokenLabel = componentToken || componentKeyFromParam || "unknown";
     throw new Error(`[Render] Missing component key for token: ${tokenLabel}`);
@@ -52,17 +131,24 @@ export async function renderFigmaComponentInstance(
   const fallbackName =
     typeof params.fallbackName === "string" && params.fallbackName.trim()
       ? params.fallbackName.trim()
-      : undefined;
+      : snapshot?.componentSetName || definition?.name || undefined;
   const tokenOrKey = componentToken || componentKeyFromParam;
-  const parsedCriteria = parseVariantCriteria(params.variantCriteria);
+  const { variantCriteria, booleanProps } = buildSnapshotDrivenCriteria({ params, snapshot });
   const importedInstance = await createFigmaComponentInstanceFromRef({
     componentKey,
     componentToken,
     fallbackName,
-    variantCriteria: parsedCriteria,
+    variantCriteria,
     params,
     tokenOrKey
   });
+  if (Object.keys(booleanProps).length > 0) {
+    try {
+      importedInstance.setProperties(booleanProps);
+    } catch (e) {
+      console.warn("[Render] setProperties failed", e);
+    }
+  }
   if (options?.onApplyProps) {
     options.onApplyProps(importedInstance, params);
   }

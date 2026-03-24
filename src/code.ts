@@ -5,6 +5,8 @@ import type { ComponentDefinition } from './registry.types';
 import { FULL_RERENDER_COMPONENT_IDS } from './editability';
 import { applyEnvelopeUnknown } from './engine/applyEnvelope';
 import { renderFigmaComponentInstance } from './engine/skills/resolve/figma-component';
+import { renderChartInstance } from './engine/skills/resolve/chart';
+import { resolveFormLayoutParamsUpdate } from './engine/skills/form.skill';
 import {
   createFigmaComponentInstanceFromRef,
   discoverFigmaComponentSchema,
@@ -350,6 +352,21 @@ function findAiComponentNode(node: SceneNode | null): SceneNode | null {
   return null;
 }
 
+function findAncestorFormFrame(node: SceneNode | null): FrameNode | null {
+  let current: BaseNode | null = node?.parent || null;
+  while (current && current.type !== 'PAGE') {
+    if (
+      current.type === 'FRAME' &&
+      'getPluginData' in current &&
+      current.getPluginData('component-id') === 'form'
+    ) {
+      return current as FrameNode;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
 let selectionUpdateSuppressed = false;
@@ -432,6 +449,10 @@ function checkSelection() {
           const itemCount = formInstance ? countFormItemInstances(formInstance) : 0;
           if (itemCount > 0) {
             normalizedParams.itemCount = itemCount;
+          }
+          if (effectiveTarget.type === 'FRAME') {
+            const actualState = detectFormActualState(effectiveTarget as FrameNode);
+            normalizedParams.showActionArea = actualState.showActionArea;
           }
         }
 
@@ -586,7 +607,6 @@ figma.on('documentchange', async (event) => {
 });
 
 const TABLE_DEFAULT_PARAMS = getDefaultParams('table');
-const FORM_FIELD_HORIZONTAL_COMPONENT_KEY = resolveComponentKeyFromToken('lib-data-input-horizontal-form') || '621ab3ad5d95d291cb6d31438dbad667594ae098';
 
 function toPositiveNumber(value: unknown): number | null {
     const n = Number(value);
@@ -1172,6 +1192,30 @@ function detectTableActualState(tableRoot: FrameNode): {
     result.hasPagination = !!findPaginationRow(tableRoot);
 
     return result;
+}
+
+function detectFormActualState(formRoot: FrameNode): {
+    showActionArea: boolean;
+} {
+    const instance = buildComponentInstanceFromNode(formRoot);
+    if (!instance || !Array.isArray(instance.children)) {
+        return { showActionArea: false };
+    }
+    const isButtonRow = (child: any) => child.componentId === 'form-row'
+        && Array.isArray(child.children)
+        && child.children.length > 0
+        && child.children.every((item: any) => item.componentId === 'button');
+    const isActionAreaChild = (child: any) => child.componentId === 'button'
+        || isButtonRow(child)
+        || (
+            child.componentId === 'layout'
+            && Array.isArray(child.children)
+            && child.children.length > 0
+            && child.children.every((item: any) => item.componentId === 'button' || isButtonRow(item))
+        );
+    return {
+        showActionArea: instance.children.some(isActionAreaChild)
+    };
 }
 
 function findManagedTableFilterGroup(contentStack: FrameNode): FrameNode | null {
@@ -4266,51 +4310,6 @@ function normalizeFormFieldControlType(controlType: unknown): string {
     return 'input';
 }
 
-function resolveFormFieldTemplateTypeLabel(controlType: unknown): string {
-    switch (normalizeFormFieldControlType(controlType)) {
-        case 'select':
-            return 'Select 选择框';
-        case 'checkbox-group':
-            return 'Checkbox 多选';
-        case 'radio-group':
-            return 'Radio 单选';
-        case 'datepicker':
-            return 'DatePicker 日期选择';
-        case 'inputnumber':
-            return 'Inputnumber 数字输入';
-        case 'slider':
-            return 'Slider 滑动';
-        case 'switch':
-            return 'Switch 开关';
-        case 'textarea':
-            return 'Textarea 多行文本';
-        case 'timepicker':
-            return 'TimePicker 时间选择';
-        case 'segmented-picker':
-            return 'Segmented Picker 分段选择器';
-        case 'upload':
-            return 'Upload 上传';
-        default:
-            return 'Input 输入框';
-    }
-}
-
-function resolveHorizontalFormTemplateTypeCandidates(controlType: unknown): string[] {
-    const normalized = normalizeFormFieldControlType(controlType);
-    if (normalized === 'select') return ['Select 选择框', 'Input 输入框'];
-    if (normalized === 'checkbox-group') return ['Checkbox 多选'];
-    if (normalized === 'radio-group') return ['Radio 单选'];
-    return [resolveFormFieldTemplateTypeLabel(normalized)];
-}
-
-function isFormFieldTemplateInstance(node: SceneNode, layout: 'vertical' | 'horizontal'): node is InstanceNode {
-    if (node.type !== 'INSTANCE') return false;
-    const name = String(node.name || '').trim();
-    return layout === 'vertical'
-        ? name.includes('Vertical Form 纵向表单')
-        : name.includes('Horizontal Form 横向表单');
-}
-
 function isFormFieldLabelInstance(node: SceneNode): node is InstanceNode {
     return node.type === 'INSTANCE' && String(node.name || '').includes('Lable 表单文字标签');
 }
@@ -4771,85 +4770,6 @@ function setNodeClipsContent(node: SceneNode, enabled: boolean): void {
     }
 }
 
-function relaxFormFieldTemplateClipping(root: SceneNode): void {
-    setNodeClipsContent(root, false);
-    const contentContainer = findFormFieldContentContainer(root);
-    if (contentContainer && contentContainer !== root) {
-        setNodeClipsContent(contentContainer, false);
-    }
-}
-
-function normalizeFormFieldTemplateSizing(root: SceneNode): void {
-    if ('counterAxisSizingMode' in root) {
-        try {
-            (root as FrameNode).counterAxisSizingMode = 'AUTO';
-        } catch {}
-    }
-    const contentContainer = findFormFieldContentContainer(root);
-    if (contentContainer) {
-        if ('counterAxisSizingMode' in contentContainer) {
-            try {
-                (contentContainer as FrameNode).counterAxisSizingMode = 'AUTO';
-            } catch {}
-        }
-    }
-}
-
-async function updateFormFieldLabelTemplate(root: SceneNode, params: Record<string, any>): Promise<void> {
-    const contentContainer = findFormFieldContentContainer(root);
-    if (!contentContainer) return;
-
-    const layout = resolveFormFieldLayout(params);
-    if (layout !== 'vertical' && 'itemSpacing' in contentContainer) {
-        const explicitSpacing = Number(params.labelControlSpacing);
-        const nextSpacing = Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : 20;
-        try {
-            (contentContainer as FrameNode | InstanceNode | ComponentNode).itemSpacing = nextSpacing;
-        } catch {}
-    }
-
-    const labelInstance = contentContainer.children.find(isFormFieldLabelInstance);
-    if (!labelInstance) return;
-
-    const requiredProperty = findInstanceComponentPropertyName(labelInstance, 'Required 必填');
-    const helpProperty = findInstanceComponentPropertyName(labelInstance, 'Help 解释说明');
-    const nextProps: Record<string, string | boolean> = {};
-    if (requiredProperty) nextProps[requiredProperty] = Boolean(params.required);
-    if (helpProperty) nextProps[helpProperty] = false;
-    if (Object.keys(nextProps).length > 0) {
-        labelInstance.setProperties(nextProps);
-    }
-
-    const labelTextNode =
-        labelInstance.findOne((child) => child.type === 'TEXT' && String(child.name || '').trim() === 'Lable') ||
-        labelInstance.findOne((child) => child.type === 'TEXT');
-    if (labelTextNode && labelTextNode.type === 'TEXT') {
-        await updateTextNodeCharacters(labelTextNode, String(params.label || '字段').trim() || '字段');
-    }
-}
-
-async function updateFormFieldMessageTemplate(root: SceneNode, params: Record<string, any>): Promise<void> {
-    if (!('children' in root)) return;
-    const messageNode = root.children.find((child) => isFormFieldDescriptionInstance(child));
-    if (!messageNode) return;
-
-    if (messageNode.type === 'INSTANCE') {
-        const typeProperty = findInstanceComponentPropertyName(messageNode, 'Type 类型');
-        if (typeProperty) {
-            messageNode.setProperties({ [typeProperty]: hasFormFieldError(params) ? 'Error 报错' : 'Default 默认' });
-        }
-    }
-
-    const messageText = getFormFieldMessageText(params);
-    if (!messageText) return;
-
-    const textNode =
-        ('findOne' in messageNode && messageNode.findOne((child) => child.type === 'TEXT')) || null;
-    if (textNode && textNode.type === 'TEXT') {
-        await updateTextNodeCharacters(textNode, messageText);
-    }
-}
-
 function applyFormControlWidthModeToNode(node: SceneNode, params: Record<string, any>): void {
     const mode = resolveFormControlWidthMode(params);
     if (mode === 'fill') {
@@ -5070,198 +4990,6 @@ function shouldUseChildControlInstance(
         return child.componentId === 'figma-component';
     }
     return false;
-}
-
-async function replaceFormFieldControlTemplate(
-    root: SceneNode,
-    instance: ComponentInstance,
-    params: Record<string, any>
-): Promise<void> {
-    const contentContainer = findFormFieldContentContainer(root);
-    if (!contentContainer) {
-        throw new Error('[FormField] Failed to find content container in template shell');
-    }
-
-    const existingControlNode = findFormFieldControlNode(contentContainer);
-    if (!existingControlNode) {
-        // 如果找不到占位符，输出容器内的所有子节点名称方便调试
-        const childNames = contentContainer.children.map(c => c.name).join(', ');
-        throw new Error(`[FormField] Failed to find control placeholder in container. Children: ${childNames}`);
-    }
-
-    const controlType = normalizeFormFieldControlType(params.controlType);
-    const controlWidthMode = resolveFormControlWidthMode(params);
-    const nextControlWidth =
-        controlType === 'switch' || controlWidthMode === 'fill'
-            ? undefined
-            : toPositiveNumber(params.controlWidth) ??
-              toPositiveNumber(params.width) ??
-              Math.round(existingControlNode.width);
-
-    const controlInstance =
-        shouldUseChildControlInstance(instance, params)
-            ? instance.children![0]
-            : createControlInstanceFromFormFieldParams({
-                ...params,
-                controlWidth: nextControlWidth
-            });
-
-    const controlNode = await renderComponent(controlInstance, { isRoot: false });
-    if (!controlNode) {
-        throw new Error(`[FormField] Failed to render control node for type: ${controlType}`);
-    }
-    
-    controlNode.name = 'form-field-control';
-    if ('setPluginData' in controlNode) {
-        controlNode.setPluginData('form-field-role', 'control');
-    }
-    setNodeClipsContent(controlNode, false);
-    
-    // 优先从注册表读取默认高度，作为真正的“原始高度”兜底
-    const controlDef = COMPONENT_DEFS[controlType];
-    const defaultHeight = controlDef?.runtime?.fallback?.height ?? null;
-    const recordedHeight = 'height' in controlNode ? controlNode.height : 0;
-    const targetHeight = (defaultHeight && defaultHeight > 1) ? defaultHeight : (recordedHeight > 1 ? recordedHeight : 32);
-
-    // 执行替换
-    const replaced = replaceSceneNode(existingControlNode, controlNode);
-    if (!replaced) {
-        try {
-            controlNode.remove();
-        } catch {}
-        throw new Error(`[FormField] Failed to replace old control node (${existingControlNode.name}) with new control node (${controlNode.name})`);
-    }
-
-    // 确保节点确实在容器中，且坐标归零
-    if (controlNode.parent !== contentContainer) {
-        contentContainer.appendChild(controlNode);
-    }
-    if ('x' in controlNode) controlNode.x = 0;
-    if ('y' in controlNode) controlNode.y = 0;
-
-    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea' || controlType === 'datepicker' || controlType === 'timepicker') {
-        applyFormControlWidthModeToNode(controlNode, params);
-    }
-
-    // 强制恢复高度并设置为 FIXED，避免被模板的 100px 或 AutoLayout 塌陷影响
-    if ('resize' in controlNode) {
-        try {
-            (controlNode as any).resize(controlNode.width, targetHeight);
-        } catch {}
-    }
-    if ('layoutSizingVertical' in controlNode) {
-        try {
-            (controlNode as any).layoutSizingVertical = 'FIXED';
-        } catch {}
-    }
-}
-
-async function extractHorizontalFormFieldShell(
-    params: Record<string, any>
-): Promise<InstanceNode | null> {
-    const importedForm = await createFigmaComponentInstanceFromRef({
-        componentKey: FORM_FIELD_HORIZONTAL_COMPONENT_KEY,
-        fallbackName: 'Horizontal Form 横向表单',
-        variantCriteria: {
-            'Label 标签长度': resolveFormLabelWidthVariantLabel(params),
-            'Type 类型': resolveFormFieldTemplateTypeLabel(params.controlType),
-            'Description 描述': toVariantBoolean(hasFormFieldDescription(params)),
-            'Error 报错': toVariantBoolean(hasFormFieldError(params))
-        }
-    });
-
-    try {
-        return importedForm;
-    } finally {
-        // caller takes ownership when returning instance successfully
-    }
-}
-
-async function createFormFieldFromFigmaTemplate(
-    instance: ComponentInstance,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const layout = resolveFormFieldLayout(params);
-    // #endregion
-    if (params.labelWidthAuto && layout !== 'vertical') {
-        return null;
-    }
-    const controlType = normalizeFormFieldControlType(params.controlType);
-    const supportsTemplateControl =
-        controlType === 'input' ||
-        controlType === 'select' ||
-        controlType === 'checkbox-group' ||
-        controlType === 'radio-group' ||
-        controlType === 'datepicker' ||
-        controlType === 'inputnumber' ||
-        controlType === 'slider' ||
-        controlType === 'textarea' ||
-        controlType === 'timepicker' ||
-        controlType === 'switch' ||
-        controlType === 'upload';
-    if (!supportsTemplateControl) return null;
-
-    let templateInstance: InstanceNode | null = null;
-    try {
-        if (layout === 'vertical') {
-            const fieldDef = COMPONENT_DEFS['form-field'];
-            const componentKey = resolveComponentKeyFromToken('lib-data-input-vertical-form')
-                || String((fieldDef?.figmaPropertySnapshot as any)?.componentKey || '').trim();
-            if (!componentKey) return null;
-            templateInstance = await createFigmaComponentInstanceFromRef({
-                componentKey,
-                fallbackName: fieldDef?.name,
-                variantCriteria: {
-                    'Type 类型': resolveFormFieldTemplateTypeLabel(controlType),
-                    'Description 描述': toVariantBoolean(hasFormFieldDescription(params)),
-                    'Error 报错': toVariantBoolean(hasFormFieldError(params))
-                }
-            });
-        } else {
-            templateInstance = await extractHorizontalFormFieldShell(params);
-        }
-
-        if (!templateInstance) return null;
-
-        // #endregion
-        relaxFormFieldTemplateClipping(templateInstance);
-        normalizeFormFieldTemplateSizing(templateInstance);
-        await updateFormFieldLabelTemplate(templateInstance, params);
-        const updatedInPlace = !instance.children?.length
-            ? await updateFormFieldControlTemplateInPlace(templateInstance, params)
-            : false;
-        await updateFormFieldMessageTemplate(templateInstance, params);
-        if (updatedInPlace) {
-            templateInstance.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
-            // #endregion
-            return templateInstance;
-        }
-
-        const detached = templateInstance.detachInstance();
-        relaxFormFieldTemplateClipping(detached);
-        normalizeFormFieldTemplateSizing(detached);
-        await updateFormFieldLabelTemplate(detached, params);
-        await replaceFormFieldControlTemplate(detached, instance, params);
-        await updateFormFieldMessageTemplate(detached, params);
-        detached.name = COMPONENT_DEFS['form-field']?.name || '表单字段';
-        if ('primaryAxisSizingMode' in detached) {
-            try {
-                (detached as FrameNode).primaryAxisSizingMode = 'AUTO';
-            } catch {}
-        }
-        // #endregion
-        return detached;
-    } catch (e) {
-        console.warn('[FormFieldTemplate] failed to create form field from original Figma template', e);
-        try {
-            templateInstance?.remove();
-        } catch {}
-        const message = String(e || '');
-        if (message.includes('[FormField] failed to replace control node')) {
-            throw e;
-        }
-        return null;
-    }
 }
 
 async function createInputAffixNode(
@@ -5608,20 +5336,23 @@ async function resolveFormParamsForRender(
     instance: ComponentInstance
 ): Promise<Record<string, any>> {
     const fields = Array.isArray(instance.children) ? instance.children.flatMap((child) => collectFormFieldInstances(child)) : [];
-    const shouldAutoLabelWidth =
-        Boolean(formParams.labelWidthAuto) &&
-        fields.some((field) => {
-            const inherited = inheritFormFieldParams(formParams, field);
-            const fieldParams = inherited.params || {};
-            const layout = resolveFormFieldLayout(fieldParams);
-            const label = String(fieldParams.label || '').trim();
-            return layout !== 'vertical' && label.length > 0;
-        });
-    const resolvedFormParams = shouldAutoLabelWidth ? { ...formParams } : formParams;
-    if (shouldAutoLabelWidth) {
+    const hasHorizontalLabel = fields.some((field) => {
+        const inherited = inheritFormFieldParams(formParams, field);
+        const fieldParams = inherited.params || {};
+        const layout = resolveFormFieldLayout(fieldParams);
+        const label = String(fieldParams.label || '').trim();
+        return layout !== 'vertical' && label.length > 0;
+    });
+    const resolvedFormParams = hasHorizontalLabel ? { ...formParams } : formParams;
+    if (hasHorizontalLabel) {
         const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
         if (maxLabelWidth > 0) {
-            resolvedFormParams.labelWidth = maxLabelWidth;
+            const currentLabelWidth = Number(resolvedFormParams.labelWidth);
+            const mergedLabelWidth =
+                Number.isFinite(currentLabelWidth) && currentLabelWidth > 0
+                    ? Math.max(currentLabelWidth, maxLabelWidth)
+                    : maxLabelWidth;
+            resolvedFormParams.labelWidth = mergedLabelWidth;
             resolvedFormParams.labelWidthPreset = 'custom';
         }
     }
@@ -5699,9 +5430,11 @@ async function updateFormLayoutParams(
     }
     if (!snapshot) return false;
     const nextItemCount = normalizeFormItemCount(nextParams.itemCount);
-    const normalizedParams = nextItemCount !== null
-        ? { ...nextParams, itemCount: nextItemCount }
-        : nextParams;
+    const normalizedParams: Record<string, any> = resolveFormLayoutParamsUpdate(
+        prevParams,
+        nextItemCount !== null ? { ...nextParams, itemCount: nextItemCount } : { ...nextParams }
+    );
+
     const patchedInstance = patchFormInstanceSnapshot(snapshot, prevParams, normalizedParams);
     const itemNodes = collectFormItemNodes(formFrame);
     const nextItemInstances = Array.isArray(patchedInstance.children)
@@ -5787,7 +5520,12 @@ async function resolveAutoFormLabelWidth(
         if (!label) continue;
         const textValue = `${label}${fieldParams.showColon === false ? '' : '：'}`;
         tempText.characters = textValue;
-        if (tempText.width > maxWidth) maxWidth = tempText.width;
+        
+        let fieldWidth = tempText.width;
+        if (fieldParams.required) {
+            fieldWidth += 14 + 4; // Add width for the required asterisk icon and spacing
+        }
+        if (fieldWidth > maxWidth) maxWidth = fieldWidth;
     }
 
     tempText.remove();
@@ -5910,8 +5648,9 @@ const FORM_INHERITED_PARAM_KEYS = [
     'controlWidth',
     'controlWidthMode',
     'showColon'
-];
-const FORM_FIELD_LABEL_WIDTH_DEFAULT =
+  ];
+  
+  const FORM_FIELD_LABEL_WIDTH_DEFAULT =
     toPositiveNumber((COMPONENT_DEFS['form-field'] as any)?.params?.labelWidth?.default) ?? 0;
 const FORM_FIELD_DEFAULTS: Record<string, any> = {
     layout: 'horizontal',
@@ -7721,7 +7460,8 @@ async function renderComponent(
     frame.layoutMode = 'VERTICAL';
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
-    frame.itemSpacing = Number(params.rowSpacing) > 0 ? Number(params.rowSpacing) : (normalizeFormAlign(params.align) === 'top' ? 24 : 12);
+    const rowSpacing = Number(params.rowSpacing) > 0 ? Number(params.rowSpacing) : (normalizeFormAlign(params.align) === 'top' ? 24 : 12);
+    frame.itemSpacing = rowSpacing;
     frame.fills = [];
     frame.clipsContent = false;
     const columnSpacing = toPositiveNumber(params.columnSpacing);
@@ -7739,17 +7479,23 @@ async function renderComponent(
     }
 
     const shouldStretchChildren = computedWidth !== null;
+    const showActionArea = params.showActionArea !== false;
+    const isButtonRow = (child: any) => child.componentId === 'form-row'
+        && Array.isArray(child.children)
+        && child.children.length > 0
+        && child.children.every((item: any) => item.componentId === 'button');
+    const isActionAreaChild = (child: any) => child.componentId === 'button'
+        || isButtonRow(child)
+        || (
+            child.componentId === 'layout'
+            && Array.isArray(child.children)
+            && child.children.length > 0
+            && child.children.every((item: any) => item.componentId === 'button' || isButtonRow(item))
+        );
+    const hasActionAreaChild = Array.isArray(instance.children) && instance.children.some(isActionAreaChild);
     if (instance.children) {
-        const showActionArea = params.showActionArea !== false;
         for (const child of instance.children) {
-            const isActionAreaChild = child.componentId === 'button'
-                || (
-                    child.componentId === 'form-row'
-                    && Array.isArray(child.children)
-                    && child.children.length > 0
-                    && child.children.every((item) => item.componentId === 'button')
-                );
-            if (!showActionArea && isActionAreaChild) {
+            if (!showActionArea && isActionAreaChild(child)) {
                 continue;
             }
             let processedChild = child;
@@ -7777,6 +7523,37 @@ async function renderComponent(
             }
             frame.appendChild(childNode);
         }
+    }
+    if (showActionArea && !hasActionAreaChild) {
+        const actionPaddingTop = Math.max(32 - rowSpacing, 0);
+        const actionRowInstance = {
+            id: `form-action-${Date.now()}`,
+            componentId: 'form-row',
+            params: { spacing: 8, align: 'end' },
+            children: [
+                {
+                    id: `form-action-primary-${Date.now()}`,
+                    componentId: 'button',
+                    params: { label: '确认', variant: 'primary' }
+                },
+                {
+                    id: `form-action-secondary-${Date.now()}`,
+                    componentId: 'button',
+                    params: { label: '取消', variant: 'secondary' }
+                }
+            ]
+        };
+        const actionLayoutInstance = {
+            id: `form-action-layout-${Date.now()}`,
+            componentId: 'layout',
+            params: { direction: 'vertical', paddingTop: actionPaddingTop },
+            children: [inheritFormFieldParams(resolvedFormParams, actionRowInstance)]
+        };
+        const actionNode = await renderComponent(actionLayoutInstance, { isRoot: false });
+        if ((actionNode.type === 'FRAME' || actionNode.type === 'INSTANCE') && shouldStretchChildren) {
+            actionNode.layoutAlign = 'STRETCH';
+        }
+        frame.appendChild(actionNode);
     }
     if (computedWidth !== null) {
         setFixedWidth(frame, computedWidth);
@@ -7811,11 +7588,6 @@ async function renderComponent(
   }
   // --- FORM FIELD ---
   else if (instance.componentId === 'form-field') {
-    const templateNode = await createFormFieldFromFigmaTemplate(instance, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-    // Fallback: 如果不支持模板，手工绘制表单字段
     const layout = resolveFormFieldLayout(params);
     const labelAlign = String(params.labelAlign || '').trim().toLowerCase() === 'right' ? 'right' : 'left';
     const frame = figma.createFrame();
@@ -7834,18 +7606,13 @@ async function renderComponent(
     if (label) {
         const labelWrap = figma.createFrame();
         labelWrap.layoutMode = 'HORIZONTAL';
-        labelWrap.primaryAxisSizingMode = layout === 'vertical' ? 'AUTO' : 'FIXED';
+        labelWrap.primaryAxisSizingMode = 'AUTO';
         labelWrap.counterAxisSizingMode = 'AUTO';
         labelWrap.counterAxisAlignItems = 'CENTER';
         labelWrap.primaryAxisAlignItems = layout === 'vertical' ? 'MIN' : (labelAlign === 'right' ? 'MAX' : 'MIN');
         labelWrap.itemSpacing = 4;
         labelWrap.fills = [];
         labelWrap.clipsContent = false;
-
-        const labelWidth = resolveFormLabelWidth(params);
-        if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
-            labelWrap.resize(labelWidth, 20);
-        }
 
         if (params.required) {
             const requiredIconDef = COMPONENT_DEFS['icon-asterisk'];
@@ -7864,12 +7631,15 @@ async function renderComponent(
 
         const labelNode = figma.createText();
         await applyTextStyleBinding(labelNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
+        labelNode.textAutoResize = 'WIDTH_AND_HEIGHT';
         labelNode.characters = `${label}${params.showColon === false ? '' : '：'}`;
         await applyColorVariable(labelNode, 'form-label-text', '#42464E');
-        if (layout !== 'vertical') {
-            labelNode.layoutGrow = 1;
-        }
         labelWrap.appendChild(labelNode);
+        const labelWidth = resolveFormLabelWidth(params);
+        if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
+            labelWrap.primaryAxisSizingMode = 'FIXED';
+            labelWrap.resize(Math.max(labelWidth, labelWrap.width), labelWrap.height);
+        }
         frame.appendChild(labelWrap);
     }
 
@@ -7937,7 +7707,6 @@ async function renderComponent(
     }
 
     node = frame;
-    }
   }
   // --- TABLE ---
   else if (instance.componentId === 'table') {
@@ -8929,117 +8698,19 @@ async function renderComponent(
     }
     node = frame;
   }
-  // --- CHART (chart-toplist / chart-pie / chart-line / chart-bar / chart-area) ---
   else if (instance.componentId.startsWith('chart-')) {
     const snapshot = def.figmaPropertySnapshot as any;
     const token = snapshot?.token || '';
-    const componentKey = (token ? resolveComponentKeyFromToken(token) : '')
-      || String(snapshot?.componentKey || '').trim();
-
-    // Build a set of known top-level VARIANT property names from the registry snapshot.
-    // Only VARIANT properties participate in findFigmaVariant — BOOLEAN/TEXT go to setProperties.
-    // We use the snapshot to determine which params are top-level VARIANT dimensions of the ComponentSet.
-    // Heuristic: a property is a top-level variant dimension if it appears in EVERY variant of the set.
-    // Since we can't know that statically, we use the snapshot properties list:
-    // collect all VARIANT propertyNames from figmaPropertySnapshot.properties.
-    const knownVariantProps = new Set<string>();
-    if (Array.isArray(snapshot?.properties)) {
-      (snapshot.properties as Array<{ propertyName: string; type: string }>).forEach((p) => {
-        if (p.type === 'VARIANT') {
-          knownVariantProps.add(p.propertyName.trim().toLowerCase());
-        }
-      });
-    }
-
-    // Split params into:
-    //   variantOnlyCriteria — only keys that are known VARIANT properties (for findFigmaVariant)
-    //   booleanProps        — BOOLEAN type properties (for setProperties after creation)
-    const CHART_RESERVED = new Set(['height', 'componentToken', 'componentKey', 'fallbackName', 'variantCriteria']);
-
-    // First: parse explicit variantCriteria JSON string if present
-    const explicitCriteria: Record<string, string | boolean> = {};
-    if (typeof params.variantCriteria === 'string' && params.variantCriteria.trim()) {
-      try {
-        const parsed = JSON.parse(params.variantCriteria);
-        if (parsed && typeof parsed === 'object') {
-          Object.assign(explicitCriteria, parsed);
-        }
-      } catch (_) { /* ignore invalid JSON */ }
-    }
-
-    const variantOnlyCriteria: Record<string, string> = {};
-    const booleanProps: Record<string, boolean> = {};
-
-    // Determine which properties are actually BOOLEAN vs VARIANT
-    const knownBooleanProps = new Set<string>();
-    if (Array.isArray(snapshot?.properties)) {
-      (snapshot.properties as Array<{ propertyName: string; type: string }>).forEach((p) => {
-        if (p.type === 'BOOLEAN') {
-          knownBooleanProps.add(p.propertyName.trim().toLowerCase());
-        }
-      });
-    }
-
-    const processParam = (k: string, v: any) => {
-      const kLower = k.trim().toLowerCase();
-      
-      if (typeof v === 'boolean') {
-        booleanProps[k] = v;
-        return;
-      }
-      const strV = String(v).trim();
-      const lowerV = strV.toLowerCase();
-      
-      // Auto-convert string "true"/"false" to boolean ONLY if it's a known boolean property
-      if ((lowerV === 'true' || lowerV === 'false') && knownBooleanProps.has(kLower)) {
-        booleanProps[k] = lowerV === 'true';
-        return;
-      }
-
-      if (knownVariantProps.size === 0 || knownVariantProps.has(kLower)) {
-        variantOnlyCriteria[k] = strV;
-      }
-    };
-
-    // Merge explicit criteria first
-    Object.entries(explicitCriteria).forEach(([k, v]) => processParam(k, v));
-
-    // Then merge remaining params
-    Object.entries(params).forEach(([k, v]) => {
-      if (CHART_RESERVED.has(k) || v === undefined || v === null) return;
-      processParam(k, v);
-    });
-
-    const variantCriteria = Object.keys(variantOnlyCriteria).length > 0 ? variantOnlyCriteria : undefined;
-
-    if (componentKey) {
-      try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-          componentKey,
-          fallbackName: snapshot?.componentSetName || def.name,
-          variantCriteria
-        });
-        // Apply boolean properties via setProperties after instance creation
-        if (Object.keys(booleanProps).length > 0) {
-          try {
-            importedInstance.setProperties(booleanProps);
-          } catch (e) {
-            console.warn(`[FigmaUI] setProperties failed for ${instance.componentId}`, e);
-          }
-        }
-        
-        // Use user-provided height if valid, otherwise preserve original component height
-        if (Number.isFinite(Number(params.height)) && Number(params.height) > 0) {
-          importedInstance.resize(importedInstance.width, Number(params.height));
-        }
-
-        node = importedInstance;
-      } catch (e) {
-        console.warn(`[FigmaUI] failed to create ${instance.componentId} from Figma component`, e);
-        node = await createMissingFigmaComponentFrame(token || def.name, undefined, Number(params.height) > 0 ? Number(params.height) : 220);
-      }
-    } else {
-      node = await createMissingFigmaComponentFrame(token || def.name, undefined, Number(params.height) > 0 ? Number(params.height) : 220);
+    try {
+      const importedInstance = await renderChartInstance({ definition: def, params });
+      node = importedInstance;
+    } catch (e) {
+      console.warn(`[FigmaUI] failed to create ${instance.componentId} from Figma component`, e);
+      node = await createMissingFigmaComponentFrame(
+        token || def.name,
+        undefined,
+        Number(params.height) > 0 ? Number(params.height) : 220
+      );
     }
   }
   else {
@@ -10191,6 +9862,23 @@ figma.ui.onmessage = async (msg) => {
           const replacement = await renderComponent(instanceToRender);
 
           if (replaceSceneNode(node, replacement)) {
+            if (componentId === 'form-field') {
+              const formFrame = findAncestorFormFrame(replacement as SceneNode);
+              if (formFrame) {
+                const formParams = readNodeParams(formFrame);
+                const fieldNodes = collectFormItemNodes(formFrame);
+                const fieldIndex = fieldNodes.indexOf(replacement as SceneNode);
+                const updated = await updateFormLayoutParams(formFrame, formParams, formParams);
+                if (updated) {
+                  const nextFieldNodes = collectFormItemNodes(formFrame);
+                  const nextSelection = nextFieldNodes[fieldIndex] || formFrame;
+                  figma.currentPage.selection = [nextSelection];
+                  checkSelection();
+                  figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
+                  return;
+                }
+              }
+            }
             figma.currentPage.selection = [replacement];
             checkSelection();
             figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });

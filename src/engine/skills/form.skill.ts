@@ -971,3 +971,23 @@ export const buildFormComponentFromPayload = (payload: any): any | null => {
   if (!isObject(source)) return null;
   return buildNormalizedFormComponentFromSource(source);
 };
+
+/**
+ * 处理表单布局参数更新的业务逻辑。
+ * 当对齐方式从顶部（纵向）切换到左/右（横向）时，自动开启自适应标签宽度。
+ */
+export const resolveFormLayoutParamsUpdate = (
+  prevParams: Record<string, any>,
+  nextParams: Record<string, any>
+): Record<string, any> => {
+  const prevAlign = String(prevParams?.align || 'top').trim().toLowerCase();
+  const nextAlign = String(nextParams?.align || 'top').trim().toLowerCase();
+
+  const isVertical = prevAlign === 'top';
+  const isHorizontal = nextAlign === 'left' || nextAlign === 'right';
+
+  if (isVertical && isHorizontal) {
+    return { ...nextParams, labelWidthAuto: true };
+  }
+  return nextParams;
+};

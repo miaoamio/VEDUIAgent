@@ -26,7 +26,10 @@ import { Tooltip } from './ui/Tooltip';
 import { BASE_COMPONENT_TOKEN_PACK } from './theme/volcengine-design/component-tokens';
 import { SPEC_COMPONENT_TOKEN_MAP } from './registry/component-token-map';
 import { parseVariantCriteria } from './figmaComponent';
-import { buildFormComponentFromPayload as buildFormComponentFromPayloadSkill } from './engine/skills/form.skill';
+import {
+  buildFormComponentFromPayload as buildFormComponentFromPayloadSkill,
+  resolveFormLayoutParamsUpdate
+} from './engine/skills/form.skill';
 import { getChartToken, buildChartBlockComponentFromPayload } from './engine/skills/chart.skill';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
@@ -2099,7 +2102,7 @@ function App() {
   const [showInheritedParams, setShowInheritedParams] = React.useState(false);
   const [componentInspectionRunning, setComponentInspectionRunning] = React.useState(false);
   const [componentInspectionSummary, setComponentInspectionSummary] = React.useState<string | null>(null);
-  const [componentInspectTokenInput, setComponentInspectTokenInput] = React.useState('lib-data-input-form');
+  const [componentInspectTokenInput, setComponentInspectTokenInput] = React.useState('lib-data-input-input');
   const [componentInspectJson, setComponentInspectJson] = React.useState('');
   const [figmaComponentPropsCache, setFigmaComponentPropsCache] = React.useState<Record<string, any>>({});
   const figmaComponentPropsLoadingRef = React.useRef<Set<string>>(new Set());
@@ -8587,7 +8590,14 @@ StepD:
               <FieldRow key="form-label-align" label="标签对齐">
                 <SegmentedControl
                   value={formLabelAlignValue}
-                  onChange={(value) => updateParam('align', value)}
+                  onChange={(value) => {
+                    const nextParams = resolveFormLayoutParamsUpdate(effectiveParams, { ...effectiveParams, align: value });
+                    if (nextParams.labelWidthAuto !== effectiveParams.labelWidthAuto) {
+                      updateParams({ align: value, labelWidthAuto: nextParams.labelWidthAuto });
+                    } else {
+                      updateParam('align', value);
+                    }
+                  }}
                   groupClassName="align-group"
                   buttonClassName="align-button"
                   options={[

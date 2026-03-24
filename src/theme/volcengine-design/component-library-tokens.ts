@@ -224,22 +224,6 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '数据输入',
     aliases: ['figma-set:Drag 拖拽上传']
   },
-  'lib-data-input-form': {
-    token: 'lib-data-input-form',
-    componentKey: '25f071ee2f2569f0fd3744d41ed085020d386b26',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Form 表单',
-    category: '数据输入',
-    aliases: ['figma-set:Form 表单']
-  },
-  'lib-data-input-horizontal-form': {
-    token: 'lib-data-input-horizontal-form',
-    componentKey: '621ab3ad5d95d291cb6d31438dbad667594ae098',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Horizontal Form 横向表单',
-    category: '数据输入',
-    aliases: ['figma-set:Horizontal Form 横向表单']
-  },
   'lib-data-input-image': {
     token: 'lib-data-input-image',
     componentKey: '85ba2a0764a9485d4b07cdd6420a44292b8f4fcc',
@@ -375,14 +359,6 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     displayName: 'Treeselect 树选择',
     category: '数据输入',
     aliases: ['figma-set:Treeselect 树选择']
-  },
-  'lib-data-input-vertical-form': {
-    token: 'lib-data-input-vertical-form',
-    componentKey: '0be124134930bd594da9da61af7046c4e442878d',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Vertical Form 纵向表单',
-    category: '数据输入',
-    aliases: ['figma-set:Vertical Form 纵向表单']
   },
   'lib-data-display-card-pic': {
     token: 'lib-data-display-card-pic',
@@ -591,14 +567,6 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     displayName: 'Status Tag 状态标签',
     category: '数据展示',
     aliases: ['figma-set:Status Tag 状态标签']
-  },
-  'lib-data-display-table': {
-    token: 'lib-data-display-table',
-    componentKey: 'bfccce80a53ec4ed52182f155c06653123a9864d',
-    source: 'Figma组件库词汇表_ComponentSets.json',
-    displayName: 'Table 表格',
-    category: '数据展示',
-    aliases: ['figma-set:Table 表格']
   },
   'lib-data-display-tableexpand': {
     token: 'lib-data-display-tableexpand',

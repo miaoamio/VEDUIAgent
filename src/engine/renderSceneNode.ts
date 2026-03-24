@@ -6,6 +6,8 @@ import {
   parseVariantCriteria,
   resolveComponentKeyFromToken
 } from "../figmaComponent";
+import { renderFigmaComponentInstance } from "./skills/resolve/figma-component";
+import { renderChartInstance } from "./skills/resolve/chart";
 import { createInspectDrivenTagFallbackNode } from "../theme/volcengine-design/tag-fallback";
 import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
 import { resolveComponentDefinition, toUnknownComponentError } from "./registryResolver";
@@ -790,6 +792,51 @@ async function createFigmaNode(
     const fallback = await createInspectDrivenTagFallbackNode(normalizedProps);
     fallback.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
     return fallback;
+  }
+
+  if (sceneNode.componentId === "figma-component") {
+    const props = (sceneNode.props || {}) as Record<string, any>;
+    const componentTokenFromProps =
+      typeof props.componentToken === "string" ? props.componentToken.trim() : "";
+    const componentKeyFromProps =
+      typeof props.componentKey === "string" ? props.componentKey.trim() : "";
+    const componentKeyFromToken = componentTokenFromProps ? resolveComponentKeyFromToken(componentTokenFromProps) : "";
+    if (componentTokenFromProps && !componentKeyFromToken && !componentKeyFromProps) {
+      ctx.warnings.push({
+        code: "INSTANCE_COMPONENT_TOKEN_UNKNOWN",
+        message: `Unknown componentToken '${componentTokenFromProps}' for '${sceneNode.componentId}'`,
+        path: buildScenePath(sceneNode)
+      });
+    }
+    try {
+      const node = await renderFigmaComponentInstance(props);
+      const textOverride =
+        typeof props.text === "string" && props.text.trim()
+          ? props.text.trim()
+          : typeof props.title === "string" && props.title.trim()
+            ? props.title.trim()
+            : "";
+      if (textOverride) {
+        await updateFirstTextNode(node, textOverride);
+      }
+      node.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
+      return node;
+    } catch (error) {
+      throw new Error(`Failed to create instance for '${sceneNode.componentId}': ${String(error)}`);
+    }
+  }
+
+  if (sceneNode.componentId.startsWith("chart-")) {
+    try {
+      const instance = await renderChartInstance({
+        definition,
+        params: (sceneNode.props || {}) as Record<string, any>
+      });
+      instance.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
+      return instance;
+    } catch (error) {
+      throw new Error(`Failed to create instance for '${sceneNode.componentId}': ${String(error)}`);
+    }
   }
 
   const nodeType = definition.figmaBinding?.nodeType ?? (sceneNode.componentId === "text" ? "TEXT" : "FRAME");

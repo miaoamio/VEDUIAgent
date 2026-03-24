@@ -23,13 +23,9 @@ export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   'lib-data-input-segmented-picker': ['segmented-picker', 'figma-component'],
   'lib-data-input-radio-group': ['radio-group', 'figma-component'],
   'lib-data-input-button': ['upload', 'button', 'figma-component'],
-  'lib-data-input-form': ['form', 'form-field', 'figma-component'],
-  'lib-data-input-horizontal-form': ['form', 'form-field', 'figma-component'],
-  'lib-data-input-vertical-form': ['form', 'form-field', 'figma-component'],
 
   // Data display
   'lib-data-display-card': ['card', 'figma-component'],
-  'lib-data-display-table': ['table', 'figma-component'],
   'lib-data-display-tag': ['tag', 'figma-component'],
   'lib-data-display-status-tag': ['table-cell-tag', 'tag', 'figma-component'],
   'lib-data-display-avataricon': ['table-cell-avatar', 'figma-component'],

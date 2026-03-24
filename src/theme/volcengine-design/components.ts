@@ -68,8 +68,6 @@ const volcengineDesignDataInputComponents: ComponentsTheme = {
   'lib-data-input-checkbox-group':        'ca3d2f097d5c3a695f6b4b8c8d7455b03d6dcafd',
   'lib-data-input-datepicker':            '75d61442da83762c096571de0f34f56012bea78d',
   'lib-data-input-drag':                  '2014a5ca9e9b957e51f9af5394bc29915a19e651',
-  'lib-data-input-form':                  '25f071ee2f2569f0fd3744d41ed085020d386b26',
-  'lib-data-input-horizontal-form':       '621ab3ad5d95d291cb6d31438dbad667594ae098',
   'lib-data-input-image':                 '85ba2a0764a9485d4b07cdd6420a44292b8f4fcc',
   'lib-data-input-input':                 'f04bea11a4ef73f626b7402aac670a94ad32faf0',
   'lib-data-input-inputgroup':            'b67f094a9256bf4cc0da575d6524f9b8b46c00c7',
@@ -87,7 +85,6 @@ const volcengineDesignDataInputComponents: ComponentsTheme = {
   'lib-data-input-timepicker-menu':       'bae12d9dfb4f45c2dfd211d447a30ac53b56ee26',
   'lib-data-input-transfer':              '91aa7f09c8b35252733355dffca7274fc03c850d',
   'lib-data-input-treeselect':            '9ba274503ab0dba7d0abf90c22192c94b0cb02bb',
-  'lib-data-input-vertical-form':         '0be124134930bd594da9da61af7046c4e442878d',
 };
 
 const volcengineDesignDataDisplayComponents: ComponentsTheme = {
@@ -117,7 +114,6 @@ const volcengineDesignDataDisplayComponents: ComponentsTheme = {
   'lib-data-display-popover':               '1aa0a28fc871d9368c69cbe99c2ff0c0aaae5cb7',
   'lib-data-display-statistic':             '984f1ee1fe2ca3b9096f0f18dfc091c003a27f65',
   'lib-data-display-status-tag':            '03929d474a32cb373ef51950eef4f25970649ab0',
-  'lib-data-display-table':                 'bfccce80a53ec4ed52182f155c06653123a9864d',
   'lib-data-display-tableexpand':           '2510986b76fdf4dda2fa0045d9882ef3877c1822',
   'lib-data-display-tablefixation':         'c081103df8d15a1fef8309d5d794b2e7a6404c2b',
   'lib-data-display-tabs':                  '43d661890f421adcaca45eeba551fb00dc2edcd1',
