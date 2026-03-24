@@ -8882,7 +8882,7 @@ StepD:
         </div>
 
         {isCell && !isColumn && selectedComponent.componentId !== 'table-header-cell' && (
-          <div className="row" style={{ marginTop: '8px' }}>
+          <div className="row apply-column-row">
             <button type="button" className="selection-primary" onClick={applyColumnSettings}>
               应用到整列
             </button>

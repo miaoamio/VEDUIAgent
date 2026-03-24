@@ -1321,6 +1321,15 @@ h2 {
   line-height: 20px;
 }
 
+.selection-current .chat-selection-tag {
+  height: 20px;
+}
+
+.selection-current .chat-selection-tag-text {
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .selection-back {
   display: inline-flex;
   align-items: center;
@@ -2452,6 +2461,10 @@ button:disabled {
 .selection-primary:disabled {
   background: var(--ved-button-primary-bg, #18181B);
   cursor: not-allowed;
+}
+
+.apply-column-row {
+  margin-top: 16px;
 }
 
 .tabs {
