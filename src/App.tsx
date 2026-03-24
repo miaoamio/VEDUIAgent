@@ -2172,7 +2172,8 @@ function App() {
           setSelectedComponent(data);
           setSelectionVersion((prev) => prev + 1);
         }
-        setChartOverlayOpen(Boolean(data?.componentId && data.componentId.startsWith('chart')));
+        const nextIsChart = Boolean(data?.componentId && data.componentId.startsWith('chart'));
+        setChartOverlayOpen((prev) => (prev ? nextIsChart : false));
       }
 
       if (type === 'selection-multi-update') {
