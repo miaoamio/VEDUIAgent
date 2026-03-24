@@ -2741,6 +2741,64 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
+}
+
+.plan-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.plan-retry-btn:hover {
+  background: #E5E7EB;
+}
+
+.plan-retry-btn:disabled {
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: default;
+  opacity: 1;
+}
+
+.plan-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.plan-close-btn:hover {
+  background: #E5E7EB;
+}
+
+.plan-close-btn:disabled {
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: default;
+  opacity: 1;
+}
+
+.plan-close-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .plan-title {
@@ -2927,6 +2985,10 @@ button:disabled {
 
 .plan-task-icon-error {
   color: var(--ved-status-error, #EF4444);
+}
+
+.plan-task-icon-warning {
+  color: var(--ved-status-warning, #F59E0B);
 }
 
 .plan-task-icon-running {

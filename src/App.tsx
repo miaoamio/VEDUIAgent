@@ -525,6 +525,69 @@ function CircleXIcon({ className }: { className?: string }) {
   );
 }
 
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.5 3.5L10.5 10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.5 3.5L3.5 10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TriangleAlertIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line
+        x1="12"
+        y1="9"
+        x2="12"
+        y2="13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="17" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 function FrameIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -1982,6 +2045,7 @@ function App() {
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
   const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(true);
   const deferSelectionAutoSwitchRef = React.useRef(false);
+  const [planPanelClosed, setPlanPanelClosed] = React.useState(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -6379,6 +6443,7 @@ StepD:
 
     stopRequestedRef.current = false;
     deferSelectionAutoSwitchRef.current = false;
+    setPlanPanelClosed(true);
     llmAbortRef.current?.abort();
     const abortController = new AbortController();
     llmAbortRef.current = abortController;
@@ -6576,6 +6641,7 @@ StepD:
                 if (runtimePlan.tasks.length > 1) {
                   deferSelectionAutoSwitchRef.current = true;
                 }
+                    setPlanPanelClosed(false);
                 const summary = summarizePlan(runtimePlan);
                 const autoMsg = `[System]: 已自动生成执行计划（${runtimePlan.tasks.length} 个任务）。`;
                 accumulatedLog += autoMsg + '\n' + summary;
@@ -6740,6 +6806,7 @@ StepD:
                     runtimePlan = nextPlan;
                     setAgentPlan(runtimePlan);
                     setPlanTasksCollapsed(false);
+                    setPlanPanelClosed(false);
                     if (runtimePlan.tasks.length > 1) {
                       deferSelectionAutoSwitchRef.current = true;
                     }
@@ -6946,11 +7013,16 @@ StepD:
                 if (runtimePlan) {
                     const unfinished = getUnfinishedTasks(runtimePlan);
                     if (unfinished.length > 0) {
-                        const blockedMsg = `[System]: 完成被阻止：仍有未完成任务 ${unfinished.length} 个。`;
-                        accumulatedLog += '\n\n' + blockedMsg;
+                        runtimePlan = runtimePlan.tasks.reduce((acc, task) => {
+                          if (task.status === 'pending' || task.status === 'in_progress') {
+                            return updateTaskStatus(acc, task.taskId, 'blocked', '任务流程已结束');
+                          }
+                          return acc;
+                        }, runtimePlan);
+                        setAgentPlan(runtimePlan);
+                        accumulatedLog += '\n\n' + `[System]: 任务流程已结束：存在未完成任务（${unfinished.length} 个）。`;
                         setResponse(accumulatedLog);
-                        messages.push({ role: "user", content: blockedMsg });
-                        continue;
+                        break;
                     }
                 }
                 accumulatedLog += '\n\n' + `[System]: 任务全部完成。`;
@@ -8917,12 +8989,68 @@ StepD:
     setAgentPlan(null);
   };
 
+  const handleClosePlanPanel = () => {
+    if (loading) return;
+    setPlanPanelClosed(true);
+  };
+
   const handleManualTaskStatus = (taskId: string, status: PlanTaskStatus) => {
     if (loading) return;
     setAgentPlan((prev) => {
       if (!prev) return prev;
       return updateTaskStatus(prev, taskId, status, 'manual override');
     });
+  };
+
+  const handleRetryFailedTasks = async () => {
+    if (!agentPlan || manualTaskRunner || loading) return;
+    setManualTaskRunner(true);
+    let nextPlan = agentPlan;
+    try {
+      nextPlan = nextPlan.tasks.reduce((acc, task) => {
+        if (task.status === 'failed' || task.status === 'blocked') {
+          return updateTaskStatus(acc, task.taskId, 'pending', 'retry');
+        }
+        return acc;
+      }, nextPlan);
+      setAgentPlan(nextPlan);
+
+      while (true) {
+        const task = getNextExecutableTask(nextPlan);
+        if (!task) break;
+        const depNotDone = task.dependsOn.find((depId) => {
+          const dep = findTaskById(nextPlan, depId);
+          return !dep || dep.status !== 'done';
+        });
+        if (depNotDone) {
+          const depTitle = findTaskById(nextPlan, depNotDone)?.title || depNotDone;
+          const depMsg = `[System]: 执行任务被阻塞：依赖任务未完成（依赖：${depTitle}）`;
+          setResponse((prev) => (prev ? `${prev}\n\n${depMsg}` : depMsg));
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'blocked', depMsg);
+          setAgentPlan(nextPlan);
+          break;
+        }
+
+        nextPlan = updateTaskStatus(nextPlan, task.taskId, 'in_progress', 'manual retry');
+        setAgentPlan(nextPlan);
+        const result = await executeTaskByType(task, { taskId: task.taskId }, nextPlan);
+        setResponse((prev) => (prev ? `${prev}\n\n${result.message}` : result.message));
+        if (result.ok) {
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'done');
+          if (result.nodeId) {
+            nextPlan = updateTaskTargetNodeId(nextPlan, task.taskId, result.nodeId);
+          }
+        } else {
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'failed', result.message);
+        }
+        setAgentPlan(nextPlan);
+      }
+    } catch (e) {
+      const errorMsg = `[System]: 全部重试失败：${e}`;
+      setResponse((prev) => (prev ? `${prev}\n\n${errorMsg}` : errorMsg));
+    } finally {
+      setManualTaskRunner(false);
+    }
   };
 
   const handleNudgeNextTask = async () => {
@@ -8985,6 +9113,10 @@ StepD:
 
     const totalCount = agentPlan.tasks.length;
     const doneCount = agentPlan.tasks.reduce((acc, task) => (task.status === 'done' ? acc + 1 : acc), 0);
+    const hasRetryTargets = agentPlan.tasks.some(
+      (task) => task.status === 'failed' || task.status === 'blocked'
+    );
+    const showHeaderActions = agentPlan.tasks.length > 1 && hasRetryTargets;
 
     return (
       <div className="plan-panel plan-panel-inline">
@@ -9002,6 +9134,27 @@ StepD:
             )}
             <div className="plan-header-summary-text">{doneCount}/{totalCount} 已完成</div>
           </button>
+          {showHeaderActions && (
+            <div className="plan-header-actions">
+              <button
+                type="button"
+                className="plan-retry-btn"
+                onClick={handleRetryFailedTasks}
+                disabled={loading || manualTaskRunner}
+              >
+                {manualTaskRunner ? '重试中...' : '全部重试'}
+              </button>
+              <button
+                type="button"
+                className="plan-close-btn"
+                onClick={handleClosePlanPanel}
+                disabled={loading}
+                aria-label="关闭任务面板"
+              >
+                <CloseIcon className="plan-close-icon" />
+              </button>
+            </div>
+          )}
         </div>
 
         {!planTasksCollapsed && (
@@ -9010,6 +9163,8 @@ StepD:
               <div key={task.taskId} className={`plan-task plan-task-${task.status}`}>
                 {task.status === 'failed' ? (
                   <CircleXIcon className="plan-task-icon plan-task-icon-error" />
+                ) : task.status === 'blocked' ? (
+                  <TriangleAlertIcon className="plan-task-icon plan-task-icon-warning" />
                 ) : task.status === 'done' ? (
                   <CircleCheckIcon className="plan-task-icon plan-task-icon-done" />
                 ) : task.status === 'in_progress' ? (
@@ -9443,7 +9598,7 @@ StepD:
                 event.currentTarget.value = '';
               }}
             />
-            {agentPlan && agentPlan.tasks.some((task) => task.status !== 'done') && (
+            {agentPlan && !planPanelClosed && agentPlan.tasks.some((task) => task.status !== 'done') && (
               <div className="plan-inline">{renderPlanPanel()}</div>
             )}
             <div className="chat-selection-bar">
