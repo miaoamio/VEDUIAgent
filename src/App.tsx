@@ -7399,7 +7399,7 @@ StepD:
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
                             const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
-                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                            const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -7526,7 +7526,7 @@ StepD:
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
-                        const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                        const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -7569,7 +7569,7 @@ StepD:
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
                         const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
-                        const successMsg = `[System]: 表单创建成功（节点=${rootNodeId}，行数=${rowCount}，布局=${formComponent.params.layout}）。`;
+                        const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -7611,7 +7611,7 @@ StepD:
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
                             const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
-                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                            const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -7647,7 +7647,7 @@ StepD:
                       resolvedParentId
                     );
 
-                    accumulatedLog += '\n\n' + `[System]: 组件创建成功（节点=${rootNodeId}）`;
+                    accumulatedLog += '\n\n' + `[System]: 组件创建成功。`;
                     setResponse(accumulatedLog);
 
                     // Add result to history for next turn
