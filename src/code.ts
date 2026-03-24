@@ -6864,11 +6864,40 @@ type AvatarContainerNode = SceneNode & {
     findAll: (callback: (node: SceneNode) => boolean) => SceneNode[];
 };
 
-function resolveAvatarInitial(value: unknown): string {
+const CHINESE_SURNAME_INITIAL_MAP: Record<string, string> = {
+    '赵': 'Z', '钱': 'Q', '孙': 'S', '李': 'L', '周': 'Z', '吴': 'W', '郑': 'Z', '王': 'W',
+    '冯': 'F', '陈': 'C', '褚': 'C', '卫': 'W', '蒋': 'J', '沈': 'S', '韩': 'H', '杨': 'Y',
+    '朱': 'Z', '秦': 'Q', '尤': 'Y', '许': 'X', '何': 'H', '吕': 'L', '施': 'S', '张': 'Z',
+    '孔': 'K', '曹': 'C', '严': 'Y', '华': 'H', '金': 'J', '魏': 'W', '陶': 'T', '姜': 'J',
+    '戚': 'Q', '谢': 'X', '邹': 'Z', '喻': 'Y', '柏': 'B', '水': 'S', '窦': 'D', '章': 'Z',
+    '云': 'Y', '苏': 'S', '潘': 'P', '葛': 'G', '奚': 'X', '范': 'F', '彭': 'P', '郎': 'L',
+    '鲁': 'L', '韦': 'W', '昌': 'C', '马': 'M', '苗': 'M', '凤': 'F', '花': 'H', '方': 'F',
+    '俞': 'Y', '任': 'R', '袁': 'Y', '柳': 'L', '唐': 'T', '罗': 'L', '薛': 'X', '伍': 'W',
+    '余': 'Y', '米': 'M', '贝': 'B', '姚': 'Y', '孟': 'M', '顾': 'G', '尹': 'Y', '江': 'J',
+    '钟': 'Z', '徐': 'X', '邱': 'Q', '骆': 'L', '高': 'G', '夏': 'X', '蔡': 'C', '田': 'T',
+    '樊': 'F', '胡': 'H', '凌': 'L', '霍': 'H', '虞': 'Y', '万': 'W', '支': 'Z', '柯': 'K',
+    '昝': 'Z', '管': 'G', '卢': 'L', '莫': 'M', '经': 'J', '房': 'F', '裘': 'Q', '缪': 'M',
+    '干': 'G', '解': 'X', '应': 'Y', '宗': 'Z', '宣': 'X', '丁': 'D', '贲': 'B', '邓': 'D',
+    '郁': 'Y', '单': 'S', '杭': 'H', '洪': 'H', '包': 'B', '诸': 'Z', '左': 'Z', '石': 'S',
+    '崔': 'C', '吉': 'J', '龚': 'G', '程': 'C', '邢': 'X', '裴': 'P', '陆': 'L', '荣': 'R',
+    '翁': 'W', '荀': 'X', '羊': 'Y', '于': 'Y', '惠': 'H', '甄': 'Z', '曲': 'Q', '家': 'J',
+    '封': 'F', '芮': 'R', '羿': 'Y', '储': 'C', '靳': 'J', '汲': 'J', '邴': 'B', '糜': 'M',
+    '松': 'S', '井': 'J', '段': 'D', '富': 'F', '巫': 'W', '乌': 'W', '焦': 'J', '巴': 'B',
+    '弓': 'G', '牧': 'M', '隗': 'K', '山': 'S', '谷': 'G', '车': 'C', '侯': 'H', '宓': 'M',
+    '蓬': 'P', '全': 'Q', '郗': 'X', '班': 'B', '仰': 'Y', '秋': 'Q', '仲': 'Z', '伊': 'Y',
+    '宫': 'G', '宁': 'N', '仇': 'Q', '栾': 'L', '暴': 'B', '甘': 'G', '钭': 'T', '厉': 'L',
+    '戎': 'R', '祖': 'Z', '武': 'W', '符': 'F', '刘': 'L', '邵': 'S', '湛': 'Z', '汪': 'W',
+    '雷': 'L', '戴': 'D', '傅': 'F', '宋': 'S', '齐': 'Q', '康': 'K', '黎': 'L',
+    '熊': 'X', '邰': 'T', '尧': 'Y', '覃': 'Q', '谭': 'T', '廖': 'L', '曾': 'Z'
+};
+
+function resolveAvatarInitialFromName(value: unknown): string {
     const raw = String(value ?? '').trim();
     if (!raw) return 'U';
     const first = Array.from(raw)[0] || 'U';
-    return /[a-z]/i.test(first) ? first.toUpperCase() : first;
+    if (/[a-z]/i.test(first)) return first.toUpperCase();
+    if (/[\u3400-\u9fff]/.test(first)) return CHINESE_SURNAME_INITIAL_MAP[first] || 'U';
+    return 'U';
 }
 
 async function createCenteredAvatarFallback(initial: string, size = 20): Promise<FrameNode> {
@@ -6880,6 +6909,11 @@ async function createCenteredAvatarFallback(initial: string, size = 20): Promise
     frame.fills = [{ type: 'SOLID', color: { r: 0.992, g: 0.922, b: 0.922 } }];
 
     const textNode = figma.createText();
+    try {
+        textNode.setPluginData('avatar-initial', 'true');
+    } catch {
+        // ignore
+    }
     await ensureInterFontsLoaded();
     await applyTextStyleBinding(textNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
     textNode.characters = initial;
@@ -7175,6 +7209,9 @@ async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'ce
   const textNodes = collectTextNodes(cell);
   for (const textNode of textNodes) {
     try {
+      if (textNode.getPluginData('avatar-initial') === 'true') {
+        continue;
+      }
       await figma.loadFontAsync(textNode.fontName as FontName);
       if (align === 'right') {
         textNode.textAlignHorizontal = 'RIGHT';
@@ -8374,27 +8411,8 @@ async function renderComponent(
     // 2. Avatar Cell
     else if (instance.componentId === 'table-cell-avatar') {
         const displayText = params.text || params.name || params.label || 'User';
-        const initial = resolveAvatarInitial(displayText);
-        const avatarInstance = await createFigmaComponentInstanceByToken('lib-data-display-avataricon');
-        if (avatarInstance) {
-            try {
-                avatarInstance.resize(20, 20);
-            } catch {
-                // ignore
-            }
-            try {
-                const detached = avatarInstance.detachInstance();
-                detached.resize(20, 20);
-                await tryCenterAvatarIconText(detached as unknown as AvatarContainerNode, initial);
-                frame.appendChild(detached);
-            } catch {
-                const fallback = await createCenteredAvatarFallback(initial, 20);
-                frame.appendChild(fallback);
-            }
-        } else {
-            const fallback = await createCenteredAvatarFallback(initial, 20);
-            frame.appendChild(fallback);
-        }
+        const initial = resolveAvatarInitialFromName(displayText);
+        frame.appendChild(await createCenteredAvatarFallback(initial, 20));
 
         const textNode = figma.createText();
         await applyTextStyleBinding(textNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
