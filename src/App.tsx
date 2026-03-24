@@ -2152,6 +2152,7 @@ function App() {
       // #endregion
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
+        if (typeof message === 'string' && (/^Applied\b/.test(message) || /^Swapped\b/.test(message))) return;
         setResponse((prev) => (prev ? prev + '\n\n' + `[System]: ${message}` : `[System]: ${message}`));
       }
       
