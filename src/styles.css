@@ -1321,6 +1321,15 @@ h2 {
   line-height: 20px;
 }
 
+.selection-current .chat-selection-tag {
+  height: 20px;
+}
+
+.selection-current .chat-selection-tag-text {
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .selection-back {
   display: inline-flex;
   align-items: center;
@@ -1392,12 +1401,12 @@ h2 {
 }
 
 .selection-empty {
-  border: 1px dashed #E5E7EB;
-  background: #F9FAFB;
+  border: 1px solid #E4E4E7;
+  background: var(--ved-bg-progress-bar, #EFF6FF);
   color: #6B7280;
   font-size: 13px;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   text-align: center;
 }
 
@@ -1456,10 +1465,6 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   color: #111827;
   resize: none;
   background: transparent;
-}
-
-.composer-box.with-chart-tag .composer-textarea {
-  /* Remove text-indent to allow normal text wrapping */
 }
 
 .composer-textarea:focus {
@@ -2458,6 +2463,10 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.apply-column-row {
+  margin-top: 16px;
+}
+
 .tabs {
   display: flex;
   background: #F0F0F0;
@@ -2747,6 +2756,64 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
+}
+
+.plan-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.plan-retry-btn:hover {
+  background: #E5E7EB;
+}
+
+.plan-retry-btn:disabled {
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: default;
+  opacity: 1;
+}
+
+.plan-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.plan-close-btn:hover {
+  background: #E5E7EB;
+}
+
+.plan-close-btn:disabled {
+  background: transparent;
+  color: var(--ved-text-secondary, #6B7280);
+  cursor: default;
+  opacity: 1;
+}
+
+.plan-close-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .plan-title {
@@ -2933,6 +3000,10 @@ button:disabled {
 
 .plan-task-icon-error {
   color: var(--ved-status-error, #EF4444);
+}
+
+.plan-task-icon-warning {
+  color: var(--ved-status-warning, #F59E0B);
 }
 
 .plan-task-icon-running {

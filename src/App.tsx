@@ -96,6 +96,20 @@ const TABLE_PROMPT_REGEX = /(表格|table)/i;
 const CHART_PROMPT_REGEX = /(图表|chart|饼图|环形图|折线图|柱状图|条形图|面积图)/i;
 const FORM_PROMPT_REGEX = /(表单|筛选|form|input|输入框|选择器|单选|多选)/i;
 
+const CHART_TOKEN_TO_COMPONENT_ID: Record<string, string> = {
+  'lib-data-display-toplist': 'chart-toplist',
+  'lib-data-display-component-piechart': 'chart-pie',
+  'lib-data-display-component-linechart': 'chart-line',
+  'lib-data-display-component-barchart': 'chart-bar',
+  'lib-data-display-component-areachart': 'chart-area'
+};
+
+function resolveChartComponentIdOverride(componentId: unknown, chartTokenOverride: string): string {
+  const raw = typeof componentId === 'string' ? componentId : '';
+  if (!raw.startsWith('chart-')) return raw;
+  return CHART_TOKEN_TO_COMPONENT_ID[chartTokenOverride] || raw;
+}
+
 type XlsxWorkbook = {
   SheetNames: string[];
   Sheets: Record<string, unknown>;
@@ -527,6 +541,69 @@ function CircleXIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.5 3.5L10.5 10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.5 3.5L3.5 10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TriangleAlertIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line
+        x1="12"
+        y1="9"
+        x2="12"
+        y2="13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="17" r="1" fill="currentColor" />
     </svg>
   );
 }
@@ -1874,6 +1951,8 @@ function App() {
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
+  const chartTokenOverrideRef = React.useRef('');
+  const chartShortcutOnSendRef = React.useRef<string | null>(null);
   const [chartExtraOptions, setChartExtraOptions] = React.useState<Record<string, string>>({});
   const [activeOptionMenu, setActiveOptionMenu] = React.useState<string | null>(null);
   const [tagRowHeight, setTagRowHeight] = React.useState(0);
@@ -2005,6 +2084,7 @@ function App() {
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
   const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(true);
   const deferSelectionAutoSwitchRef = React.useRef(false);
+  const [planPanelClosed, setPlanPanelClosed] = React.useState(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
     params: any;
@@ -2072,6 +2152,7 @@ function App() {
       // #endregion
       if (type === 'action-done') {
         if (message === 'Updated properties') return;
+        if (typeof message === 'string' && (/^Applied\b/.test(message) || /^Swapped\b/.test(message))) return;
         setResponse((prev) => (prev ? prev + '\n\n' + `[System]: ${message}` : `[System]: ${message}`));
       }
       
@@ -2092,7 +2173,9 @@ function App() {
           setSelectedComponent(data);
           setSelectionVersion((prev) => prev + 1);
         }
-        setChartOverlayOpen(Boolean(data?.componentId && data.componentId.startsWith('chart')));
+        const nextIsChart = Boolean(data?.componentId && data.componentId.startsWith('chart'));
+        // 仅当覆盖层已打开且新选择仍是图表时保持打开；否则不自动打开并关闭覆盖层，避免绘制后自动弹出与闪烁。
+        setChartOverlayOpen((prev) => (prev ? nextIsChart : false));
       }
 
       if (type === 'selection-multi-update') {
@@ -6215,7 +6298,27 @@ StepD:
           message: `[System]: 任务执行失败：图表区参数无效。`
         };
       }
-      const nodeId = await createComponentNode(block, parentId);
+      const patchChartTree = (node: any, chartTokenOverride: string): any => {
+        if (!chartTokenOverride || !isObject(node)) return node;
+        const next: any = { ...node };
+        next.componentId = resolveChartComponentIdOverride(next.componentId, chartTokenOverride);
+        if (Array.isArray(next.children)) {
+          next.children = next.children.map((child: any) => patchChartTree(child, chartTokenOverride));
+        }
+        if (isObject(next.slots)) {
+          const slots: any = {};
+          Object.entries(next.slots).forEach(([slotKey, slotNodes]) => {
+            slots[slotKey] = Array.isArray(slotNodes)
+              ? slotNodes.map((child: any) => patchChartTree(child, chartTokenOverride))
+              : slotNodes;
+          });
+          next.slots = slots;
+        }
+        return next;
+      };
+      const effectiveChartTokenOverride = chartShortcutOnSendRef.current ? chartTokenOverrideRef.current : '';
+      const patchedBlock = effectiveChartTokenOverride ? patchChartTree(block, effectiveChartTokenOverride) : block;
+      const nodeId = await createComponentNode(patchedBlock, parentId);
       return {
         ok: true,
         nodeId,
@@ -6421,6 +6524,7 @@ StepD:
 
     stopRequestedRef.current = false;
     deferSelectionAutoSwitchRef.current = false;
+    setPlanPanelClosed(true);
     llmAbortRef.current?.abort();
     const abortController = new AbortController();
     llmAbortRef.current = abortController;
@@ -6449,6 +6553,8 @@ StepD:
         ? baseChartText
         : userInput;
     const chartTokenOverride = getChartToken(turnInput, '');
+    chartTokenOverrideRef.current = chartTokenOverride;
+    chartShortcutOnSendRef.current = chartShortcutActive;
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
@@ -6618,6 +6724,7 @@ StepD:
                 if (runtimePlan.tasks.length > 1) {
                   deferSelectionAutoSwitchRef.current = true;
                 }
+                    setPlanPanelClosed(false);
                 const summary = summarizePlan(runtimePlan);
                 const autoMsg = `[System]: 已自动生成执行计划（${runtimePlan.tasks.length} 个任务）。`;
                 accumulatedLog += autoMsg + '\n' + summary;
@@ -6782,6 +6889,7 @@ StepD:
                     runtimePlan = nextPlan;
                     setAgentPlan(runtimePlan);
                     setPlanTasksCollapsed(false);
+                    setPlanPanelClosed(false);
                     if (runtimePlan.tasks.length > 1) {
                       deferSelectionAutoSwitchRef.current = true;
                     }
@@ -6988,11 +7096,16 @@ StepD:
                 if (runtimePlan) {
                     const unfinished = getUnfinishedTasks(runtimePlan);
                     if (unfinished.length > 0) {
-                        const blockedMsg = `[System]: 完成被阻止：仍有未完成任务 ${unfinished.length} 个。`;
-                        accumulatedLog += '\n\n' + blockedMsg;
+                        runtimePlan = runtimePlan.tasks.reduce((acc, task) => {
+                          if (task.status === 'pending' || task.status === 'in_progress') {
+                            return updateTaskStatus(acc, task.taskId, 'blocked', '任务流程已结束');
+                          }
+                          return acc;
+                        }, runtimePlan);
+                        setAgentPlan(runtimePlan);
+                        accumulatedLog += '\n\n' + `[System]: 任务流程已结束：存在未完成任务（${unfinished.length} 个）。`;
                         setResponse(accumulatedLog);
-                        messages.push({ role: "user", content: blockedMsg });
-                        continue;
+                        break;
                     }
                 }
                 accumulatedLog += '\n\n' + `[System]: 任务全部完成。`;
@@ -7289,7 +7402,7 @@ StepD:
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
                             const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
-                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                            const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -7318,6 +7431,7 @@ StepD:
                 const patchChartNode = (node: any): any => {
                   if (!chartTokenOverride || !isObject(node)) return node;
                   const next: any = { ...node };
+                  next.componentId = resolveChartComponentIdOverride(next.componentId, chartTokenOverride);
                   if (next.componentId === 'figma-component') {
                     const props = isObject(next.props) ? { ...next.props } : {};
                     props.componentToken = chartTokenOverride;
@@ -7415,7 +7529,7 @@ StepD:
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
-                        const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                        const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -7458,7 +7572,7 @@ StepD:
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
                         const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
-                        const successMsg = `[System]: 表单创建成功（节点=${rootNodeId}，行数=${rowCount}，布局=${formComponent.params.layout}）。`;
+                        const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -7500,7 +7614,7 @@ StepD:
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
                             const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
-                            const successMsg = `[System]: 表格创建成功（节点=${rootNodeId}，列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                            const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                             accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
                             setResponse(accumulatedLog);
                             messages.push({
@@ -7525,22 +7639,24 @@ StepD:
                 }
 
                 try {
+                    const nextComponentId =
+                      chartTokenOverride ? resolveChartComponentIdOverride(componentId, chartTokenOverride) : componentId;
                     const nextParams =
                       chartTokenOverride && componentId === 'figma-component' && isObject(params)
                         ? { ...params, componentToken: chartTokenOverride, componentKey: '', fallbackName: '' }
                         : params;
                     const rootNodeId = await createComponentNode(
-                      { componentId, params: nextParams, children },
+                      { componentId: nextComponentId, params: nextParams, children },
                       resolvedParentId
                     );
 
-                    accumulatedLog += '\n\n' + `[System]: 组件创建成功（节点=${rootNodeId}）`;
+                    accumulatedLog += '\n\n' + `[System]: 组件创建成功。`;
                     setResponse(accumulatedLog);
 
                     // Add result to history for next turn
                     messages.push({ 
                         role: "user", 
-                        content: `System: Successfully created component '${componentId}' with ID '${rootNodeId}'.` 
+                        content: `System: Successfully created component '${nextComponentId}' with ID '${rootNodeId}'.` 
                     });
                     if (runtimePlan && actionTaskId) {
                         runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
@@ -8768,7 +8884,7 @@ StepD:
         </div>
 
         {isCell && !isColumn && selectedComponent.componentId !== 'table-header-cell' && (
-          <div className="row" style={{ marginTop: '8px' }}>
+          <div className="row apply-column-row">
             <button type="button" className="selection-primary" onClick={applyColumnSettings}>
               应用到整列
             </button>
@@ -8963,12 +9079,75 @@ StepD:
     setAgentPlan(null);
   };
 
+  const handleClosePlanPanel = () => {
+    if (loading) return;
+    setPlanPanelClosed(true);
+  };
+
   const handleManualTaskStatus = (taskId: string, status: PlanTaskStatus) => {
     if (loading) return;
     setAgentPlan((prev) => {
       if (!prev) return prev;
       return updateTaskStatus(prev, taskId, status, 'manual override');
     });
+  };
+
+  const handleRetryFailedTasks = async () => {
+    if (!agentPlan || manualTaskRunner || loading) return;
+    setManualTaskRunner(true);
+    let nextPlan = agentPlan;
+    try {
+      nextPlan = nextPlan.tasks.reduce((acc, task) => {
+        if (task.status === 'failed' || task.status === 'blocked') {
+          return updateTaskStatus(acc, task.taskId, 'pending', 'retry');
+        }
+        return acc;
+      }, nextPlan);
+      setAgentPlan(nextPlan);
+
+      const maxRetryRuns = Math.max(10, nextPlan.tasks.length * 3);
+      let retryRuns = 0;
+      while (retryRuns < maxRetryRuns) {
+        const task = getNextExecutableTask(nextPlan);
+        if (!task) break;
+        retryRuns += 1;
+        const depNotDone = task.dependsOn.find((depId) => {
+          const dep = findTaskById(nextPlan, depId);
+          return !dep || dep.status !== 'done';
+        });
+        if (depNotDone) {
+          const depTitle = findTaskById(nextPlan, depNotDone)?.title || depNotDone;
+          const depMsg = `[System]: 执行任务被阻塞：依赖任务未完成（依赖：${depTitle}）`;
+          setResponse((prev) => (prev ? `${prev}\n\n${depMsg}` : depMsg));
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'blocked', depMsg);
+          setAgentPlan(nextPlan);
+          break;
+        }
+
+        nextPlan = updateTaskStatus(nextPlan, task.taskId, 'in_progress', 'manual retry');
+        setAgentPlan(nextPlan);
+        const result = await executeTaskByType(task, { taskId: task.taskId }, nextPlan);
+        setResponse((prev) => (prev ? `${prev}\n\n${result.message}` : result.message));
+        if (result.ok) {
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'done');
+          if (result.nodeId) {
+            nextPlan = updateTaskTargetNodeId(nextPlan, task.taskId, result.nodeId);
+          }
+        } else {
+          nextPlan = updateTaskStatus(nextPlan, task.taskId, 'failed', result.message);
+        }
+        setAgentPlan(nextPlan);
+      }
+      if (retryRuns >= maxRetryRuns) {
+        const warnMsg = `[System]: 全部重试已停止：超过最大重试步数（${maxRetryRuns}）。`;
+        setResponse((prev) => (prev ? `${prev}\n\n${warnMsg}` : warnMsg));
+      }
+    } catch (e) {
+      const errorMsg = `[System]: 全部重试失败：${e}`;
+      setResponse((prev) => (prev ? `${prev}\n\n${errorMsg}` : errorMsg));
+    } finally {
+      setManualTaskRunner(false);
+    }
   };
 
   const handleNudgeNextTask = async () => {
@@ -9031,6 +9210,10 @@ StepD:
 
     const totalCount = agentPlan.tasks.length;
     const doneCount = agentPlan.tasks.reduce((acc, task) => (task.status === 'done' ? acc + 1 : acc), 0);
+    const hasRetryTargets = agentPlan.tasks.some(
+      (task) => task.status === 'failed' || task.status === 'blocked'
+    );
+    const showHeaderActions = agentPlan.tasks.length > 1 && hasRetryTargets;
 
     return (
       <div className="plan-panel plan-panel-inline">
@@ -9048,6 +9231,27 @@ StepD:
             )}
             <div className="plan-header-summary-text">{doneCount}/{totalCount} 已完成</div>
           </button>
+          {showHeaderActions && (
+            <div className="plan-header-actions">
+              <button
+                type="button"
+                className="plan-retry-btn"
+                onClick={handleRetryFailedTasks}
+                disabled={loading || manualTaskRunner}
+              >
+                {manualTaskRunner ? '重试中...' : '全部重试'}
+              </button>
+              <button
+                type="button"
+                className="plan-close-btn"
+                onClick={handleClosePlanPanel}
+                disabled={loading}
+                aria-label="关闭任务面板"
+              >
+                <CloseIcon className="plan-close-icon" />
+              </button>
+            </div>
+          )}
         </div>
 
         {!planTasksCollapsed && (
@@ -9056,6 +9260,8 @@ StepD:
               <div key={task.taskId} className={`plan-task plan-task-${task.status}`}>
                 {task.status === 'failed' ? (
                   <CircleXIcon className="plan-task-icon plan-task-icon-error" />
+                ) : task.status === 'blocked' ? (
+                  <TriangleAlertIcon className="plan-task-icon plan-task-icon-warning" />
                 ) : task.status === 'done' ? (
                   <CircleCheckIcon className="plan-task-icon plan-task-icon-done" />
                 ) : task.status === 'in_progress' ? (
@@ -9489,7 +9695,7 @@ StepD:
                 event.currentTarget.value = '';
               }}
             />
-            {agentPlan && agentPlan.tasks.some((task) => task.status !== 'done') && (
+            {agentPlan && !planPanelClosed && agentPlan.tasks.some((task) => task.status !== 'done') && (
               <div className="plan-inline">{renderPlanPanel()}</div>
             )}
             <div className="chat-selection-bar">
@@ -9507,18 +9713,37 @@ StepD:
               ) : (
                 <span className="chat-selection-label">已选中</span>
               )}
-              <Tooltip content={manualTooltipText} enabled={selectionCount <= 0} placement="top-end">
+              {(() => {
+                const isManualAdjustSupported =
+                  selectionCount === 1 &&
+                  Boolean(selectedComponent) &&
+                  (selectedComponent!.componentId === 'table' ||
+                    selectedComponent!.componentId === 'table-column' ||
+                    isTableCellComponent(selectedComponent!.componentId) ||
+                    isFormComponent(selectedComponent!.componentId));
+                const manualAdjustDisabled =
+                  selectionCount <= 0 ||
+                  (selectionCount === 1 && Boolean(selectedComponent) && !isManualAdjustSupported);
+                const tooltipText = selectionCount <= 0
+                  ? manualTooltipText
+                  : manualAdjustDisabled
+                    ? '暂不支持，请通过Figma调整'
+                    : manualTooltipText;
+                return (
+                  <Tooltip content={tooltipText} enabled={manualAdjustDisabled} placement="top-end">
                 <div className="chat-selection-action-wrap">
                   <button
                     type="button"
                     className="chat-selection-action"
                     onClick={() => setActiveTab('selection')}
-                    disabled={selectionCount <= 0}
+                    disabled={manualAdjustDisabled}
                   >
                     手动调整
                   </button>
                 </div>
-              </Tooltip>
+                  </Tooltip>
+                );
+              })()}
             </div>
             <div className="composer">
               {(uploadedImages.length > 0 || uploadedTables.length > 0 || attachmentError) && (
