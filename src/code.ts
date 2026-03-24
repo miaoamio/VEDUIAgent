@@ -6919,11 +6919,6 @@ async function tryCenterAvatarIconText(container: AvatarContainerNode, initial: 
             if (candidate && candidate.type === 'SOLID') fallbackFill = candidate as SolidPaint;
         }
         try {
-            textNode.visible = false;
-        } catch {
-            // ignore
-        }
-        try {
             textNode.opacity = 0;
         } catch {
             // ignore
