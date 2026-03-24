@@ -9421,6 +9421,8 @@ async function drawAiChart(data: any, options: any) {
   plotFrame.itemSpacing = 0;
   plotFrame.fills = [];
   plotFrame.clipsContent = false;
+  plotFrame.layoutAlign = "STRETCH";
+  plotFrame.layoutGrow = 1;
   
   const currentBodyW = width - 32;
   const chartBodyH = estimatedHeight; 
@@ -9866,6 +9868,7 @@ async function drawAiChart(data: any, options: any) {
     legendFrame.layoutMode = "HORIZONTAL";
     legendFrame.counterAxisSizingMode = "AUTO";
     legendFrame.itemSpacing = 16;
+    legendFrame.layoutAlign = "STRETCH";
     legendFrame.fills = [];
     
     data.datasets.forEach((ds: any, i: number) => {
