@@ -22,16 +22,6 @@ const selectRenderNotes = {
   ]
 };
 
-const switchRenderNotes = {
-  actionHint: "开关必须使用 Switch 组件，避免手绘。",
-  paramRules: [
-    "checked 控制开关状态。",
-    "disabled 为 true 时强制使用禁用变体。"
-  ],
-  commonErrors: [
-    "不要用 checkbox 代替 switch。"
-  ]
-};
 
 const datepickerRenderNotes = {
   actionHint: "日期选择器优先复用 Datepicker 组件。",
@@ -77,16 +67,6 @@ const sliderRenderNotes = {
   ]
 };
 
-const textareaRenderNotes = {
-  actionHint: "多行文本使用 Textarea 组件。",
-  paramRules: [
-    "rows 控制高度。",
-    "placeholder/value 仅影响展示文本。"
-  ],
-  commonErrors: [
-    "不要用 input 拉高充当 textarea。"
-  ]
-};
 
 const uploadRenderNotes = {
   actionHint: "上传区域使用 Upload 组件。",
@@ -715,88 +695,6 @@ export const inputComponents: ComponentRegistry["components"] = {
       }
     }
   },
-  "switch": {
-    "id": "switch",
-    "name": "开关",
-    "category": "Form",
-    "description": "开关控件",
-    "schemaVersion": "2.0.0",
-    "params": {
-      "checked": {
-        "type": "boolean",
-        "default": false,
-        "description": "是否选中"
-      },
-      "size": {
-        "type": "select",
-        "default": "Default 22",
-        "description": "尺寸",
-        "enumValues": [
-          "Small 14",
-          "Default 22"
-        ]
-      },
-      "disabled": {
-        "type": "boolean",
-        "default": false,
-        "description": "禁用"
-      }
-    },
-    "capabilities": {
-      "allowChildren": false,
-      "allowSwapVariant": false,
-      "allowSetProps": true,
-      "allowSetLayout": true,
-      "allowSetStyle": true,
-      "allowBindData": false,
-      "allowRemove": true
-    },
-    "figmaBinding": {
-      "nodeType": "INSTANCE",
-      "preferredLayoutMode": "HORIZONTAL",
-      "renderKey": "switch"
-    },
-    "figmaPropertySnapshot": {
-      "token": "lib-data-input-switch",
-      "inspectedAt": "2026-03-22T10:49:33.734Z",
-      "source": "discover_component_props",
-      "componentSetName": "Switch 开关",
-      "properties": [
-        {
-          "propertyName": "Disabled 禁用",
-          "type": "VARIANT",
-          "defaultValue": "False",
-          "options": [
-            "False",
-            "True"
-          ]
-        },
-        {
-          "propertyName": "Size 尺寸",
-          "type": "VARIANT",
-          "defaultValue": "Default 22",
-          "options": [
-            "Small 14",
-            "Default 22"
-          ]
-        },
-        {
-          "propertyName": "State 状态",
-          "type": "VARIANT",
-          "defaultValue": "Default 默认",
-          "options": [
-            "Default 默认",
-            "Loading 加载中"
-          ]
-        }
-      ],
-      "propertyMap": {
-        "Disabled 禁用": { "sourceParam": "disabled", "transform": "boolean" },
-        "Size 尺寸": { "sourceParam": "size" }
-      }
-    },
-    "renderNotes": switchRenderNotes
-  },
   "datepicker": {
     "id": "datepicker",
     "name": "日期选择",
@@ -1272,116 +1170,6 @@ export const inputComponents: ComponentRegistry["components"] = {
       }
     },
     "renderNotes": sliderRenderNotes
-  },
-  "textarea": {
-    "id": "textarea",
-    "name": "多行文本",
-    "category": "Form",
-    "description": "多行输入框",
-    "schemaVersion": "2.0.0",
-    "params": {
-      "placeholder": {
-        "type": "string",
-        "default": "请输入内容",
-        "description": "占位文案"
-      },
-      "value": {
-        "type": "string",
-        "default": "",
-        "description": "当前值"
-      },
-      "rows": {
-        "type": "number",
-        "default": 3,
-        "description": "行数"
-      },
-      "state": {
-        "type": "select",
-        "default": "Default 默认",
-        "description": "状态",
-        "enumValues": [
-          "Default 默认",
-          "Hover 悬浮",
-          "Active 激活",
-          "Error 错误",
-          "Disabled 禁用"
-        ]
-      },
-      "disabled": {
-        "type": "boolean",
-        "default": false,
-        "description": "禁用"
-      },
-      "width": {
-        "type": "number",
-        "default": 240,
-        "description": "宽度"
-      }
-    },
-    "capabilities": {
-      "allowChildren": false,
-      "allowSwapVariant": false,
-      "allowSetProps": true,
-      "allowSetLayout": true,
-      "allowSetStyle": true,
-      "allowBindData": false,
-      "allowRemove": true
-    },
-    "figmaBinding": {
-      "nodeType": "INSTANCE",
-      "preferredLayoutMode": "HORIZONTAL",
-      "renderKey": "textarea"
-    },
-    "runtime": {
-      "fallback": {
-        "width": 240,
-        "height": 96
-      }
-    },
-    "figmaPropertySnapshot": {
-      "token": "lib-data-input-textarea",
-      "inspectedAt": "2026-03-22T10:55:06.713Z",
-      "source": "discover_component_props",
-      "componentSetName": "TextArea 文本域",
-      "properties": [
-        {
-          "propertyName": "Rows 行数",
-          "type": "VARIANT",
-          "defaultValue": "3",
-          "options": [
-            "2",
-            "3",
-            "4",
-            "5"
-          ]
-        },
-        {
-          "propertyName": "State 状态",
-          "type": "VARIANT",
-          "defaultValue": "Default 默认",
-          "options": [
-            "Default 默认",
-            "Hover 悬浮",
-            "Active 激活"
-          ]
-        },
-        {
-          "propertyName": "Disable 禁用",
-          "type": "VARIANT",
-          "defaultValue": "False",
-          "options": [
-            "False",
-            "True"
-          ]
-        }
-      ],
-      "propertyMap": {
-        "Rows 行数": { "sourceParam": "rows", "transform": "number" },
-        "State 状态": { "sourceParam": "state" },
-        "Disable 禁用": { "sourceParam": "disabled", "transform": "boolean" }
-      }
-    },
-    "renderNotes": textareaRenderNotes
   },
   "upload": {
     "id": "upload",

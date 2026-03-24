@@ -42,7 +42,7 @@
         │
         ▼
    ┌─────────────┐
-   │   VED UI Agent  │  理解需求，规划步骤，决定调用哪些工具
+   │ VED UI Agent│  理解需求，规划步骤，决定调用哪些工具
    └──────┬──────┘
           │  读规范：「table 组件有哪些参数？」
           │  ──────────────────────────────────────────────────────►  ┌──────────────────────────────────────────┐
@@ -406,44 +406,23 @@ renderNotes: {
 
 ## 九、文档结构与职责
 
-> 一个关键前提：**运行时 AI 无法读取项目文件系统**。插件运行时 AI 的全部上下文来自 `App.tsx` 动态拼装的 system prompt，文件系统里的 `docs/` 对它不可见。因此，所有 `docs/` 文档都是给**开发者**或**开发 AI**（Claude Code 等编程助手）读的。
+### 真源文档（Source of Truth）
 
-### 文档分类
-
-| 目录 | 读者 | 用途 |
+| 文档 | 职责 | 位置 |
 |------|------|------|
-| `docs/NORTH_STAR.md` + `docs/FILE_STRUCTURE.md` | 开发者 + 开发 AI | 架构决策、文件归属规则 |
-| `docs/for-dev-ai/` | 开发 AI（Claude Code 等） | 工程实现规范、协议细节 |
-| `docs/for-humans/` | 开发者、设计师 | 使用说明、测试流程 |
-
-### 运行时 AI 的上下文来自哪里
-
-运行时 AI 的规则**只来自 `App.tsx` 的 `generateMasterPrompt()` 动态拼装**，包括：
-
-- 身份定义 + 可用组件索引（从 registry 动态生成）
-- 工作流规则（draw_table / draw_form / apply_scene 的决策顺序）
-- 各动作的详细 payload 规范
-- 组件 renderNotes（从 registry 按需注入）
-
-修改运行时 AI 行为 = 修改 `App.tsx generateMasterPrompt()` 或各组件的 `renderNotes`，不是修改 `docs/`。
-
-### 主要参考文档
-
-| 文档 | 职责 |
-|------|------|
-| `docs/NORTH_STAR.md`（本文档）| 指导思想、架构决策 |
-| `docs/FILE_STRUCTURE.md` | 文件归属规则 |
-| `docs/for-dev-ai/coding-specs/SPEC_REGISTRY_CN.md` | Registry 数据结构规范 |
-| `docs/for-dev-ai/coding-specs/SPEC_RENDER_ENGINE_CN.md` | 渲染引擎执行规范 |
-| `docs/for-dev-ai/coding-specs/SPEC_PROTOCOL_SCENE_CN.md` | Scene 协议字段规范 |
-| `docs/for-dev-ai/coding-specs/SPEC_AGENT_PLANNER_CN.md` | 计划队列规范 |
+| **本文档** | 指导思想、架构决策、所有文档的元规则 | `docs/NORTH_STAR.md` |
+| `AI_RUNTIME_SPEC_CODING_CN.md` | 运行时 AI 的动作规则（what to do） | `docs/for-runtime-ai/` |
+| `SPEC_REGISTRY_CN.md` | Registry 数据结构规范 | `docs/for-dev-ai/coding-specs/` |
+| `SPEC_RENDER_ENGINE_CN.md` | 渲染引擎执行规范 | `docs/for-dev-ai/coding-specs/` |
+| `SPEC_PROTOCOL_SCENE_CN.md` | Scene 协议字段规范 | `docs/for-runtime-ai/specs/` |
+| `SPEC_AGENT_PLANNER_CN.md` | 计划队列规范 | `docs/for-runtime-ai/specs/` |
 
 ### 维护规则
 
 1. **同一规则只在一个真源出现**，其他地方只链接。
-2. **发现矛盾时以本文档为准**，然后修正矛盾的那份文档。
-3. **新能力接入时，先更新本文档的架构部分**，再动代码。
-4. **运行时行为规则写在 `generateMasterPrompt()` 或 `renderNotes`**，不要写在 `docs/`。
+2. **本文档不写字段细节**，字段细节在对应真源文档里。
+3. **发现矛盾时以本文档为准**，然后修正矛盾的那份文档。
+4. **新能力接入时，先更新本文档的架构部分**，再动代码。
 
 ---
 
@@ -494,12 +473,6 @@ renderNotes: {
 ### 2026-03-22：Spec 推送分两阶段，Phase 1 系统主动推送，Phase 2 AI 主动读取
 
 **决策**：Phase 1（当前）系统识别意图主动推 `params + renderNotes`；Phase 2（未来）AI 主动按需读层。
-
-### 2026-03-23：删除 for-runtime-ai/ 目录，澄清文档读者边界
-
-**背景**：`docs/for-runtime-ai/` 存放了给"运行时 AI"读的文档，但插件运行时 AI 无法访问文件系统，这个目录没有有效读者。`AI_RUNTIME_SPEC_CODING_CN.md` 是 `App.tsx generateMasterPrompt()` 的过期文档副本，两者已出现不一致。
-
-**决策**：删除 `for-runtime-ai/` 目录。原子规范文档（SPEC_PROTOCOL_SCENE、SPEC_AGENT_PLANNER、SPEC_METADATA）移入 `for-dev-ai/coding-specs/`，作为开发 AI 的协议参考。运行时 AI 行为规则的唯一真源是 `generateMasterPrompt()` 和各组件的 `renderNotes`。
 
 ### 2026-03-23：spec.component-token-map.ts 迁移至 registry/
 

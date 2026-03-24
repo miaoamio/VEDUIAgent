@@ -11,6 +11,27 @@ const formRowRenderNotes = {
   ]
 };
 
+const switchRenderNotes = {
+  actionHint: "开关必须使用 Switch 组件，避免手绘。",
+  paramRules: [
+    "checked 控制开关状态。",
+    "disabled 为 true 时强制使用禁用变体。"
+  ],
+  commonErrors: [
+    "不要用 checkbox 代替 switch。"
+  ]
+};
+
+const textareaRenderNotes = {
+  actionHint: "多行文本使用 TextArea 组件。",
+  paramRules: [
+    "placeholder/value 仅影响展示文本。"
+  ],
+  commonErrors: [
+    "不要用 input 拉高充当 textarea。"
+  ]
+};
+
 export const formComponents: ComponentRegistry["components"] = {
   "filter-group": {
     "id": "filter-group",
@@ -429,6 +450,18 @@ export const formComponents: ComponentRegistry["components"] = {
       "spacing": {
         "rowSpacingTop": 24,
         "rowSpacingDefault": 12
+      },
+      "labelWidth": {
+        "default": 96,
+        "presets": {
+          "default-80": 80,
+          "medium-120": 120,
+          "large-160": 160
+        },
+        "variantThresholds": {
+          "medium": 110,
+          "large": 150
+        }
       }
     }
   },
@@ -777,6 +810,15 @@ export const formComponents: ComponentRegistry["components"] = {
       "preferredLayoutMode": "VERTICAL",
       "renderKey": "form-field"
     },
+    "runtime": {
+      "controlWidthModeOverrides": {
+        "fill": [
+          "datepicker",
+          "timepicker",
+          "textarea"
+        ]
+      }
+    },
     "colorVariableBindings": {
       "form-label-text": {
         "enabled": true,
@@ -915,5 +957,283 @@ export const formComponents: ComponentRegistry["components"] = {
         }
       ]
     }
+  },
+  "switch": {
+    "id": "switch",
+    "name": "开关",
+    "category": "Form",
+    "description": "开关控件",
+    "schemaVersion": "2.0.0",
+    "params": {
+      "checked": {
+        "type": "boolean",
+        "default": false,
+        "description": "是否选中"
+      },
+      "disabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "禁用"
+      },
+      "label": {
+        "type": "boolean",
+        "default": false,
+        "description": "显示标签"
+      },
+      "loading": {
+        "type": "boolean",
+        "default": false,
+        "description": "加载中"
+      },
+      "size": {
+        "type": "select",
+        "default": "Default  20",
+        "description": "尺寸",
+        "enumValues": [
+          "Mini 16",
+          "Default  20"
+        ]
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "INSTANCE",
+      "preferredLayoutMode": "HORIZONTAL",
+      "renderKey": "switch"
+    },
+    "figmaPropertySnapshot": {
+      "token": "lib-data-input-switch",
+      "componentKey": "d6017b9a513cbd53d6963d768259bbe0fcb8ddde",
+      "inspectedAt": "2026-03-23T11:16:18.783Z",
+      "source": "discover_component_props",
+      "componentSetName": "Switch 开关",
+      "properties": [
+        {
+          "propertyName": "Checked 开关",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Disabled 禁用",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Label 标签",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Loading 加载中",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Size 尺寸",
+          "type": "VARIANT",
+          "defaultValue": "Default  20",
+          "options": [
+            "Mini 16",
+            "Default  20"
+          ]
+        }
+      ],
+      "propertyMap": {
+        "Checked 开关": { "sourceParam": "checked", "transform": "boolean" },
+        "Disabled 禁用": { "sourceParam": "disabled", "transform": "boolean" },
+        "Label 标签": { "sourceParam": "label", "transform": "boolean" },
+        "Loading 加载中": { "sourceParam": "loading", "transform": "boolean" },
+        "Size 尺寸": { "sourceParam": "size" }
+      }
+    },
+    "renderNotes": switchRenderNotes
+  },
+  "textarea": {
+    "id": "textarea",
+    "name": "多行文本",
+    "category": "Form",
+    "description": "多行输入框",
+    "schemaVersion": "2.0.0",
+    "params": {
+      "placeholder": {
+        "type": "string",
+        "default": "请输入内容",
+        "description": "占位文案"
+      },
+      "value": {
+        "type": "string",
+        "default": "",
+        "description": "当前值"
+      },
+      "wordLimit": {
+        "type": "boolean",
+        "default": true,
+        "description": "字数限制"
+      },
+      "resizable": {
+        "type": "boolean",
+        "default": true,
+        "description": "可拖拽大小"
+      },
+      "filled": {
+        "type": "boolean",
+        "default": false,
+        "description": "已填"
+      },
+      "error": {
+        "type": "boolean",
+        "default": false,
+        "description": "错误态"
+      },
+      "state": {
+        "type": "select",
+        "default": "Defalult 默认",
+        "description": "状态",
+        "enumValues": [
+          "Defalult 默认",
+          "Hover 悬浮",
+          "Active 激活"
+        ]
+      },
+      "disabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "禁用"
+      },
+      "width": {
+        "type": "number",
+        "default": 240,
+        "description": "宽度"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "INSTANCE",
+      "preferredLayoutMode": "HORIZONTAL",
+      "renderKey": "textarea"
+    },
+    "runtime": {
+      "fallback": {
+        "width": 240,
+        "height": 52
+      }
+    },
+    "figmaPropertySnapshot": {
+      "token": "lib-data-input-textarea",
+      "componentKey": "acba4b2ca240bc5a54672107c78235f4f82fd419",
+      "inspectedAt": "2026-03-23T11:15:24.142Z",
+      "source": "discover_component_props",
+      "componentSetName": "TextArea 文本域",
+      "properties": [
+        {
+          "propertyName": "WordLimit 字数限制",
+          "type": "BOOLEAN",
+          "defaultValue": true,
+          "options": [
+            "True",
+            "False"
+          ]
+        },
+        {
+          "propertyName": "可拖拽大小",
+          "type": "BOOLEAN",
+          "defaultValue": true,
+          "options": [
+            "True",
+            "False"
+          ]
+        },
+        {
+          "propertyName": "placeholder 占位符",
+          "type": "TEXT",
+          "defaultValue": "This is the contents of the textarea.\n "
+        },
+        {
+          "propertyName": "value",
+          "type": "TEXT",
+          "defaultValue": "This is the contents of the textarea.\n "
+        },
+        {
+          "propertyName": "Disable 禁用",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Error 错误",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Filled 已填",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "True",
+            "False"
+          ]
+        },
+        {
+          "propertyName": "State 状态",
+          "type": "VARIANT",
+          "defaultValue": "Defalult 默认",
+          "options": [
+            "Defalult 默认",
+            "Hover 悬浮",
+            "Active 激活"
+          ]
+        }
+      ],
+      "propertyMap": {
+        "WordLimit 字数限制": { "sourceParam": "wordLimit", "transform": "boolean" },
+        "可拖拽大小": { "sourceParam": "resizable", "transform": "boolean" },
+        "placeholder 占位符": { "sourceParam": "placeholder" },
+        "value": { "sourceParam": "value" },
+        "Disable 禁用": { "sourceParam": "disabled", "transform": "boolean" },
+        "Error 错误": { "sourceParam": "error", "transform": "boolean" },
+        "Filled 已填": { "sourceParam": "filled", "transform": "boolean" },
+        "State 状态": { "sourceParam": "state" }
+      }
+    },
+    "renderNotes": textareaRenderNotes
   }
 };

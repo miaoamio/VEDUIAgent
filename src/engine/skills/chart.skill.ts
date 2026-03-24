@@ -18,6 +18,15 @@ import {
 
 // ─── Utils：图表专属工具函数 ────────────────────────────────────────────────
 
+// componentId → figmaPropertySnapshot.token 直接映射（优先于关键字匹配）
+const CHART_COMPONENT_TOKEN_MAP: Record<string, string> = {
+  'chart-toplist': 'lib-data-display-toplist',
+  'chart-pie':     'lib-data-display-component-piechart',
+  'chart-line':    'lib-data-display-component-linechart',
+  'chart-bar':     'lib-data-display-component-barchart',
+  'chart-area':    'lib-data-display-component-areachart',
+};
+
 export const getChartToken = (hint: string, fallbackToken = ''): string => {
   const normalized = String(hint || '').replace(/\s+/g, '').toLowerCase();
   if (!normalized) return fallbackToken;
@@ -78,16 +87,27 @@ export const buildChartBlockComponentFromPayload = (payload: any, fallbackTitle:
     const chartObj = isObject(chart) ? chart : {};
     const props = isObject(chartObj.props) ? chartObj.props : {};
     const heightRaw = Number(props.height ?? chartObj.height);
-    const tokenHint = String(props.type ?? chartObj.type ?? props.chartType ?? chartObj.chartType ?? '').trim();
-    const token = getChartToken(tokenHint, 'lib-data-display-toplist');
 
-    // Build variantCriteria from all non-reserved props so Figma variant is actually applied
-    const RESERVED = new Set(['type', 'chartType', 'height', 'componentToken', 'fallbackName']);
+    // 优先用 componentId 直接查表，避免关键字猜测失败
+    const componentIdHint = String(chartObj.componentId ?? '').trim();
+    const tokenFromId = CHART_COMPONENT_TOKEN_MAP[componentIdHint];
+    const tokenHint = String(props.type ?? chartObj.type ?? props.chartType ?? chartObj.chartType ?? '').trim();
+    const token = tokenFromId || getChartToken(tokenHint, 'lib-data-display-toplist');
+
+    // Build variantCriteria from all non-reserved props.
+    const RESERVED = new Set(['type', 'chartType', 'height', 'componentToken', 'fallbackName', 'componentId']);
     const variantProps: Record<string, string> = {};
+    const booleanProps: Record<string, boolean> = {};
     [props, chartObj].forEach((src) => {
       Object.entries(src).forEach(([k, v]) => {
-        if (!RESERVED.has(k) && typeof v !== 'object' && v !== undefined) {
-          variantProps[k] = String(v);
+        if (!RESERVED.has(k) && v !== undefined) {
+          if (typeof v === 'string') {
+            variantProps[k] = v;
+          } else if (typeof v === 'number') {
+            variantProps[k] = String(v);
+          } else if (typeof v === 'boolean') {
+            booleanProps[k] = v;
+          }
         }
       });
     });
@@ -96,11 +116,12 @@ export const buildChartBlockComponentFromPayload = (payload: any, fallbackTitle:
       : undefined;
 
     chartNodes.push({
-      componentId: 'figma-component',
+      componentId: componentIdHint.startsWith('chart-') ? componentIdHint : 'figma-component',
       params: {
         componentToken: token,
         fallbackName: `图表 ${index + 1}`,
-        height: Number.isFinite(heightRaw) && heightRaw > 0 ? heightRaw : 220,
+        ...(Number.isFinite(heightRaw) && heightRaw > 0 ? { height: heightRaw } : {}),
+        ...booleanProps,
         ...(variantCriteria ? { variantCriteria } : {})
       }
     });
@@ -108,11 +129,10 @@ export const buildChartBlockComponentFromPayload = (payload: any, fallbackTitle:
 
   if (chartNodes.length === 0) {
     chartNodes.push({
-      componentId: 'figma-component',
+      componentId: 'chart-toplist',
       params: {
         componentToken: 'lib-data-display-toplist',
-        fallbackName: String(source.chartTitle || '趋势'),
-        height: Number(source.height) > 0 ? Number(source.height) : 220
+        fallbackName: String(source.chartTitle || '趋势')
       }
     });
   }

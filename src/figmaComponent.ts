@@ -31,12 +31,12 @@ const FIGMA_COMPONENT_KEY_ALIASES: Record<string, string> = {
   'lib-data-display-component-linechart': '62d6b59603766fdb416ff787eec5d21800264694',
   'library.data-display.component-linechart': '62d6b59603766fdb416ff787eec5d21800264694',
   '折线图': '62d6b59603766fdb416ff787eec5d21800264694',
-  pie: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-  donut: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-  piechart: 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-  'component/piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-  'lib-data-display-component-piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
-  'library.data-display.component-piechart': 'ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e',
+  pie: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+  donut: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+  piechart: 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+  'component/piechart': 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+  'lib-data-display-component-piechart': 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
+  'library.data-display.component-piechart': 'a414c3e671b3619d480d4932b83d9969b7ebbe03',
   toplist: '6acea515cbcd1ae970ef5627425bd55cbda137ff',
   'lib-data-display-toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff',
   'library.data-display.toplist': '6acea515cbcd1ae970ef5627425bd55cbda137ff',
@@ -771,9 +771,10 @@ export function findFigmaVariant(
 
       for (const [key, value] of Object.entries(criteria)) {
         const matchedPropName = matchVariantOption(props, key);
-        // Strict mode: unknown criteria key means this variant does not match.
-        // This prevents silently ignoring guessed fields.
-        if (!matchedPropName) return false;
+        // If the criteria key is not a variant property of this component,
+        // ignore it instead of rejecting the variant. This allows passing
+        // nested component properties without breaking top-level matching.
+        if (!matchedPropName) continue;
 
         const actual = String(props[matchedPropName]).trim().toLowerCase();
         const expected = normalizeVariantOptionValue(value).toLowerCase();

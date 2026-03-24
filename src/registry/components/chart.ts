@@ -30,20 +30,22 @@ export const chartComponents: ComponentRegistry["components"] = {
       ]
     },
     "renderNotes": {
-      "actionHint": "条形图用 chart-toplist，通过 params 的属性名直接对应 Figma variant",
+      "actionHint": "条形图用 chart-toplist，params 属性名必须与 Figma variant propertyName 完全一致（含空格）",
       "paramRules": [
-        "数量 取值范围 1–4，表示数据系列数",
-        "类型 默认「基础/分组柱 default」，可选堆叠/百分比堆叠/特殊"
+        "数量  取值 1–4，表示数据系列数（注意属性名末尾有一个空格）",
+        "类型 type 默认「基础/分组柱 default」，可选堆叠/百分比堆叠/特殊"
       ],
       "commonErrors": [
-        "不要把 chart-toplist 用于饼图或折线图"
+        "不要把 chart-toplist 用于饼图或折线图",
+        "属性名 '数量 ' 末尾有一个空格，必须保留"
       ]
     },
     "params": {
-      "数量": {
+      "数量 ": {
         "type": "number",
         "default": 1,
-        "description": "数据系列数量，取值 1–4"
+        "description": "数据系列数量，取值 1–4（注意属性名末尾有空格）",
+        "enumValues": ["1", "2", "3", "4"]
       },
       "类型 type": {
         "type": "string",
@@ -64,8 +66,8 @@ export const chartComponents: ComponentRegistry["components"] = {
       },
       "height": {
         "type": "number",
-        "default": 220,
-        "description": "图表高度（px）"
+        "default": 0,
+        "description": "图表高度（px），0 或不填则保持设计系统原始比例"
       }
     },
     "figmaBinding": {
@@ -197,8 +199,8 @@ export const chartComponents: ComponentRegistry["components"] = {
       },
       "height": {
         "type": "number",
-        "default": 220,
-        "description": "图表高度（px）"
+        "default": 0,
+        "description": "图表高度（px），0 或不填则保持设计系统原始比例"
       }
     },
     "figmaBinding": {
@@ -207,16 +209,39 @@ export const chartComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-display-component-piechart",
-      "componentKey": "ce1607d6b31f82f34fc33fe342bdcfd04eb33b9e",
-      "inspectedAt": "2026-03-23T08:05:24.929Z",
+      "componentKey": "a414c3e671b3619d480d4932b83d9969b7ebbe03",
+      "inspectedAt": "2026-03-23T11:11:18.754Z",
       "source": "discover_component_props",
-      "componentSetName": "Component/PieChart",
+      "componentSetName": "Card/PieChart",
       "properties": [
+        { "propertyName": "复选框 checkbox", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "操作按钮 action button", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "日期选择器 Datepicker", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "更多信息 MoreInfo", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "选择器 Dropdown", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "选项卡 Tabs", "type": "BOOLEAN", "defaultValue": true, "options": ["True","False"] },
+        { "propertyName": "Icon", "type": "INSTANCE_SWAP", "defaultValue": "13:8386" },
+        { "propertyName": "Digital 数字", "type": "VARIANT", "defaultValue": "False", "options": ["False","True"] },
+        { "propertyName": "Disable  禁用", "type": "VARIANT", "defaultValue": "False", "options": ["False","True"] },
+        { "propertyName": "Item 数量", "type": "VARIANT", "defaultValue": "3", "options": ["2","3","4","5","6","7","8"] },
+        { "propertyName": "Layout 布局", "type": "VARIANT", "defaultValue": "横向 Horizental", "options": ["横向 Horizental","纵向 Vertical","Adaptive 自适应"] },
+        { "propertyName": "Size 尺寸", "type": "VARIANT", "defaultValue": "Default 32", "options": ["Small 28","Default 32"] },
+        { "propertyName": "State 状态", "type": "VARIANT", "defaultValue": "Default 默认", "options": ["Default 默认","Hover 悬浮","Active 激活"] },
+        { "propertyName": "Type 类型", "type": "VARIANT", "defaultValue": "titleBar", "options": ["actionBar","titleBar"] },
         { "propertyName": "分类数量 Item", "type": "VARIANT", "defaultValue": "2", "options": ["2","3","4","5","6","7","8","9","10"] },
+        { "propertyName": "分页 Pagination", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
+        { "propertyName": "单位", "type": "VARIANT", "defaultValue": "On", "options": ["On"] },
+        { "propertyName": "尺寸", "type": "VARIANT", "defaultValue": "12", "options": ["12","14","16","20","24","32","48"] },
+        { "propertyName": "布局 Layout", "type": "VARIANT", "defaultValue": "上下 UP To Down", "options": ["上下 UP To Down","左右 Left To Right"] },
         { "propertyName": "总数值 Sum", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
         { "propertyName": "悬浮 Hover", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
         { "propertyName": "放大比率 Ratio", "type": "VARIANT", "defaultValue": "2:1", "options": ["2:1","1:1"] },
+        { "propertyName": "数值 number", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
         { "propertyName": "数值标注 Data Annotation", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
+        { "propertyName": "数据展示 Statistic", "type": "VARIANT", "defaultValue": "Off", "options": ["On","Off"] },
+        { "propertyName": "数量 Item", "type": "VARIANT", "defaultValue": "1", "options": ["2","3","4","5","6","1","7","8","9","10"] },
+        { "propertyName": "滚动 Scroll", "type": "VARIANT", "defaultValue": "Off", "options": ["Off","On"] },
+        { "propertyName": "状态 State", "type": "VARIANT", "defaultValue": "默认 Default", "options": ["默认 Default","悬浮 Hover"] },
         { "propertyName": "类型 Type", "type": "VARIANT", "defaultValue": "饼图 PieChart", "options": ["饼图 PieChart","环形图 DonutChart"] },
         { "propertyName": "色彩模式 Color mode", "type": "VARIANT", "defaultValue": "常规 Regular", "options": ["常规 Regular","轻亮 Light"] }
       ]
@@ -234,19 +259,44 @@ export const chartComponents: ComponentRegistry["components"] = {
       "description": "折线图，适合展示时序趋势",
       "usage": "用于趋势分析、时序数据场景",
       "examples": [
-        "基础折线图: { \"componentId\": \"chart-line\", \"params\": {} }"
+        "3条折线图: { \"componentId\": \"chart-line\", \"props\": { \"线数量\": \"3\", \"类型 Type\": \"默认 default\" } }",
+        "平滑折线图: { \"componentId\": \"chart-line\", \"props\": { \"线数量\": \"2\", \"类型 Type\": \"平滑 smooth\" } }"
       ]
     },
     "renderNotes": {
-      "actionHint": "折线图用 chart-line",
-      "paramRules": ["已登记 variant 属性，可按需设置"],
-      "commonErrors": []
+      "actionHint": "折线图用 chart-line，params 中的属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）",
+      "paramRules": [
+        "线数量 取值 1–6，表示折线条数",
+        "类型 Type：默认 default | 平滑 smooth | 大数据 big data",
+        "数量  取值 1–6（等价于 线数量，两者选其一即可）"
+      ],
+      "commonErrors": [
+        "不要把 chart-line 用于柱状图或饼图",
+        "属性名 '线数量' 和 '数量 ' 注意末尾是否带空格，需与 Figma 组件一致"
+      ]
     },
     "params": {
+      "线数量": {
+        "type": "number",
+        "default": 3,
+        "description": "折线条数，取值 1–6",
+        "enumValues": ["1", "2", "3", "4", "5", "6"]
+      },
+      "类型 Type": {
+        "type": "string",
+        "default": "默认 default",
+        "description": "折线类型：默认 default | 平滑 smooth | 大数据 big data",
+        "enumValues": ["默认 default", "平滑 smooth", "大数据 big data"]
+      },
+      "Show Legend": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否显示图例"
+      },
       "height": {
         "type": "number",
-        "default": 220,
-        "description": "图表高度（px）"
+        "default": 0,
+        "description": "图表高度（px），0 或不填则保持设计系统原始比例"
       }
     },
     "figmaBinding": {
@@ -359,21 +409,43 @@ export const chartComponents: ComponentRegistry["components"] = {
       "description": "纵向柱状图，适合分类对比",
       "usage": "用于分类对比、周期对比场景",
       "examples": [
-        "基础柱状图: { \"componentId\": \"chart-bar\", \"params\": {} }"
+        "3系列柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 \": \"3\", \"类型 type\": \"基础/分组柱 default\" } }",
+        "堆叠柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 \": \"2\", \"类型 type\": \"堆叠 stacked\" } }"
       ]
     },
     "renderNotes": {
-      "actionHint": "纵向柱状图用 chart-bar，横向条形图用 chart-toplist",
-      "paramRules": ["已登记 variant 属性，可按需设置"],
+      "actionHint": "纵向柱状图用 chart-bar，横向条形/排行榜用 chart-toplist；params 属性名必须与 Figma variant propertyName 完全一致（含空格）",
+      "paramRules": [
+        "数量  取值 1–4，表示数据系列数（注意属性名末尾有一个空格）",
+        "类型 type：基础/分组柱 default | 堆叠 stacked | 百分比堆叠 stacked part to whole"
+      ],
       "commonErrors": [
-        "chart-bar 是纵向柱状图，横向条形/排行榜用 chart-toplist"
+        "chart-bar 是纵向柱状图，横向条形/排行榜用 chart-toplist",
+        "属性名 '数量 ' 末尾有一个空格，必须保留"
       ]
     },
     "params": {
+      "数量 ": {
+        "type": "number",
+        "default": 3,
+        "description": "数据系列数量，取值 1–4（注意属性名末尾有空格）",
+        "enumValues": ["1", "2", "3", "4"]
+      },
+      "类型 type": {
+        "type": "string",
+        "default": "基础/分组柱 default",
+        "description": "柱型：基础/分组柱 default | 堆叠 stacked | 百分比堆叠 stacked part to whole",
+        "enumValues": ["基础/分组柱 default", "堆叠 stacked", "百分比堆叠 stacked part to whole"]
+      },
+      "Show Legend": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否显示图例"
+      },
       "height": {
         "type": "number",
-        "default": 220,
-        "description": "图表高度（px）"
+        "default": 0,
+        "description": "图表高度（px），0 或不填则保持设计系统原始比例"
       }
     },
     "figmaBinding": {
@@ -464,19 +536,42 @@ export const chartComponents: ComponentRegistry["components"] = {
       "description": "面积图，趋势+量级展示",
       "usage": "用于趋势对比、累计量展示场景",
       "examples": [
-        "基础面积图: { \"componentId\": \"chart-area\", \"params\": {} }"
+        "3条面积图: { \"componentId\": \"chart-area\", \"props\": { \"线数量 \": \"3\", \"类型 Type\": \"默认 Default\" } }",
+        "堆叠面积图: { \"componentId\": \"chart-area\", \"props\": { \"线数量 \": \"2\", \"类型 Type\": \"堆叠 stacked\" } }"
       ]
     },
     "renderNotes": {
-      "actionHint": "面积图用 chart-area",
-      "paramRules": ["已登记 variant 属性，可按需设置"],
-      "commonErrors": []
+      "actionHint": "面积图用 chart-area；params 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）",
+      "paramRules": [
+        "线数量  取值 1–6，表示面积线条数（注意属性名末尾有一个空格）",
+        "类型 Type：默认 Default | 平滑 Smooth | 堆叠 stacked | 百分比 stacked percentage"
+      ],
+      "commonErrors": [
+        "属性名 '线数量 ' 末尾有一个空格，必须保留"
+      ]
     },
     "params": {
+      "线数量 ": {
+        "type": "number",
+        "default": 3,
+        "description": "面积线条数，取值 1–6（注意属性名末尾有空格）",
+        "enumValues": ["1", "2", "3", "4", "5", "6"]
+      },
+      "类型 Type": {
+        "type": "string",
+        "default": "默认 Default",
+        "description": "面积图类型：默认 Default | 平滑 Smooth | 堆叠 stacked | 百分比 stacked percentage",
+        "enumValues": ["默认 Default", "平滑 Smooth", "堆叠 stacked", "百分比 stacked percentage"]
+      },
+      "Show Legend": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否显示图例"
+      },
       "height": {
         "type": "number",
-        "default": 220,
-        "description": "图表高度（px）"
+        "default": 0,
+        "description": "图表高度（px），0 或不填则保持设计系统原始比例"
       }
     },
     "figmaBinding": {

@@ -924,14 +924,22 @@ async function createFigmaNode(
     const componentTokenFromProps =
       typeof sceneNode.props.componentToken === "string" ? sceneNode.props.componentToken.trim() : "";
     const componentKeyFromToken = componentTokenFromProps ? resolveComponentKey(componentTokenFromProps) : "";
+    const componentTokenFromDefinition =
+      typeof definition.figmaPropertySnapshot?.token === "string"
+        ? definition.figmaPropertySnapshot.token.trim()
+        : "";
+    const componentKeyFromDefinitionToken = componentTokenFromDefinition
+      ? resolveComponentKey(componentTokenFromDefinition)
+      : "";
     const componentKeyFromBinding =
       typeof definition.figmaBinding?.renderKey === "string" ? definition.figmaBinding.renderKey.trim() : "";
-    const componentKey = componentKeyFromProps || componentKeyFromToken || componentKeyFromBinding;
+    const componentKey =
+      componentKeyFromProps || componentKeyFromToken || componentKeyFromDefinitionToken || componentKeyFromBinding;
     const fallbackName =
       typeof sceneNode.props.fallbackName === "string" && sceneNode.props.fallbackName.trim()
         ? sceneNode.props.fallbackName.trim()
         : definition.name;
-    const tokenOrKey = componentTokenFromProps || componentKeyFromProps;
+    const tokenOrKey = componentTokenFromProps || componentTokenFromDefinition || componentKeyFromProps;
     const parsedCriteria = parseVariantCriteria(sceneNode.props.variantCriteria) as Record<string, string | boolean> | undefined;
 
     if (componentTokenFromProps && !componentKeyFromToken) {
