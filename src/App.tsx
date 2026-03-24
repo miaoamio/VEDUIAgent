@@ -2173,6 +2173,7 @@ function App() {
           setSelectionVersion((prev) => prev + 1);
         }
         const nextIsChart = Boolean(data?.componentId && data.componentId.startsWith('chart'));
+        // 仅当覆盖层已打开且新选择仍是图表时保持打开；否则不自动打开并关闭覆盖层，避免绘制后自动弹出与闪烁。
         setChartOverlayOpen((prev) => (prev ? nextIsChart : false));
       }
 
