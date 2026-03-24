@@ -96,6 +96,20 @@ const TABLE_PROMPT_REGEX = /(表格|table)/i;
 const CHART_PROMPT_REGEX = /(图表|chart|饼图|环形图|折线图|柱状图|条形图|面积图)/i;
 const FORM_PROMPT_REGEX = /(表单|筛选|form|input|输入框|选择器|单选|多选)/i;
 
+const CHART_TOKEN_TO_COMPONENT_ID: Record<string, string> = {
+  'lib-data-display-toplist': 'chart-toplist',
+  'lib-data-display-component-piechart': 'chart-pie',
+  'lib-data-display-component-linechart': 'chart-line',
+  'lib-data-display-component-barchart': 'chart-bar',
+  'lib-data-display-component-areachart': 'chart-area'
+};
+
+function resolveChartComponentIdOverride(componentId: unknown, chartTokenOverride: string): string {
+  const raw = typeof componentId === 'string' ? componentId : '';
+  if (!raw.startsWith('chart-')) return raw;
+  return CHART_TOKEN_TO_COMPONENT_ID[chartTokenOverride] || raw;
+}
+
 type XlsxWorkbook = {
   SheetNames: string[];
   Sheets: Record<string, unknown>;
@@ -1937,6 +1951,8 @@ function App() {
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
+  const chartTokenOverrideRef = React.useRef('');
+  const chartShortcutOnSendRef = React.useRef<string | null>(null);
   const [chartExtraOptions, setChartExtraOptions] = React.useState<Record<string, string>>({});
   const [activeOptionMenu, setActiveOptionMenu] = React.useState<string | null>(null);
   const [tagRowHeight, setTagRowHeight] = React.useState(0);
@@ -6279,7 +6295,27 @@ StepD:
           message: `[System]: 任务执行失败：图表区参数无效。`
         };
       }
-      const nodeId = await createComponentNode(block, parentId);
+      const patchChartTree = (node: any, chartTokenOverride: string): any => {
+        if (!chartTokenOverride || !isObject(node)) return node;
+        const next: any = { ...node };
+        next.componentId = resolveChartComponentIdOverride(next.componentId, chartTokenOverride);
+        if (Array.isArray(next.children)) {
+          next.children = next.children.map((child: any) => patchChartTree(child, chartTokenOverride));
+        }
+        if (isObject(next.slots)) {
+          const slots: any = {};
+          Object.entries(next.slots).forEach(([slotKey, slotNodes]) => {
+            slots[slotKey] = Array.isArray(slotNodes)
+              ? slotNodes.map((child: any) => patchChartTree(child, chartTokenOverride))
+              : slotNodes;
+          });
+          next.slots = slots;
+        }
+        return next;
+      };
+      const effectiveChartTokenOverride = chartShortcutOnSendRef.current ? chartTokenOverrideRef.current : '';
+      const patchedBlock = effectiveChartTokenOverride ? patchChartTree(block, effectiveChartTokenOverride) : block;
+      const nodeId = await createComponentNode(patchedBlock, parentId);
       return {
         ok: true,
         nodeId,
@@ -6514,6 +6550,8 @@ StepD:
         ? baseChartText
         : userInput;
     const chartTokenOverride = getChartToken(turnInput, '');
+    chartTokenOverrideRef.current = chartTokenOverride;
+    chartShortcutOnSendRef.current = chartShortcutActive;
     const turnImages = uploadedImages;
     const turnTables = uploadedTables;
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
@@ -7390,6 +7428,7 @@ StepD:
                 const patchChartNode = (node: any): any => {
                   if (!chartTokenOverride || !isObject(node)) return node;
                   const next: any = { ...node };
+                  next.componentId = resolveChartComponentIdOverride(next.componentId, chartTokenOverride);
                   if (next.componentId === 'figma-component') {
                     const props = isObject(next.props) ? { ...next.props } : {};
                     props.componentToken = chartTokenOverride;
@@ -7597,12 +7636,14 @@ StepD:
                 }
 
                 try {
+                    const nextComponentId =
+                      chartTokenOverride ? resolveChartComponentIdOverride(componentId, chartTokenOverride) : componentId;
                     const nextParams =
                       chartTokenOverride && componentId === 'figma-component' && isObject(params)
                         ? { ...params, componentToken: chartTokenOverride, componentKey: '', fallbackName: '' }
                         : params;
                     const rootNodeId = await createComponentNode(
-                      { componentId, params: nextParams, children },
+                      { componentId: nextComponentId, params: nextParams, children },
                       resolvedParentId
                     );
 
@@ -7612,7 +7653,7 @@ StepD:
                     // Add result to history for next turn
                     messages.push({ 
                         role: "user", 
-                        content: `System: Successfully created component '${componentId}' with ID '${rootNodeId}'.` 
+                        content: `System: Successfully created component '${nextComponentId}' with ID '${rootNodeId}'.` 
                     });
                     if (runtimePlan && actionTaskId) {
                         runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
@@ -9669,18 +9710,37 @@ StepD:
               ) : (
                 <span className="chat-selection-label">已选中</span>
               )}
-              <Tooltip content={manualTooltipText} enabled={selectionCount <= 0} placement="top-end">
+              {(() => {
+                const isManualAdjustSupported =
+                  selectionCount === 1 &&
+                  Boolean(selectedComponent) &&
+                  (selectedComponent!.componentId === 'table' ||
+                    selectedComponent!.componentId === 'table-column' ||
+                    isTableCellComponent(selectedComponent!.componentId) ||
+                    isFormComponent(selectedComponent!.componentId));
+                const manualAdjustDisabled =
+                  selectionCount <= 0 ||
+                  (selectionCount === 1 && Boolean(selectedComponent) && !isManualAdjustSupported);
+                const tooltipText = selectionCount <= 0
+                  ? manualTooltipText
+                  : manualAdjustDisabled
+                    ? '暂不支持，请通过Figma调整'
+                    : manualTooltipText;
+                return (
+                  <Tooltip content={tooltipText} enabled={manualAdjustDisabled} placement="top-end">
                 <div className="chat-selection-action-wrap">
                   <button
                     type="button"
                     className="chat-selection-action"
                     onClick={() => setActiveTab('selection')}
-                    disabled={selectionCount <= 0}
+                    disabled={manualAdjustDisabled}
                   >
                     手动调整
                   </button>
                 </div>
-              </Tooltip>
+                  </Tooltip>
+                );
+              })()}
             </div>
             <div className="composer">
               {(uploadedImages.length > 0 || uploadedTables.length > 0 || attachmentError) && (

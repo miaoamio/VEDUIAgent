@@ -1392,12 +1392,12 @@ h2 {
 }
 
 .selection-empty {
-  border: 1px dashed #E5E7EB;
-  background: #F9FAFB;
+  border: 1px solid #E4E4E7;
+  background: var(--ved-bg-progress-bar, #EFF6FF);
   color: #6B7280;
   font-size: 13px;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   text-align: center;
 }
 
@@ -1456,10 +1456,6 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   color: #111827;
   resize: none;
   background: transparent;
-}
-
-.composer-box.with-chart-tag .composer-textarea {
-  /* Remove text-indent to allow normal text wrapping */
 }
 
 .composer-textarea:focus {

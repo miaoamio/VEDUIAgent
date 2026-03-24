@@ -6857,6 +6857,160 @@ async function trySetFirstTextInInstance(instance: InstanceNode, text: string): 
     return false;
 }
 
+type AvatarContainerNode = SceneNode & {
+    width: number;
+    height: number;
+    resize: (width: number, height: number) => void;
+    findAll: (callback: (node: SceneNode) => boolean) => SceneNode[];
+};
+
+function resolveAvatarInitial(value: unknown): string {
+    const raw = String(value ?? '').trim();
+    if (!raw) return 'U';
+    const first = Array.from(raw)[0] || 'U';
+    return /[a-z]/i.test(first) ? first.toUpperCase() : first;
+}
+
+async function createCenteredAvatarFallback(initial: string, size = 20): Promise<FrameNode> {
+    const frame = figma.createFrame();
+    frame.layoutMode = 'NONE';
+    frame.resize(size, size);
+    frame.cornerRadius = size / 2;
+    frame.clipsContent = true;
+    frame.fills = [{ type: 'SOLID', color: { r: 0.992, g: 0.922, b: 0.922 } }];
+
+    const textNode = figma.createText();
+    await ensureInterFontsLoaded();
+    await applyTextStyleBinding(textNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
+    textNode.characters = initial;
+    await applyColorVariable(textNode, 'text-danger-key', '#B91C1C');
+    try {
+        textNode.textAutoResize = 'NONE';
+    } catch {
+        // ignore
+    }
+    try {
+        textNode.resize(size, size);
+    } catch {
+        // ignore
+    }
+    try {
+        textNode.textAlignHorizontal = 'CENTER';
+        textNode.textAlignVertical = 'CENTER';
+    } catch {
+        // ignore
+    }
+    textNode.x = 0;
+    textNode.y = 0;
+    frame.appendChild(textNode);
+    return frame;
+}
+
+async function tryCenterAvatarIconText(container: AvatarContainerNode, initial: string): Promise<void> {
+    const width = container.width;
+    const height = container.height;
+    const textNodes = container.findAll((node) => node.type === 'TEXT') as TextNode[];
+    let fallbackFill: SolidPaint | null = null;
+    for (const textNode of textNodes) {
+        const raw = String(textNode.characters || '').trim();
+        if (raw.length === 0 || raw.length > 2) continue;
+        if (!fallbackFill && Array.isArray(textNode.fills) && textNode.fills.length > 0) {
+            const candidate = textNode.fills[0];
+            if (candidate && candidate.type === 'SOLID') fallbackFill = candidate as SolidPaint;
+        }
+        try {
+            textNode.visible = false;
+        } catch {
+            // ignore
+        }
+        try {
+            textNode.opacity = 0;
+        } catch {
+            // ignore
+        }
+    }
+
+    const ellipseCandidates = container.findAll((node) => node.type === 'ELLIPSE') as EllipseNode[];
+    const circle = ellipseCandidates
+        .filter((node) => Math.abs(node.width - node.height) <= 1)
+        .sort((a, b) => b.width - a.width)[0];
+
+    const resolveOverlayHost = (): { host: AvatarContainerNode; bounds: { x: number; y: number; width: number; height: number } } => {
+        if (circle && circle.parent && 'appendChild' in circle.parent) {
+            const parent = circle.parent as unknown as AvatarContainerNode;
+            return { host: parent, bounds: { x: circle.x, y: circle.y, width: circle.width, height: circle.height } };
+        }
+        if (circle && 'absoluteBoundingBox' in circle && 'absoluteBoundingBox' in container) {
+            const circleBox = (circle as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
+            const containerBox = (container as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
+            if (circleBox && containerBox) {
+                return {
+                    host: container,
+                    bounds: {
+                        x: circleBox.x - containerBox.x,
+                        y: circleBox.y - containerBox.y,
+                        width: circleBox.width,
+                        height: circleBox.height
+                    }
+                };
+            }
+        }
+        return { host: container, bounds: { x: 0, y: 0, width, height } };
+    };
+
+    const { host, bounds } = resolveOverlayHost();
+
+    const overlayFrame = figma.createFrame();
+    overlayFrame.layoutMode = 'NONE';
+    overlayFrame.fills = [];
+    overlayFrame.strokes = [];
+    overlayFrame.resize(bounds.width, bounds.height);
+    overlayFrame.x = bounds.x;
+    overlayFrame.y = bounds.y;
+    overlayFrame.name = 'avatar-text-overlay';
+    if ('layoutPositioning' in overlayFrame) {
+        try {
+            overlayFrame.layoutPositioning = 'ABSOLUTE';
+        } catch {
+            // ignore
+        }
+    }
+
+    const overlayText = figma.createText();
+    await ensureInterFontsLoaded();
+    await applyTextStyleBinding(overlayText, 'table-cell-text-style-key', { family: 'Inter', style: 'Bold', size: 14 });
+    overlayText.characters = initial;
+    try {
+        overlayText.textAutoResize = 'NONE';
+    } catch {
+        // ignore
+    }
+    try {
+        overlayText.resize(bounds.width, bounds.height);
+    } catch {
+        // ignore
+    }
+    try {
+        overlayText.textAlignHorizontal = 'CENTER';
+        overlayText.textAlignVertical = 'CENTER';
+    } catch {
+        // ignore
+    }
+    overlayText.x = 0;
+    overlayText.y = 0;
+    try {
+        overlayText.fills = fallbackFill ? [fallbackFill] : [{ type: 'SOLID', color: { r: 0.725, g: 0.11, b: 0.11 } }];
+    } catch {
+        // ignore
+    }
+    overlayFrame.appendChild(overlayText);
+    try {
+        (host as unknown as FrameNode).appendChild(overlayFrame);
+    } catch {
+        (container as unknown as FrameNode).appendChild(overlayFrame);
+    }
+}
+
 // Helper to parse color
 function readNodeParams(node: BaseNode): Record<string, any> {
   if (!('getPluginData' in node)) return {};
@@ -8224,6 +8378,8 @@ async function renderComponent(
     }
     // 2. Avatar Cell
     else if (instance.componentId === 'table-cell-avatar') {
+        const displayText = params.text || params.name || params.label || 'User';
+        const initial = resolveAvatarInitial(displayText);
         const avatarInstance = await createFigmaComponentInstanceByToken('lib-data-display-avataricon');
         if (avatarInstance) {
             try {
@@ -8231,17 +8387,22 @@ async function renderComponent(
             } catch {
                 // ignore
             }
-            frame.appendChild(avatarInstance);
+            try {
+                const detached = avatarInstance.detachInstance();
+                detached.resize(20, 20);
+                await tryCenterAvatarIconText(detached as unknown as AvatarContainerNode, initial);
+                frame.appendChild(detached);
+            } catch {
+                const fallback = await createCenteredAvatarFallback(initial, 20);
+                frame.appendChild(fallback);
+            }
         } else {
-            const avatar = figma.createEllipse();
-            avatar.resize(20, 20);
-            avatar.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
-            frame.appendChild(avatar);
+            const fallback = await createCenteredAvatarFallback(initial, 20);
+            frame.appendChild(fallback);
         }
 
         const textNode = figma.createText();
         await applyTextStyleBinding(textNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
-        const displayText = params.text || params.name || params.label || 'User';
         textNode.characters = displayText;
         await applyColorVariable(textNode, "table-cell-text-key", "#0C0D0E");
         textNode.layoutGrow = 1;
