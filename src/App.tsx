@@ -2099,6 +2099,11 @@ function App() {
 
   // Tab state
   const [activeTab, setActiveTab] = React.useState<'chat' | 'selection'>('chat');
+  const activeTabRef = React.useRef<'chat' | 'selection'>('chat');
+  const setActiveTabWithRef = React.useCallback((tab: 'chat' | 'selection') => {
+    activeTabRef.current = tab;
+    setActiveTab(tab);
+  }, []);
   const [showInheritedParams, setShowInheritedParams] = React.useState(false);
   const [componentInspectionRunning, setComponentInspectionRunning] = React.useState(false);
   const [componentInspectionSummary, setComponentInspectionSummary] = React.useState<string | null>(null);
@@ -2120,7 +2125,7 @@ function App() {
 
   React.useEffect(() => {
     if (!mockSelectionEnabled) return;
-    setActiveTab('selection');
+    setActiveTabWithRef('selection');
     setSelectionCount(1);
     setCanvasHint('mixed');
     setSelectedComponent({
@@ -2130,7 +2135,7 @@ function App() {
     });
   }, [
     mockSelectionEnabled,
-    setActiveTab,
+    setActiveTabWithRef,
     setSelectionCount,
     setCanvasHint,
     setSelectedComponent
@@ -2161,8 +2166,9 @@ function App() {
           loading,
           agentPlan
         );
-        if (!multiTaskActive || nextTab === 'chat') {
-          setActiveTab(nextTab);
+        // 只有当需要切换到不同 tab 时才切换，避免属性修改时的闪烁
+        if (!multiTaskActive && activeTabRef.current !== 'selection' && nextTab !== activeTabRef.current) {
+          setActiveTabWithRef(nextTab);
         }
         if (data.componentId) {
           setSelectedComponent(data);
@@ -2182,17 +2188,23 @@ function App() {
           agentPlan
         );
         if (!multiTaskActive) {
-          setActiveTab('selection');
+          setActiveTabWithRef('selection');
         }
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
       
       if (type === 'selection-cleared') {
-        setSelectionCount(0);
+        if (activeTabRef.current !== 'selection') {
+          setSelectionCount(0);
+        }
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTab('chat');
-        setSelectedComponent(null);
+        if (activeTabRef.current !== 'selection') {
+          setActiveTabWithRef('chat');
+        }
+        if (activeTabRef.current !== 'selection') {
+          setSelectedComponent(null);
+        }
         setChartOverlayOpen(false);
       }
 
@@ -2207,7 +2219,7 @@ function App() {
     if (!deferSelectionAutoSwitchRef.current) return;
     if (loading) return;
     if (selectionCount <= 0) return;
-    setActiveTab('selection');
+    setActiveTabWithRef('selection');
   }, [loading, selectionCount]);
 
   React.useEffect(() => {
@@ -9344,7 +9356,7 @@ StepD:
           <div className="selection-header-left">
             <button
               className="selection-back"
-              onClick={() => setActiveTab('chat')}
+              onClick={() => setActiveTabWithRef('chat')}
             >
               <span className="selection-back-icon" aria-hidden="true">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -9734,7 +9746,7 @@ StepD:
                   <button
                     type="button"
                     className="chat-selection-action"
-                    onClick={() => setActiveTab('selection')}
+                    onClick={() => setActiveTabWithRef('selection')}
                     disabled={manualAdjustDisabled}
                   >
                     手动调整
