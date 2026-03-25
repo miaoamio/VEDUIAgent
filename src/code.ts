@@ -569,13 +569,13 @@ function isFormLabelWrapNode(node: SceneNode | null | undefined): boolean {
 function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   const labelWraps: FrameNode[] = [];
   
-  const collectLabelWraps = (frame: FrameNode) => {
-    for (const child of frame.children) {
-      if (child.type === 'FRAME') {
-        if (isFormLabelWrapNode(child)) {
-          labelWraps.push(child);
-        }
-        collectLabelWraps(child as FrameNode);
+  const collectLabelWraps = (node: SceneNode) => {
+    if (isFormLabelWrapNode(node)) {
+      labelWraps.push(node as FrameNode);
+    }
+    if ('children' in node) {
+      for (const child of node.children) {
+        collectLabelWraps(child as SceneNode);
       }
     }
   };
@@ -583,26 +583,17 @@ function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   collectLabelWraps(form);
   if (labelWraps.length <= 1) return;
   
+  // 始终取所有标签容器中的最大宽度
   let maxWidth = 0;
-  if (sourceNodes.length > 0) {
-    for (const node of sourceNodes) {
-      if (!node || node.removed) continue;
-      if (node.type === 'FRAME' && isFormLabelWrapNode(node)) {
-        if (node.width > maxWidth) maxWidth = node.width;
-      }
-    }
-  }
-  
-  if (maxWidth <= 0) {
-    for (const wrap of labelWraps) {
-      if (wrap.width > maxWidth) maxWidth = wrap.width;
-    }
+  for (const wrap of labelWraps) {
+    if (wrap.width > maxWidth) maxWidth = wrap.width;
   }
   
   if (!Number.isFinite(maxWidth) || maxWidth <= 0) return;
   
+  // 只把宽度小于最大值的标签扩展到最大值
   for (const wrap of labelWraps) {
-    if (Math.abs(wrap.width - maxWidth) > 0.1) {
+    if (wrap.width < maxWidth - 0.1) {
       try {
         wrap.resize(maxWidth, wrap.height);
       } catch {}
@@ -4002,18 +3993,37 @@ function applyFigmaComponentProps(
         | undefined;
     if (!propertyMap) return;
 
+    const propertiesSnapshot = (def?.figmaPropertySnapshot as any)?.properties as Array<{ propertyName: string, type: string }> | undefined;
+    const propertyTypes: Record<string, string> = {};
+    if (propertiesSnapshot) {
+        propertiesSnapshot.forEach(p => {
+            propertyTypes[p.propertyName] = p.type;
+        });
+    }
+
     const nextProps: Record<string, string | boolean> = {};
     for (const [displayName, binding] of Object.entries(propertyMap)) {
         const rawValue = params[binding.sourceParam];
         if (rawValue === undefined || rawValue === null) continue;
         const propName = findInstanceComponentPropertyName(instance, displayName);
         if (!propName) continue;
+        
+        const propType = propertyTypes[propName] || propertyTypes[displayName];
         let value: string | boolean;
+
         if (binding.transform === 'boolean') {
-            value = toVariantBoolean(Boolean(rawValue));
+            if (propType === 'BOOLEAN') {
+                value = Boolean(rawValue);
+            } else {
+                value = toVariantBoolean(Boolean(rawValue));
+            }
         } else if (binding.transform === 'string:boolean') {
             // non-empty string → 'True', empty → 'False'
-            value = toVariantBoolean(String(rawValue).trim().length > 0);
+            if (propType === 'BOOLEAN') {
+                value = String(rawValue).trim().length > 0;
+            } else {
+                value = toVariantBoolean(String(rawValue).trim().length > 0);
+            }
         } else if (binding.transform === 'number') {
             value = String(Number(rawValue) || 0);
         } else if (binding.transform === 'list:length') {
@@ -4034,7 +4044,11 @@ function applyFigmaComponentProps(
         nextProps[propName] = value;
     }
     if (Object.keys(nextProps).length > 0) {
-        instance.setProperties(nextProps);
+        try {
+            instance.setProperties(nextProps);
+        } catch (e) {
+            console.warn(`[applyFigmaComponentProps] failed to set properties for ${componentId}:`, e, nextProps);
+        }
     }
 }
 
@@ -5747,6 +5761,7 @@ function inheritFormFieldParams(
                         ? 'vertical'
                         : 'horizontal';
         const nextParams = {
+            ...currentParams,
             align: inheritedAlign,
             layout: inferredLayout,
             labelAlign: currentParams.labelAlign || (inheritedAlign === 'right' ? 'right' : 'left'),
@@ -5755,7 +5770,6 @@ function inheritFormFieldParams(
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
             controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
-            ...currentParams,
             ...(formParams.requiredMark === false ? { required: false } : {})
         };
         return { ...instance, params: nextParams };
@@ -7787,6 +7801,8 @@ async function renderComponent(
             // Use the provided labelWidth directly to ensure alignment. 
             // The resolveAutoFormLabelWidth function is responsible for ensuring this width is sufficient.
             labelWrap.resize(labelWidth, labelWrap.height);
+            labelWrap.setPluginData('form-label-wrap', 'true');
+            labelWrap.setPluginData('form-label-min-width', String(labelWidth));
         }
         frame.appendChild(labelWrap);
     }
@@ -7799,11 +7815,13 @@ async function renderComponent(
       ? await renderComponent(instance.children[0], { isRoot: false })
       : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
     
-    // 优先从注册表读取默认高度，作为真正的“原始高度”兜底
+    // 对于多选/自适应高度的组件，不要强制固定高度
+    // 这里如果强制重置高度，会导致多行组件（如多选 select、checkbox-group 等）被强行截断为 32px
     const controlDef = COMPONENT_DEFS[controlType];
     const defaultHeight = controlDef?.runtime?.fallback?.height ?? null;
     const recordedHeight = 'height' in controlNode ? controlNode.height : 0;
-    const targetHeight = (defaultHeight && defaultHeight > 1) ? defaultHeight : (recordedHeight > 1 ? recordedHeight : 32);
+    const targetHeight = recordedHeight > 1 ? recordedHeight : ((defaultHeight && defaultHeight > 1) ? defaultHeight : 32);
+
     frame.appendChild(controlNode);
 
     const messageText = String(params.errorText || params.descriptionText || params.helpText || '').trim();
@@ -7843,14 +7861,11 @@ async function renderComponent(
         applyFormControlWidthModeToNode(controlNode, params);
     }
 
-    if ('resize' in controlNode) {
+    // 只在确实需要调整高度时才去调整（例如兜底节点）
+    // 不要强制将 layoutSizingVertical 设为 FIXED，否则会破坏 textarea、多选组件、checkbox-group 等的自适应高度
+    if ('resize' in controlNode && recordedHeight <= 1) {
         try {
             (controlNode as any).resize(controlNode.width, targetHeight);
-        } catch {}
-    }
-    if ('layoutSizingVertical' in controlNode) {
-        try {
-            (controlNode as any).layoutSizingVertical = 'FIXED';
         } catch {}
     }
 

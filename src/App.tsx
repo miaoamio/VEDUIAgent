@@ -2150,9 +2150,6 @@ function App() {
       const pluginMessage = event?.data?.pluginMessage;
       if (!pluginMessage || typeof pluginMessage !== 'object') return;
       const { type, message, data } = pluginMessage as any;
-      if (type === 'action-done') {
-        setResponse((prev) => (prev ? prev + '\n\n' + `[System]: ${message}` : `[System]: ${message}`));
-      }
       
       if (type === 'selection-update') {
         setUserInput('');
