@@ -9387,7 +9387,9 @@ StepD:
               </div>
             </>
           ) : (
-            <div className="selection-empty">未选中任何内容</div>
+            <div className="selection-empty">
+              {selectionCount > 1 ? '暂不支持选中画布里多个元素' : '未选中任何内容'}
+            </div>
           )}
         </div>
       </div>
