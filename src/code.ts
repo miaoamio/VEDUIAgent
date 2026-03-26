@@ -5122,6 +5122,17 @@ function patchFormInstanceSnapshot(
                     delete fieldParams[key];
                 }
             });
+            // ── labelAlign 派生清除 ──
+            // labelAlign 由 form.align 衍生（right→right, 否则 left），但 form 级
+            // params 没有 labelAlign 字段，通用继承判断无法清除残留值。
+            // 若子节点 labelAlign 等于从 prevParams.align 衍生的值，说明是继承而来，
+            // 应清除以便 inheritFormFieldParams 用新 align 重新计算。
+            if (fieldParams.labelAlign !== undefined && prevParams.labelAlign === undefined) {
+                const prevDerivedLabelAlign = normalizeFormAlign(prevParams.align) === 'right' ? 'right' : 'left';
+                if (fieldParams.labelAlign === prevDerivedLabelAlign) {
+                    delete fieldParams.labelAlign;
+                }
+            }
             nextChild = { ...child, params: fieldParams };
         }
 
@@ -7206,9 +7217,13 @@ async function renderComponent(
     const controlWidthMode = resolveFormControlWidthMode(params);
     
     // 直接渲染控件节点，不再包裹 controlColumn
-    const controlNode = instance.children && instance.children.length > 0
-      ? await renderComponent(instance.children[0], { isRoot: false })
-      : await renderComponent(createControlInstanceFromFormFieldParams(params), { isRoot: false });
+    // FIX: Always use createControlInstanceFromFormFieldParams(params) to ensure
+    // child control gets the LATEST params from the parent form-field.
+    // Previously, when instance.children[0] existed (preserved from snapshot),
+    // the child retained stale params (old placeholder/value/filled), causing
+    // text edits and toggle changes in the property panel to not propagate.
+    const controlInstanceToRender = createControlInstanceFromFormFieldParams(params);
+    const controlNode = await renderComponent(controlInstanceToRender, { isRoot: false });
     
     // 对于多选/自适应高度的组件，不要强制固定高度
     // 这里如果强制重置高度，会导致多行组件（如多选 select、checkbox-group 等）被强行截断为 32px

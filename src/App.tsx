@@ -2169,7 +2169,7 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        const nextTab = isFigmaKeyComponent(data?.componentId) ? 'chat' : 'selection';
+        const nextTab = data?.componentId === 'figma-component' ? 'chat' : 'selection';
         const multiTaskActive = isMultiTaskExecutionActive(
           Boolean(deferSelectionAutoSwitchRef.current),
           loading,
@@ -2204,13 +2204,9 @@ function App() {
       }
       
       if (type === 'selection-cleared') {
-        if (activeTabRef.current !== 'selection') {
-          setSelectionCount(0);
-        }
+        setSelectionCount(0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        if (activeTabRef.current !== 'selection') {
-          setActiveTabWithRef('chat');
-        }
+        setActiveTabWithRef('chat');
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
@@ -8153,6 +8149,14 @@ StepD:
     if (FULL_RERENDER_COMPONENT_IDS.has(def.id)) return true;
     if (def.id === 'table-column' || def.family === 'table-cell') return true;
     if (GENERIC_EDITABLE_PARAM_KEYS.has(key)) return true;
+    // Type B components: params mapped in figmaPropertySnapshot.propertyMap are editable
+    const propertyMap = (def as any).figmaPropertySnapshot?.propertyMap;
+    if (propertyMap) {
+      const isMapped = Object.values(propertyMap).some(
+        (binding: any) => binding?.sourceParam === key
+      );
+      if (isMapped) return true;
+    }
     return false;
   };
 
@@ -9071,7 +9075,7 @@ StepD:
 
   const renderSelectionEditor = () => {
     if (!selectedComponent) return null;
-    if (isFigmaKeyComponent(selectedComponent.componentId)) return null;
+    if (selectedComponent.componentId === 'figma-component') return null;
     if (selectedComponent.componentId === 'text') return null;
     if (selectedComponent.componentId === 'table') {
       return renderTablePropertyEditor();
