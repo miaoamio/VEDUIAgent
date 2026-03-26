@@ -2096,6 +2096,16 @@ function App() {
   } | null>(null);
   const [selectionVersion, setSelectionVersion] = React.useState(0);
   const [formFieldTextMode, setFormFieldTextMode] = React.useState<'value' | 'placeholder'>('placeholder');
+  const [controlWidthDraft, setControlWidthDraft] = React.useState<string>('240');
+
+  // Sync controlWidthDraft when selectedComponent changes
+  React.useEffect(() => {
+    if (selectedComponent?.params?.controlWidth != null) {
+      setControlWidthDraft(String(selectedComponent.params.controlWidth));
+    } else {
+      setControlWidthDraft('240');
+    }
+  }, [selectedComponent?.params?.controlWidth]);
 
   // Tab state
   const [activeTab, setActiveTab] = React.useState<'chat' | 'selection'>('chat');
@@ -2201,9 +2211,7 @@ function App() {
         if (activeTabRef.current !== 'selection') {
           setActiveTabWithRef('chat');
         }
-        if (activeTabRef.current !== 'selection') {
-          setSelectedComponent(null);
-        }
+        setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
 
@@ -2222,20 +2230,27 @@ function App() {
   }, [loading, selectionCount]);
 
   React.useEffect(() => {
-    if (!selectedComponent || selectedComponent.componentId !== 'form-field') return;
+    if (!selectedComponent || (selectedComponent.componentId !== 'form-field' && selectedComponent.componentId !== 'input')) return;
     const params = selectedComponent.params || {};
+    
+    // 优先遵循组件自身的 filled 状态位
+    if (params.filled === true) {
+      setFormFieldTextMode('value');
+      return;
+    }
+    if (params.filled === false) {
+      setFormFieldTextMode('placeholder');
+      return;
+    }
+
+    // 回退逻辑：根据内容猜测
     const hasValue = String(params.value ?? '').trim().length > 0;
-    const hasPlaceholder = String(params.placeholder ?? '').trim().length > 0;
     if (hasValue) {
       setFormFieldTextMode('value');
       return;
     }
-    if (hasPlaceholder) {
-      setFormFieldTextMode('placeholder');
-      return;
-    }
     setFormFieldTextMode('placeholder');
-  }, [selectionVersion, selectedComponent?.params?.controlType]);
+  }, [selectionVersion, selectedComponent?.nodeName, selectedComponent?.params?.controlType]);
 
   const resolveFigmaComponentPropsCacheKey = (token: string, componentKey: string) => {
     const normalizedToken = String(token || '').trim();
@@ -2801,7 +2816,7 @@ function App() {
       body.charts[] 每个 item 结构：{ "componentId": "chart-pie", "props": { "类型 Type": "环形图 DonutChart", "分类数量 Item": "5", "数值标注 Data Annotation": "On" } }
       componentId 必须是注册的 chart 组件 ID（chart-toplist / chart-pie / chart-line / chart-bar / chart-area），props 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）。
       示例（折线图）：{ "componentId": "chart-line", "props": { "线数量": "3", "类型 Type": "默认 default", "Show Legend": true } }
-      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 ": "3", "类型 type": "基础/分组柱 default" } }
+      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 #of lines": "3", "类型 type": "基础/分组柱 default" } }
       ⚠️ 注意：body.charts[].props 中的属性名必须从 registry params 或 figmaPropertySnapshot 中取，不要自造属性名。
     - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
     - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
@@ -2947,7 +2962,7 @@ StepD:
           specsInfo += `ActionHint: 图表通过 expand_chart_block 的 body.charts[] 创建。每个 chart item 结构：{ “componentId”: “<chart-id>”, “props”: { “<Figma propertyName>”: “<enumValue>” } }。\n`;
           specsInfo += `ParamRule: body.charts[].props 中的属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排），enumValue 必须从 registry params.enumValues 中取，不要自造属性名或用中文 开/关 代替 On/Off。\n`;
           specsInfo += `ParamRule: chart-pie 的分类数量属性名是 “分类数量 Item”，取值范围 “2”–“10”（字符串）；数值标注是 “数值标注 Data Annotation”，取值 “Off”/”On”；类型是 “类型 Type” 取值 “饼图 PieChart”/”环形图 DonutChart”。\n`;
-          specsInfo += `ParamRule: chart-bar/chart-toplist 的系列数属性名是 “数量 “（末尾有空格），取值 “1”–“4”（字符串）；类型属性名是 “类型 type”（小写 t）。\n`;
+          specsInfo += `ParamRule: chart-bar/chart-toplist 的系列数属性名是 “数量 #of lines”，取值 “1”–“4”（字符串）；类型属性名是 “类型 type”（小写 t）。\n`;
           specsInfo += `ParamRule: chart-line 的折线数属性名是 “线数量”，取值 “1”–“6”；chart-area 的线数属性名是 “线数量 “（末尾有空格）。\n`;
         }
         if (id === 'checkbox' || id === 'checkbox-group' || id === 'radio-group') {
@@ -6911,6 +6926,8 @@ StepD:
                 console.log("Failed to parse JSON", content);
                 messages.push({ role: "assistant", content });
                 accumulatedLog += (accumulatedLog ? '\n\n' : '') + `[Raw]: ${content}`;
+                const errorMsg = `[System]: 抱歉，AI 输出的数据格式存在语法错误（JSON 解析失败），请再次尝试。`;
+                accumulatedLog += '\n\n' + errorMsg;
                 setResponse(accumulatedLog);
                 break; 
             }
@@ -7817,11 +7834,11 @@ StepD:
       { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '柱状图': [
-      { key: 'seriesCount', label: '数量 ', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
       { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
     ],
     '条形图': [
-      { key: 'seriesCount', label: '数量 ', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
       { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
     ],
     '折线图': [
@@ -7968,7 +7985,7 @@ StepD:
     if (key === 'labelAlign' || key === 'labelWidthPreset' || key === 'labelWidth' || key === 'controlWidth') {
       return false;
     }
-    if (key === 'size' || key === 'state') {
+    if (key === 'state') {
       return controlType === 'input' || controlType === 'select';
     }
     if (key === 'multiple' || key === 'selectType') {
@@ -7986,14 +8003,8 @@ StepD:
     if (key === 'optionsText') {
       return controlType === 'checkbox-group' || controlType === 'radio-group';
     }
-    if (key === 'showPrefix' || key === 'showSuffix') {
-      return controlType === 'input';
-    }
-    if (key === 'prefixText') {
-      return controlType === 'input' && showPrefix;
-    }
-    if (key === 'suffixText') {
-      return controlType === 'input' && showSuffix;
+    if (key === 'size' || key === 'showPrefix' || key === 'showSuffix' || key === 'prefixText' || key === 'suffixText') {
+      return false;
     }
     if (key === 'componentToken' || key === 'componentKey' || key === 'variantCriteria') {
       return controlType === 'figma-component';
@@ -8223,8 +8234,8 @@ StepD:
     align: '对齐',
     layout: '布局',
     rowSpacing: '行间距',
-    controlWidth: '控件宽度',
-    controlWidthMode: '控件宽度模式'
+    controlWidth: '输入框类控件宽度',
+    controlWidthMode: '输入框类控件宽度模式'
   };
 
 
@@ -8519,7 +8530,8 @@ StepD:
             const isInput = def.id === 'input';
             const formFieldControlType = isFormField ? normalizeFormControlType(effectiveParams.controlType) : '';
             const useMergedFormFieldText =
-              isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select');
+              (isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select')) ||
+              isInput;
             const useFormFieldValueOnly = isFormField && formFieldControlType === 'radio-group';
             const showFormFieldTextControl = useMergedFormFieldText || useFormFieldValueOnly;
             const formFieldCurrentValue = showFormFieldTextControl ? String(effectiveParams.value ?? '') : '';
@@ -8549,7 +8561,7 @@ StepD:
               if (COMPONENT_HIDDEN_PARAM_KEYS[def.id]?.has(key)) return false;
               if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
               if (isInput && !shouldDisplayInputParam(key, effectiveParams)) return false;
-              if (isFormField && useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
+              if (useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
               if (isFormField && formFieldHiddenKeys.has(key)) return false;
               if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
               if (def.id === 'figma-component' && ['componentToken', 'componentKey', 'fallbackName', 'width', 'height'].includes(key)) {
@@ -8561,7 +8573,7 @@ StepD:
             const isForm = def.id === 'form';
             const orderedParamKeys = isForm
               ? ['layout', 'title', 'controlWidthMode', 'showColon', 'showActionArea'].filter((key) => paramKeys.includes(key))
-              : isFormField
+              : (isFormField || isInput)
                 ? [
                     ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
                     ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
@@ -8581,7 +8593,7 @@ StepD:
               advancedParamKeysList,
               selectedComponent.params || {}
             );
-            const primaryFormFieldKeyCount = isFormField
+            const primaryFormFieldKeyCount = (isFormField || isInput)
               ? ['controlType', 'state', 'size'].filter((key) => commonParamKeys.includes(key)).length
               : 0;
             const formFieldTextControl = showFormFieldTextControl ? (
@@ -8634,6 +8646,76 @@ StepD:
                   ...commonMainRows.slice(primaryFormFieldKeyCount)
                 ]
               : commonMainRows;
+
+            // Custom controlWidth input with confirm button (form only, fixed mode)
+            const controlWidthFixedRow = isForm && String(effectiveParams.controlWidthMode || 'fixed') === 'fixed' ? (
+              <div key="controlWidth-inline" style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '-12px', marginBottom: '0' }}>
+                <input
+                  type="number"
+                  value={controlWidthDraft}
+                  onChange={(e) => setControlWidthDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = parseFloat(controlWidthDraft);
+                      if (Number.isFinite(val) && val > 0) updateParam('controlWidth', val);
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '28px',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    padding: '0 12px',
+                    fontSize: '13px',
+                    fontWeight: 400,
+                    lineHeight: '16px',
+                    outline: 'none',
+                    boxSizing: 'border-box' as const,
+                    backgroundColor: '#ffffff',
+                    color: 'var(--ved-text-primary, #18181B)',
+                    fontFamily: 'var(--ved-font-family)',
+                  }}
+                  placeholder="240"
+                />
+                <button
+                  onClick={() => {
+                    const val = parseFloat(controlWidthDraft);
+                    if (Number.isFinite(val) && val > 0) updateParam('controlWidth', val);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    height: '28px',
+                    padding: '0 12px',
+                    border: 'none',
+                    borderRadius: '4px',
+                    background: 'var(--ved-button-primary-bg, #18181B)',
+                    color: 'var(--ved-button-primary-text, #FFFFFF)',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    lineHeight: '18px',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--ved-font-family)',
+                  }}
+                >
+                  确定
+                </button>
+              </div>
+            ) : null;
+            const mainRowsWithControlWidth = controlWidthFixedRow
+              ? (() => {
+                  // Insert controlWidthFixedRow right after the controlWidthMode row
+                  const idx = mainRowsWithFormFieldText.findIndex(
+                    (row: any) => row && row.key === 'controlWidthMode'
+                  );
+                  if (idx >= 0) {
+                    const arr = [...mainRowsWithFormFieldText];
+                    arr.splice(idx + 1, 0, controlWidthFixedRow);
+                    return arr;
+                  }
+                  return [...mainRowsWithFormFieldText, controlWidthFixedRow];
+                })()
+              : mainRowsWithFormFieldText;
             const normalizedFormLayout = String(effectiveParams.layout || '').trim().toLowerCase();
             const showFormLabelAlign = isForm && (
               normalizedFormLayout.includes('horizontal') ||
@@ -8681,19 +8763,19 @@ StepD:
             const mainRowsWithFormLabelAlign =
               showFormLabelAlign && formLabelAlignControl
                 ? (() => {
-                    const layoutRowIndex = mainRowsWithFormFieldText.findIndex(
+                    const layoutRowIndex = mainRowsWithControlWidth.findIndex(
                       (row) => React.isValidElement(row) && row.key === 'layout'
                     );
                     if (layoutRowIndex < 0) {
-                      return [formLabelAlignControl, ...mainRowsWithFormFieldText];
+                      return [formLabelAlignControl, ...mainRowsWithControlWidth];
                     }
                     return [
-                      ...mainRowsWithFormFieldText.slice(0, layoutRowIndex + 1),
+                      ...mainRowsWithControlWidth.slice(0, layoutRowIndex + 1),
                       formLabelAlignControl,
-                      ...mainRowsWithFormFieldText.slice(layoutRowIndex + 1)
+                      ...mainRowsWithControlWidth.slice(layoutRowIndex + 1)
                     ];
                   })()
-                : mainRowsWithFormFieldText;
+                : mainRowsWithControlWidth;
             const formItemCountControl = isForm ? (
               <FieldRow key="form-item-count" label="表单项数量">
                 <SelectControl

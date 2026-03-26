@@ -25,26 +25,25 @@ export const chartComponents: ComponentRegistry["components"] = {
       "description": "横向条形图，适合展示多指标排名对比",
       "usage": "用于排行榜、多指标对比场景",
       "examples": [
-        "基础条形图: { \"componentId\": \"chart-toplist\", \"params\": { \"数量\": 3 } }",
-        "堆叠条形图: { \"componentId\": \"chart-toplist\", \"params\": { \"类型\": \"堆叠 stacked\", \"数量\": 2 } }"
+        "基础条形图: { \"componentId\": \"chart-toplist\", \"params\": { \"数量 #of lines\": 3 } }",
+        "堆叠条形图: { \"componentId\": \"chart-toplist\", \"params\": { \"类型 type\": \"堆叠 stacked\", \"数量 #of lines\": 2 } }"
       ]
     },
     "renderNotes": {
-      "actionHint": "条形图用 chart-toplist，params 属性名必须与 Figma variant propertyName 完全一致（含空格）",
+      "actionHint": "条形图用 chart-toplist，params 属性名必须与 Figma variant propertyName 完全一致",
       "paramRules": [
-        "数量  取值 1–4，表示数据系列数（注意属性名末尾有一个空格）",
+        "数量 #of lines 取值 1–4，表示数据系列数",
         "类型 type 默认「基础/分组柱 default」，可选堆叠/百分比堆叠/特殊"
       ],
       "commonErrors": [
-        "不要把 chart-toplist 用于饼图或折线图",
-        "属性名 '数量 ' 末尾有一个空格，必须保留"
+        "不要把 chart-toplist 用于饼图或折线图"
       ]
     },
     "params": {
-      "数量 ": {
+      "数量 #of lines": {
         "type": "number",
         "default": 1,
-        "description": "数据系列数量，取值 1–4（注意属性名末尾有空格）",
+        "description": "数据系列数量，取值 1–4",
         "enumValues": ["1", "2", "3", "4"]
       },
       "类型 type": {
@@ -124,7 +123,7 @@ export const chartComponents: ComponentRegistry["components"] = {
         { "propertyName": "坐标轴标签 label", "type": "VARIANT", "defaultValue": "False", "options": ["True","False"] },
         { "propertyName": "尺寸", "type": "VARIANT", "defaultValue": "12", "options": ["12","14","16","20","24","32","48"] },
         { "propertyName": "悬停", "type": "VARIANT", "defaultValue": "false", "options": ["false","true"] },
-        { "propertyName": "数量 ", "type": "VARIANT", "defaultValue": "1", "options": ["1","2","3","4"] },
+        { "propertyName": "数量 #of lines", "type": "VARIANT", "defaultValue": "1", "options": ["1","2","3","4"] },
         { "propertyName": "状态 state", "type": "VARIANT", "defaultValue": "默认 Default", "options": ["默认 Default","悬浮 Hover","聚焦 Focus"] },
         { "propertyName": "禁用", "type": "VARIANT", "defaultValue": "false", "options": ["false","true"] },
         { "propertyName": "等级 level", "type": "VARIANT", "defaultValue": "critical", "options": ["critical","warning","notice"] },
@@ -409,26 +408,25 @@ export const chartComponents: ComponentRegistry["components"] = {
       "description": "纵向柱状图，适合分类对比",
       "usage": "用于分类对比、周期对比场景",
       "examples": [
-        "3系列柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 \": \"3\", \"类型 type\": \"基础/分组柱 default\" } }",
-        "堆叠柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 \": \"2\", \"类型 type\": \"堆叠 stacked\" } }"
+        "3系列柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 #of lines\": \"3\", \"类型 type\": \"基础/分组柱 default\" } }",
+        "堆叠柱状图: { \"componentId\": \"chart-bar\", \"props\": { \"数量 #of lines\": \"2\", \"类型 type\": \"堆叠 stacked\" } }"
       ]
     },
     "renderNotes": {
-      "actionHint": "纵向柱状图用 chart-bar，横向条形/排行榜用 chart-toplist；params 属性名必须与 Figma variant propertyName 完全一致（含空格）",
+      "actionHint": "纵向柱状图用 chart-bar，横向条形/排行榜用 chart-toplist；params 属性名必须与 Figma variant propertyName 完全一致",
       "paramRules": [
-        "数量  取值 1–4，表示数据系列数（注意属性名末尾有一个空格）",
+        "数量 #of lines 取值 1–4，表示数据系列数",
         "类型 type：基础/分组柱 default | 堆叠 stacked | 百分比堆叠 stacked part to whole"
       ],
       "commonErrors": [
-        "chart-bar 是纵向柱状图，横向条形/排行榜用 chart-toplist",
-        "属性名 '数量 ' 末尾有一个空格，必须保留"
+        "chart-bar 是纵向柱状图，横向条形/排行榜用 chart-toplist"
       ]
     },
     "params": {
-      "数量 ": {
+      "数量 #of lines": {
         "type": "number",
         "default": 3,
-        "description": "数据系列数量，取值 1–4（注意属性名末尾有空格）",
+        "description": "数据系列数量，取值 1–4",
         "enumValues": ["1", "2", "3", "4"]
       },
       "类型 type": {
@@ -512,7 +510,7 @@ export const chartComponents: ComponentRegistry["components"] = {
         { "propertyName": "尺寸", "type": "VARIANT", "defaultValue": "12", "options": ["12","14","16","20","24","32","48"] },
         { "propertyName": "悬停", "type": "VARIANT", "defaultValue": "false", "options": ["false","true"] },
         { "propertyName": "指标数值 Metric value", "type": "VARIANT", "defaultValue": "False", "options": ["True","False"] },
-        { "propertyName": "数量 ", "type": "VARIANT", "defaultValue": "1", "options": ["1","2","3","4"] },
+        { "propertyName": "数量 #of lines", "type": "VARIANT", "defaultValue": "1", "options": ["1","2","3","4"] },
         { "propertyName": "状态 State", "type": "VARIANT", "defaultValue": "默认 Default", "options": ["默认 Default","悬浮 Hover","取消选择 unselected"] },
         { "propertyName": "状态 state", "type": "VARIANT", "defaultValue": "默认 Default", "options": ["默认 Default","悬浮 hover","聚焦 focused"] },
         { "propertyName": "禁用", "type": "VARIANT", "defaultValue": "false", "options": ["false","true"] },

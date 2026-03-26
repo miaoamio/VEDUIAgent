@@ -266,7 +266,7 @@ export const inputComponents: ComponentRegistry["components"] = {
           ]
         },
         {
-          "propertyName": "Filled 已填",
+          "propertyName": "Fill 已填",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -317,7 +317,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       "propertyMap": {
         "Disable 禁用": { "sourceParam": "disabled", "transform": "boolean" },
         "Error 错误": { "sourceParam": "error", "transform": "boolean" },
-        "Filled 已填": { "sourceParam": "filled", "transform": "boolean" },
+        "Fill 已填": { "sourceParam": "filled", "transform": "boolean" },
         "Prefix 前缀": { "sourceParam": "showPrefix", "transform": "boolean" },
         "Size 尺寸": { "sourceParam": "size" },
         "State 状态": { "sourceParam": "state" },

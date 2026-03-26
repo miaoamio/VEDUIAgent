@@ -357,7 +357,7 @@ export const formComponents: ComponentRegistry["components"] = {
       },
       "labelWidthPreset": {
         "type": "select",
-        "default": "fill",
+        "default": "custom",
         "description": "标签长度预设",
         "enumValues": [
           "fill",
@@ -390,12 +390,12 @@ export const formComponents: ComponentRegistry["components"] = {
       "controlWidth": {
         "type": "number",
         "default": 240,
-        "description": "控件宽度"
+        "description": "输入框类控件宽度"
       },
       "controlWidthMode": {
         "type": "segmented",
-        "default": "fill",
-        "description": "控件宽度模式",
+        "default": "fixed",
+        "description": "输入框类控件宽度模式",
         "enumValues": [
           "fixed",
           "fill"
@@ -637,7 +637,7 @@ export const formComponents: ComponentRegistry["components"] = {
       "controlWidth": {
         "type": "number",
         "default": 240,
-        "description": "控件宽度"
+        "description": "输入框类控件宽度"
       },
       "showColon": {
         "type": "boolean",
@@ -821,13 +821,14 @@ export const formComponents: ComponentRegistry["components"] = {
       "renderKey": "form-field"
     },
     "runtime": {
-      "controlWidthModeOverrides": {
-        "fill": [
+      "inputLikeControlTypes": [
+          "input",
+          "select",
           "datepicker",
-          "timepicker",
-          "textarea"
+          "inputnumber",
+          "textarea",
+          "timepicker"
         ]
-      }
     },
     "colorVariableBindings": {
       "form-label-text": {

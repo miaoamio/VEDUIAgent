@@ -144,6 +144,7 @@ export interface ComponentRuntimeDefinition {
     };
   };
   controlWidthModeOverrides?: Record<string, string[]>;
+  inputLikeControlTypes?: string[];
   fallback?: {
     width?: number;
     height?: number;

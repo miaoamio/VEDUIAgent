@@ -354,6 +354,41 @@ function findAncestorFormFrame(node: SceneNode | null): FrameNode | null {
   return null;
 }
 
+function findAncestorFormFieldNode(node: SceneNode | null): SceneNode | null {
+  let current: BaseNode | null = node?.parent || null;
+  while (current && current.type !== 'PAGE') {
+    if ('getPluginData' in current && current.getPluginData('component-id') === 'form-field') {
+      return current as SceneNode;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function isFormFieldLayoutAffecting(prev: Record<string, any>, next: Record<string, any>): boolean {
+     const keys = [
+         'required',
+         'showHelpIcon'
+     ];
+     return keys.some((k) => String(prev[k] || '') !== String(next[k] || ''));
+ }
+
+function getFormFieldLabelWrapWidth(node: SceneNode): number | null {
+    if (node.type !== 'FRAME' && node.type !== 'INSTANCE') return null;
+    const findWrap = (n: SceneNode): FrameNode | null => {
+        if (isFormLabelWrapNode(n)) return n as FrameNode;
+        if ('children' in n) {
+            for (const child of n.children) {
+                const res = findWrap(child as SceneNode);
+                if (res) return res;
+            }
+        }
+        return null;
+    };
+    const wrap = findWrap(node);
+    return wrap ? wrap.width : null;
+}
+
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
 let selectionUpdateSuppressed = false;
@@ -375,11 +410,18 @@ function checkSelection() {
   }
   if (selection.length === 1) {
     const node = selection[0];
-    const targetNode =
+    let targetNode =
       node.getPluginData('is-ai-component') === 'true' ? node : findAiComponentNode(node);
       
-    const effectiveTarget = targetNode || 
+    let effectiveTarget = targetNode || 
       (node.type === 'INSTANCE' && node.getPluginData('component-id') ? node : null);
+
+    if (effectiveTarget) {
+      const formFieldAncestor = findAncestorFormFieldNode(effectiveTarget);
+      if (formFieldAncestor) {
+        effectiveTarget = formFieldAncestor;
+      }
+    }
 
     if (effectiveTarget) {
         const componentId = effectiveTarget.getPluginData('component-id');
@@ -604,7 +646,7 @@ figma.on('documentchange', async (event) => {
       const parent = node.parent;
       if (parent && parent.type === 'FRAME') {
         const isLabelWrap = parent.getPluginData('form-label-wrap') === 'true';
-        if (isLabelWrap) {
+        if (isLabelWrap && parent.getPluginData('form-label-auto-resize') === 'true') {
           const minWidthStr = parent.getPluginData('form-label-min-width');
           const minWidth = minWidthStr ? Number(minWidthStr) : 0;
           if (Number.isFinite(minWidth) && minWidth > 0) {
@@ -4120,13 +4162,21 @@ function syncInputParamsFromNode(currentParams: Record<string, any>, node: Scene
     const nextParams = { ...currentParams };
     const displayText = String(mainTextNode.characters || '');
     const placeholder = String(currentParams.placeholder || '请输入');
-    if (!displayText || displayText === placeholder) {
+    
+    // Check actual variant property if it's an instance
+    let isFilledVariant = currentParams.filled === true;
+    if (node.type === 'INSTANCE') {
+        const fromProp = readInstanceBooleanProperty(node, ['Fill 已填', 'Filled 已填', 'Filled']);
+        if (fromProp !== null) isFilledVariant = fromProp;
+    }
+
+    if (displayText === placeholder && !isFilledVariant) {
         nextParams.value = '';
         nextParams.filled = false;
     } else {
         nextParams.value = displayText;
-        nextParams.cachedValue = displayText;
-        nextParams.filled = true;
+        if (displayText) nextParams.cachedValue = displayText;
+        nextParams.filled = isFilledVariant;
     }
 
     if ('findAll' in node) {
@@ -4149,12 +4199,19 @@ function syncSelectParamsFromNode(currentParams: Record<string, any>, node: Scen
     const placeholder = String(currentParams.placeholder || '请选择');
     if (displayTextNode) {
         const displayText = String(displayTextNode.characters || '').trim();
-        if (!displayText || displayText === placeholder) {
+        
+        let isFilledVariant = currentParams.filled === true;
+        if (node.type === 'INSTANCE') {
+            const fromProp = readInstanceBooleanProperty(node, ['Fill 已填', 'Filled 已填', 'Filled']);
+            if (fromProp !== null) isFilledVariant = fromProp;
+        }
+
+        if (displayText === placeholder && !isFilledVariant) {
             nextParams.value = '';
             nextParams.filled = false;
         } else {
             nextParams.value = displayText;
-            nextParams.filled = true;
+            nextParams.filled = isFilledVariant;
         }
     }
 
@@ -4422,14 +4479,15 @@ function getFormFieldControlWidthModeOverrides(): Record<string, string[]> {
     return overrides && typeof overrides === 'object' ? overrides : {};
 }
 
+// 受 controlWidthMode 影响的输入框类控件类型
+const INPUT_LIKE_CONTROL_TYPES = new Set([
+    'input', 'select', 'datepicker', 'inputnumber', 'textarea', 'timepicker'
+]);
+
 function resolveFormControlWidthMode(params: Record<string, any>): 'fixed' | 'fill' {
     const controlType = normalizeFormFieldControlType(params.controlType);
-    const overrides = getFormFieldControlWidthModeOverrides();
-    const fillOverrides = Array.isArray(overrides.fill) ? overrides.fill : [];
-    const fixedOverrides = Array.isArray(overrides.fixed) ? overrides.fixed : [];
-    if (fillOverrides.includes(controlType)) return 'fill';
-    if (fixedOverrides.includes(controlType)) return 'fixed';
-    if (fillOverrides.length > 0) return 'fixed';
+    // 只有输入框类控件受 controlWidthMode 影响
+    if (!INPUT_LIKE_CONTROL_TYPES.has(controlType)) return 'fixed';
     return normalizeFormControlWidthMode(params.controlWidthMode);
 }
 
@@ -7029,9 +7087,14 @@ async function renderComponent(
 
     const width = Number(params.width);
 
+    const rowControlWidthMode = normalizeFormControlWidthMode(params.controlWidthMode);
     if (instance.children) {
         for (const child of instance.children) {
             const childNode = await renderComponent(inheritRowFormFieldParams(params, child), { isRoot: false });
+            // fill 模式下：form-field 子节点等分 form-row 宽度
+            if (rowControlWidthMode === 'fill' && child.componentId === 'form-field' && (childNode.type === 'FRAME' || childNode.type === 'INSTANCE')) {
+                childNode.layoutGrow = 1;
+            }
             frame.appendChild(childNode);
         }
     }
@@ -7046,11 +7109,17 @@ async function renderComponent(
     const labelAlign = String(params.labelAlign || '').trim().toLowerCase() === 'right' ? 'right' : 'left';
     const controlType = normalizeFormFieldControlType(params.controlType);
     const isTextarea = controlType === 'textarea';
+
+    const descriptionText = params.showDescriptionText ? String(params.descriptionText || '描述文字') : '';
+    const messageText = String(params.errorText || descriptionText || params.helpText || '').trim();
+    const hasMessageText = messageText.length > 0;
+    const shouldTopAlign = isTextarea || hasMessageText;
+
     const frame = figma.createFrame();
     frame.layoutMode = layout === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
-    frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : (isTextarea ? 'MIN' : 'CENTER');
+    frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : (shouldTopAlign ? 'MIN' : 'CENTER');
     const explicitSpacing = Number(params.labelControlSpacing);
     const resolvedSpacing =
         Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 20);
@@ -7069,8 +7138,8 @@ async function renderComponent(
         labelWrap.itemSpacing = 4;
         labelWrap.fills = [];
         labelWrap.clipsContent = false;
-        if (layout !== 'vertical' && isTextarea) {
-            labelWrap.paddingTop = 3;
+        if (layout !== 'vertical' && shouldTopAlign) {
+            labelWrap.paddingTop = isTextarea ? 3 : 5;
         }
 
         if (params.required) {
@@ -7150,9 +7219,7 @@ async function renderComponent(
 
     frame.appendChild(controlNode);
 
-    const descriptionText = params.showDescriptionText ? String(params.descriptionText || '描述文字') : '';
-    const messageText = String(params.errorText || descriptionText || params.helpText || '').trim();
-    if (messageText) {
+    if (hasMessageText) {
         // 如果有错误信息，包裹在一个单独的垂直容器中以保持流向
         const wrap = figma.createFrame();
         wrap.layoutMode = 'VERTICAL';
@@ -7160,6 +7227,7 @@ async function renderComponent(
         wrap.counterAxisSizingMode = 'AUTO';
         wrap.fills = [];
         wrap.clipsContent = false;
+        wrap.itemSpacing = 4;
         
         if (controlWidthMode === 'fill') {
             if (layout !== 'vertical') {
@@ -7192,7 +7260,7 @@ async function renderComponent(
         frame.appendChild(wrap);
     }
 
-    if (controlType === 'input' || controlType === 'select' || controlType === 'textarea' || controlType === 'datepicker' || controlType === 'timepicker') {
+    if (INPUT_LIKE_CONTROL_TYPES.has(controlType)) {
         applyFormControlWidthModeToNode(controlNode, params);
     }
 
@@ -7317,8 +7385,7 @@ async function renderComponent(
       });
 
       for (const col of columnData) {
-          await new Promise((r) => setTimeout(r, 20));
-          const headerChild = col.headerChild;
+        const headerChild = col.headerChild;
           const headerWidthParam = (headerChild?.params as any)?.width;
           const headerExplicitHugWidth = headerWidthParam === 0 || headerWidthParam === '0';
           const headerNode = await renderComponent(
@@ -7345,8 +7412,7 @@ async function renderComponent(
               { isRoot: false }
           );
           col.frameNode.appendChild(headerNode);
-          await new Promise((r) => setTimeout(r, 20));
-          await applyTableHeaderElementToHeaderCell(headerNode, col.mergedParams.headerType);
+        await applyTableHeaderElementToHeaderCell(headerNode, col.mergedParams.headerType);
       }
 
       const maxRowCount = columnData.reduce((count, col) => {
@@ -7388,9 +7454,8 @@ async function renderComponent(
                   { isRoot: false }
               );
               col.frameNode.appendChild(cellNode);
-              await new Promise((r) => setTimeout(r, 20));
-          }
-      }
+        }
+    }
 
       for (const col of columnData) {
           applyColumnWidthMode(
@@ -7491,9 +7556,7 @@ async function renderComponent(
                 }
               }, { isRoot: false });
               frame.appendChild(childNode);
-              // Add delay to show step-by-step drawing
-              await new Promise(r => setTimeout(r, 20));
-          }
+        }
       } else {
           // Fallback: Auto-generate based on params
           
@@ -9205,6 +9268,12 @@ figma.ui.onmessage = async (msg) => {
           node = resolved;
         }
       }
+      
+      const formFieldAncestor = findAncestorFormFieldNode(node);
+      if (formFieldAncestor) {
+        node = formFieldAncestor;
+      }
+
       const componentId = node.getPluginData('component-id');
       
       if (componentId) {
@@ -9219,6 +9288,27 @@ figma.ui.onmessage = async (msg) => {
               figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
               return;
             }
+          }
+          // ── controlWidthMode fixed→fill 切换：锁定当前容器宽度 ──
+          if (
+            componentId === 'form' &&
+            node.type === 'FRAME' &&
+            normalizeFormControlWidthMode(previousParams.controlWidthMode) === 'fixed' &&
+            normalizeFormControlWidthMode(params.controlWidthMode) === 'fill'
+          ) {
+            const currentFrameWidth = Math.round(node.width);
+            if (currentFrameWidth > 0) {
+              params.width = currentFrameWidth;
+            }
+          }
+          // ── controlWidthMode fill→fixed 切换：清除容器宽度锁定 ──
+          if (
+            componentId === 'form' &&
+            node.type === 'FRAME' &&
+            normalizeFormControlWidthMode(previousParams.controlWidthMode) === 'fill' &&
+            normalizeFormControlWidthMode(params.controlWidthMode) === 'fixed'
+          ) {
+            params.width = 0;
           }
           if (componentId === 'form' && node.type === 'FRAME') {
             const updated = await updateFormLayoutParams(node, previousParams, params);
@@ -9239,6 +9329,20 @@ figma.ui.onmessage = async (msg) => {
           const baseInstance: ComponentInstance = snapshot
             ? { ...snapshot, componentId, params }
             : { id: `update-${Date.now()}`, componentId, params };
+          
+          // Optimization: If it's a form-field and not layout-affecting, preserve existing label width
+          // to avoid flickering or misaligned render before updateFormLayoutParams.
+          let isLayoutChange = true;
+          if (componentId === 'form-field') {
+            isLayoutChange = isFormFieldLayoutAffecting(previousParams, params);
+            if (!isLayoutChange) {
+              const existingLabelWidth = getFormFieldLabelWrapWidth(node);
+              if (existingLabelWidth) {
+                params.labelWidth = existingLabelWidth;
+              }
+            }
+          }
+
           const instanceToRender =
             componentId === 'form' && snapshot
               ? patchFormInstanceSnapshot(snapshot, previousParams, params)
@@ -9248,7 +9352,7 @@ figma.ui.onmessage = async (msg) => {
           const replacement = await renderComponent(instanceToRender);
 
           if (replaceSceneNode(node, replacement)) {
-            if (componentId === 'form-field') {
+            if (componentId === 'form-field' && isLayoutChange) {
               const formFrame = findAncestorFormFrame(replacement as SceneNode);
               if (formFrame) {
                 const formParams = readNodeParams(formFrame);
@@ -9278,6 +9382,28 @@ figma.ui.onmessage = async (msg) => {
         if (node.type === 'INSTANCE') {
           // 严格遵循注册表中的 propertyMap 进行映射
           applyFigmaComponentProps(node, componentId, params);
+
+          // Handle manual text sync for input/select if not fully re-rendered
+          if (componentId === 'input' || componentId === 'select' || componentId === 'textarea' || componentId === 'datepicker' || componentId === 'timepicker') {
+            let mainTextNode: TextNode | null = null;
+            if (componentId === 'input' || componentId === 'textarea' || componentId === 'datepicker' || componentId === 'timepicker') {
+              mainTextNode = readInputMainTextNode(node);
+            } else if (componentId === 'select') {
+              mainTextNode = findSelectDisplayTextNode(node);
+            }
+            if (mainTextNode) {
+              let targetText = params.filled ? params.value : params.placeholder;
+              if (!targetText) {
+                targetText = componentId === 'select' ? '请选择' : '请输入';
+              }
+              if (String(mainTextNode.characters) !== String(targetText)) {
+                if (mainTextNode.fontName !== figma.mixed) {
+                  await figma.loadFontAsync(mainTextNode.fontName as FontName);
+                }
+                mainTextNode.characters = String(targetText);
+              }
+            }
+          }
         }
         
         // Simplified update for demo: just update basic props if possible

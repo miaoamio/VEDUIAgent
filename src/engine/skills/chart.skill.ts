@@ -30,28 +30,37 @@ const CHART_COMPONENT_TOKEN_MAP: Record<string, string> = {
 export const getChartToken = (hint: string, fallbackToken = ''): string => {
   const normalized = String(hint || '').replace(/\s+/g, '').toLowerCase();
   if (!normalized) return fallbackToken;
-  if (normalized.includes('面积图') || normalized.includes('area')) return 'lib-data-display-component-areachart';
+
+  // 1. 优先处理高频中文关键字（更具语义，避免英文冲突）
+  if (normalized.includes('面积图')) return 'lib-data-display-component-areachart';
+  if (normalized.includes('饼图') || normalized.includes('环形图')) return 'lib-data-display-component-piechart';
+  if (normalized.includes('条形图') || normalized.includes('toplist')) return 'lib-data-display-toplist';
+  if (normalized.includes('柱状图')) return 'lib-data-display-component-barchart';
+  if (normalized.includes('折线图')) return 'lib-data-display-component-linechart';
+
+  // 2. 处理英文和缩写，注意排他性，避免 "lines" (用于系列数) 误中 "line" (折线图)
+  if (normalized.includes('areachart') || normalized.includes('area')) return 'lib-data-display-component-areachart';
+  
   if (
-    normalized.includes('折线图') ||
     normalized.includes('linechart') ||
     normalized.includes('line-chart') ||
-    normalized.includes('line')
+    (normalized.includes('line') && !normalized.includes('#oflines') && !normalized.includes('lines:'))
   ) {
     return 'lib-data-display-component-linechart';
   }
-  if (normalized.includes('柱状图') || normalized.includes('barchart') || normalized.includes('bar-chart') || normalized === 'bar') {
+
+  if (normalized.includes('barchart') || normalized.includes('bar-chart') || normalized === 'bar') {
     return 'lib-data-display-component-barchart';
   }
-  if (normalized.includes('条形图') || normalized.includes('toplist')) return 'lib-data-display-toplist';
+
   if (
-    normalized.includes('饼图') ||
-    normalized.includes('环形图') ||
+    normalized.includes('piechart') ||
     normalized.includes('pie') ||
-    normalized.includes('donut') ||
-    normalized.includes('piechart')
+    normalized.includes('donut')
   ) {
     return 'lib-data-display-component-piechart';
   }
+
   return fallbackToken;
 };
 
