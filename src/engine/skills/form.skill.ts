@@ -34,8 +34,7 @@ type NormalizedFormFieldControlType =
   | 'upload'
   | 'segmented-picker'
   | 'figma-component'
-  | 'button'
-  | 'text';
+  | 'button';
 
 // ─── Utils：控件类型规则表 ────────────────────────────────────────────────────
 
@@ -211,6 +210,13 @@ const resolveFormLibraryControlRule = (value: unknown) => {
   ) || null;
 };
 
+const resolveFormControlTokenByType = (value: unknown): string => {
+  const normalized = normalizeFormControlLookupValue(value);
+  if (!normalized) return '';
+  const match = FORM_LIBRARY_CONTROL_RULES.find((rule) => rule.fieldControlType === normalized);
+  return match?.token || '';
+};
+
 const canonicalizeLooseFormComponentToken = (value: unknown): string => {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -227,7 +233,6 @@ const normalizeFormFieldControlTypeHint = (
   const matchedRule = resolveFormLibraryControlRule(normalized);
   if (matchedRule) return matchedRule.fieldControlType;
   if (normalized.includes('button') || normalized.includes('btn') || normalized.includes('按钮')) return 'button';
-  if (normalized === 'text' || normalized.includes('文本')) return 'text';
   if (normalized.includes('figma')) return 'figma-component';
   return '';
 };
@@ -358,14 +363,14 @@ const buildExplicitFormFieldParams = (
 
   if (explicitControlType && explicitControlType !== 'figma-component') {
     mergedParams.controlType = explicitControlType;
-    delete mergedParams.componentToken;
-    delete mergedParams.componentKey;
-    delete mergedParams.variantCriteria;
+    if (!mergedParams.componentToken) {
+      mergedParams.componentToken = resolveFormControlTokenByType(explicitControlType);
+    }
   } else if ((explicitControlType === 'figma-component' || !explicitControlType) && canCollapseTokenDrivenControl) {
     mergedParams.controlType = tokenControlType;
-    delete mergedParams.componentToken;
-    delete mergedParams.componentKey;
-    delete mergedParams.variantCriteria;
+    if (!mergedParams.componentToken) {
+      mergedParams.componentToken = canonicalToken || resolveFormControlTokenByType(tokenControlType);
+    }
   } else if (explicitControlType) {
     mergedParams.controlType = explicitControlType;
   }
@@ -451,23 +456,43 @@ export const buildNormalizedFormComponentFromSource = (
     const canonicalToken = canonicalizeLooseFormComponentToken(
       explicitParams.componentToken ?? itemObj.componentToken ?? itemObj.token
     );
+    const buildFigmaComponentParams = (token: string, componentKey?: string) => ({
+      ...explicitParams,
+      ...(token ? { componentToken: token } : {}),
+      ...(componentKey ? { componentKey } : {}),
+      forceFigmaKey: true
+    });
 
     if (explicitComponentId === 'figma-component') {
       return {
         componentId: 'figma-component',
-        params: canonicalToken ? { ...explicitParams, componentToken: canonicalToken } : explicitParams
+        params: canonicalToken ? buildFigmaComponentParams(canonicalToken) : { ...explicitParams, forceFigmaKey: true }
       };
     }
 
     if (
-      explicitComponentId === 'button' ||
-      explicitComponentId === 'text' ||
       explicitComponentId === 'input' ||
       explicitComponentId === 'select' ||
       explicitComponentId === 'checkbox-group' ||
       explicitComponentId === 'radio-group' ||
-      explicitComponentId === 'segmented-picker'
+      explicitComponentId === 'segmented-picker' ||
+      explicitComponentId === 'switch' ||
+      explicitComponentId === 'datepicker' ||
+      explicitComponentId === 'inputnumber' ||
+      explicitComponentId === 'slider' ||
+      explicitComponentId === 'textarea' ||
+      explicitComponentId === 'timepicker' ||
+      explicitComponentId === 'upload'
     ) {
+      const token = canonicalToken || resolveFormControlTokenByType(explicitComponentId);
+      const nextComponentKey = String(explicitParams.componentKey || itemObj.componentKey || '').trim();
+      const segmentedKey = token.includes('segmented') && !nextComponentKey ? SEGMENTED_PICKER_COMPONENT_KEY : nextComponentKey;
+      if (token) {
+        return {
+          componentId: 'figma-component',
+          params: buildFigmaComponentParams(token, segmentedKey)
+        };
+      }
       return { componentId: explicitComponentId, params: explicitParams };
     }
 
@@ -476,49 +501,24 @@ export const buildNormalizedFormComponentFromSource = (
       return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
     }
 
-    if (normalizedControlType === 'text') {
-      return {
-        componentId: 'text',
-        params: {
-          ...explicitParams,
-          text: String(explicitParams.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
-        }
-      };
-    }
-
-    if (normalizedControlType === 'select') {
-      return { componentId: 'select', params: explicitParams };
-    }
-
-    if (normalizedControlType === 'checkbox-group') {
-      return { componentId: 'checkbox-group', params: explicitParams };
-    }
-
-    if (normalizedControlType === 'radio-group') {
-      return { componentId: 'radio-group', params: explicitParams };
-    }
-
     if (normalizedControlType === 'segmented-picker') {
       const optionsText = buildOptionsTextFromValue(
         explicitParams.optionsText ?? itemObj.optionsText ?? itemObj.options
       );
       const hasOptionsText = explicitParams.optionsText !== undefined;
+      const token = canonicalToken || resolveFormControlTokenByType(normalizedControlType);
+      const nextComponentKey = String(explicitParams.componentKey || itemObj.componentKey || '').trim();
+      const segmentedKey = token.includes('segmented') && !nextComponentKey ? SEGMENTED_PICKER_COMPONENT_KEY : nextComponentKey;
+      if (token) {
+        return {
+          componentId: 'figma-component',
+          params: buildFigmaComponentParams(token, segmentedKey)
+        };
+      }
       return {
         componentId: 'segmented-picker',
         params: hasOptionsText ? explicitParams : { ...explicitParams, optionsText }
       };
-    }
-
-    if (
-      normalizedControlType === 'switch' ||
-      normalizedControlType === 'datepicker' ||
-      normalizedControlType === 'inputnumber' ||
-      normalizedControlType === 'slider' ||
-      normalizedControlType === 'textarea' ||
-      normalizedControlType === 'timepicker' ||
-      normalizedControlType === 'upload'
-    ) {
-      return { componentId: normalizedControlType, params: explicitParams };
     }
 
     if (normalizedControlType === 'figma-component') {
@@ -533,8 +533,21 @@ export const buildNormalizedFormComponentFromSource = (
           params: {
             ...explicitParams,
             componentToken: fallbackToken,
-            ...(segmentedKey ? { componentKey: segmentedKey } : {})
+            ...(segmentedKey ? { componentKey: segmentedKey } : {}),
+            forceFigmaKey: true
           }
+        };
+      }
+    }
+
+    if (normalizedControlType) {
+      const token = canonicalToken || resolveFormControlTokenByType(normalizedControlType);
+      const nextComponentKey = String(explicitParams.componentKey || itemObj.componentKey || '').trim();
+      const segmentedKey = token.includes('segmented') && !nextComponentKey ? SEGMENTED_PICKER_COMPONENT_KEY : nextComponentKey;
+      if (token) {
+        return {
+          componentId: 'figma-component',
+          params: buildFigmaComponentParams(token, segmentedKey)
         };
       }
     }
@@ -553,7 +566,7 @@ export const buildNormalizedFormComponentFromSource = (
       };
     }
 
-    if (explicitComponentId === 'button' || explicitComponentId === 'text') {
+    if (explicitComponentId === 'button') {
       return {
         componentId: explicitComponentId,
         params: buildExplicitComponentParams(itemObj)
@@ -570,15 +583,6 @@ export const buildNormalizedFormComponentFromSource = (
 
     if (normalizedControlType === 'button') {
       return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
-    }
-
-    if (normalizedControlType === 'text' || rawType.toLowerCase() === 'text') {
-      return {
-        componentId: 'text',
-        params: {
-          text: String(props.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
-        }
-      };
     }
 
     const label = String(
@@ -604,6 +608,10 @@ export const buildNormalizedFormComponentFromSource = (
     const optionsText = buildOptionsTextFromValue(
       props.optionsText ?? props.options ?? itemObj.optionsText ?? itemObj.options
     );
+    const controlToken = canonicalToken || resolveFormControlTokenByType(normalizedControlType);
+    const controlComponentKey = controlToken.includes('segmented')
+      ? SEGMENTED_PICKER_COMPONENT_KEY
+      : String(props.componentKey || itemObj.componentKey || '').trim();
 
     const inputs = Array.isArray(props.inputs ?? itemObj.inputs)
       ? (props.inputs ?? itemObj.inputs)
@@ -625,6 +633,7 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: 'checkbox-group',
+          ...(controlToken ? { componentToken: controlToken } : {}),
           optionsText,
           checkedValues: String(props.checkedValues || itemObj.checkedValues || props.value || itemObj.value || '选项一'),
           direction: String(props.direction || itemObj.direction || 'horizontal')
@@ -639,6 +648,7 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: 'radio-group',
+          ...(controlToken ? { componentToken: controlToken } : {}),
           optionsText,
           value: String(props.value || itemObj.value || '选项一'),
           direction: String(props.direction || itemObj.direction || 'horizontal')
@@ -653,6 +663,7 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: 'select',
+          ...(controlToken ? { componentToken: controlToken } : {}),
           value: String(props.value || itemObj.value || '请选择')
         },
         children: inputLayout ? [inputLayout] : undefined
@@ -666,6 +677,8 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: 'segmented-picker',
+          ...(controlToken ? { componentToken: controlToken } : {}),
+          ...(controlComponentKey ? { componentKey: controlComponentKey } : {}),
           optionsText,
           value: String(props.value || itemObj.value || '选项一'),
           size: String(props.size || itemObj.size || 'Default 32'),
@@ -682,6 +695,7 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: 'input',
+          ...(controlToken ? { componentToken: controlToken } : {}),
           ...buildInputParamsFromSource(props, itemObj)
         },
         children: inputLayout ? [inputLayout] : undefined
@@ -702,6 +716,7 @@ export const buildNormalizedFormComponentFromSource = (
         params: {
           ...fieldBaseParams,
           controlType: normalizedControlType,
+          ...(controlToken ? { componentToken: controlToken } : {}),
           ...buildInputParamsFromSource(props, itemObj),
           ...(props.checked !== undefined || itemObj.checked !== undefined ? { checked: Boolean(props.checked ?? itemObj.checked) } : {})
         },

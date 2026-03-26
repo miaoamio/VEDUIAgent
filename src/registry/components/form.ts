@@ -322,7 +322,7 @@ export const formComponents: ComponentRegistry["components"] = {
       "commonErrors": [
         "按钮(提交/重置)放进了 rows 里 → 应放 footer.actions",
         "单字段行用了 form-row 包裹 → form-row 仅用于同行多字段",
-        "rows 里直接放 figma-component → 必须用 componentId 指定控件类型",
+        "rows 里直接放控件实例 → 应通过 form-field 统一承载并传递控件参数",
         "图片生成时只输出了部分字段 → 必须输出所有识别到的字段"
       ],
       "agentHints": [
@@ -393,7 +393,7 @@ export const formComponents: ComponentRegistry["components"] = {
         "description": "控件宽度"
       },
       "controlWidthMode": {
-        "type": "select",
+        "type": "segmented",
         "default": "fill",
         "description": "控件宽度模式",
         "enumValues": [
@@ -556,7 +556,7 @@ export const formComponents: ComponentRegistry["components"] = {
       ]
     },
     "renderNotes": {
-      "actionHint": "表单字段必须通过 controlType 选择原子控件，不要在 form-row/rows 中直接放 figma-component。",
+      "actionHint": "表单字段内部控件统一用 Figma 组件 token/key 渲染。",
       "paramRules": [
         "controlType 决定内部控件类型，label/placeholder/value 等参数按控件语义传递",
         "input 控件高度由 size 决定（Default 32px / Small 28px / Mini 24px / Large 36px），渲染引擎自动应用，无需手动传 height",
@@ -579,10 +579,20 @@ export const formComponents: ComponentRegistry["components"] = {
         "default": "",
         "description": "字段说明文案"
       },
+      "showHelpIcon": {
+        "type": "boolean",
+        "default": false,
+        "description": "说明 icon"
+      },
       "descriptionText": {
         "type": "string",
-        "default": "",
+        "default": "描述文字",
         "description": "字段补充说明，对应 Description 描述"
+      },
+      "showDescriptionText": {
+        "type": "boolean",
+        "default": false,
+        "description": "描述文字"
       },
       "errorText": {
         "type": "string",
@@ -639,6 +649,7 @@ export const formComponents: ComponentRegistry["components"] = {
         "default": "input",
         "description": "控件类型",
         "enumValues": [
+          "figma-component",
           "input",
           "select",
           "checkbox-group",
@@ -650,8 +661,7 @@ export const formComponents: ComponentRegistry["components"] = {
           "switch",
           "textarea",
           "timepicker",
-          "upload",
-          "text"
+          "upload"
         ]
       },
       "placeholder": {
@@ -855,6 +865,24 @@ export const formComponents: ComponentRegistry["components"] = {
         ],
         "idCandidates": [
           "VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "form-description-text-style-key": {
+        "enabled": true,
+        "token": "text.body",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
         ]
       }
     }

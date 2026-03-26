@@ -37,7 +37,8 @@ export const COMPONENT_EDITABLE_PARAM_KEYS: Record<string, string[]> = {
 };
 
 export const COMPONENT_HIDDEN_PARAM_KEYS: Record<string, Set<string>> = {
-  'form-row': new Set(['paddingBottom', 'align'])
+  'form-row': new Set(['paddingBottom', 'align']),
+  'form-field': new Set(['showColon'])
 };
 
 export const GENERATION_ONLY_PARAM_KEYS = new Set([

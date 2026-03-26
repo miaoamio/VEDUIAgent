@@ -12,6 +12,7 @@ import {
   discoverFigmaComponentSchema,
   discoverFigmaComponentSchemaFromSelection,
   inspectFigmaComponentStructure,
+  inspectSelectionVariables,
   resolveComponentKeyFromToken,
   resolveInputSizeVariantLabel,
   VariantCriteria
@@ -38,6 +39,9 @@ figma.showUI(__html__, { width: 398, height: 680 });
 
 const FONT_LOAD_CACHE = new Map<string, Promise<void>>();
 const FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE = new Map<string, InstanceNode>();
+const FIGMA_COMPONENT_INSTANCE_FAILURE_CACHE = new Map<string, number>();
+const FIGMA_COMPONENT_INSTANCE_FAILURE_TTL = 5 * 60 * 1000;
+const FAST_FAIL_COMPONENT_TOKENS = new Set<string>();
 const TAG_TEMPLATE_CACHE = new Map<string, SceneNode>();
 const TEMPLATE_CACHE_FRAME_KEY = 'uia-template-cache-frame';
 const TEMPLATE_CACHE_NODE_KEY = 'uia-template-cache-node';
@@ -93,27 +97,10 @@ const resolveComponentIdFromToken = (token: string): string | null => {
   return null;
 };
 
-const normalizeTextareaState = (value: unknown): string => {
-  const normalized = String(value || '').trim();
-  if (!normalized) return 'Default 默认';
-  if (normalized === 'Default 默认') return 'Default 默认';
-  return normalized;
-};
 
 const isComponentOrSetNode = (node: BaseNode | PageNode | DocumentNode | null): node is ComponentNode | ComponentSetNode =>
   Boolean(node && (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET'));
 
-const findLocalComponentKeyByName = (name: unknown): string => {
-  const normalized = String(name || '').trim().toLowerCase();
-  if (!normalized) return '';
-  const isTarget = (node: SceneNode | PageNode | DocumentNode) => {
-    if (!isComponentOrSetNode(node)) return false;
-    const nodeName = node.name.toLowerCase();
-    return nodeName === normalized || nodeName.includes(normalized);
-  };
-  const found = figma.currentPage.findOne(isTarget) || figma.root.findOne(isTarget);
-  return (found as ComponentNode | ComponentSetNode | null)?.key || '';
-};
 
 
 function loadFontCached(font: FontName): Promise<void> {
@@ -2558,69 +2545,14 @@ function normalizeInputState(value: unknown): 'default' | 'hover' | 'active' {
     return 'default';
 }
 
-function resolveInputMetrics(value: unknown): {
-    height: number;
-    paddingX: number;
-    paddingY: number;
-    fontSize: number;
-    cornerRadius: number;
-} {
-    const metrics =
-        getRegistrySizeMetrics('input', value)
-        ?? getRegistrySizeMetrics('input', getDefaultParams('input').size);
-    if (metrics) return metrics;
-    return { height: 32, paddingX: 12, paddingY: 5, fontSize: 13, cornerRadius: 4 };
-}
-
 function hasInputAffix(value: unknown): boolean {
     if (typeof value === 'boolean') return value;
     const normalized = String(value || '').trim().toLowerCase();
     return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
-function resolveInputOutlineSpec(
-    disabled: boolean,
-    error: boolean,
-    state: 'default' | 'hover' | 'active'
-): { variableKey: string; fallbackHex: string } {
-    if (error) return { variableKey: 'input-error-border-key', fallbackHex: '#D7312A' };
-    if (!disabled && state === 'active') return { variableKey: 'input-active-border-key', fallbackHex: '#1664FF' };
-    if (!disabled && state === 'hover') return { variableKey: 'input-hover-border-key', fallbackHex: '#86909C' };
-    return { variableKey: 'input-border-key', fallbackHex: '#DDE2E9' };
-}
-
-function buildInputOutlineEffects(outlineHex: string): Effect[] {
-    return [{
-        type: 'DROP_SHADOW',
-        color: { ...parseColor(outlineHex), a: 1 },
-        offset: { x: 0, y: 0 },
-        radius: 0,
-        spread: 1,
-        visible: true,
-        showShadowBehindNode: true,
-        blendMode: 'NORMAL'
-    }];
-}
-
-const INPUT_DEFAULT_EFFECT_STYLE_REF = 'S:82fec6b68b028ee54ac2b41d28db6dbfa88ac472,163518:1';
-const INPUT_DEFAULT_EFFECT_STYLE_NAMES = [
-    'shadow/Assembly/Data entry/Default 默认',
-    'shadow/Assembly/Data entry/default'
-];
-
 function toVariantBoolean(value: boolean): 'True' | 'False' {
     return value ? 'True' : 'False';
-}
-
-function resolveInputStateVariantLabel(value: unknown): 'Default 默认' | 'Hover 悬浮' | 'Active 激活' {
-    switch (normalizeInputState(value)) {
-        case 'hover':
-            return 'Hover 悬浮';
-        case 'active':
-            return 'Active 激活';
-        default:
-            return 'Default 默认';
-    }
 }
 
 function resolveButtonTypeVariantLabel(value: unknown): 'Primary 主要' | 'Secondary 次要' | 'Outline 线框' | 'Text 文字' {
@@ -2656,14 +2588,6 @@ function resolveButtonStateVariantLabel(
 function resolveButtonLanguageVariantLabel(value: unknown): 'CN' | 'EN' {
     const normalized = String(value || '').trim().toLowerCase();
     return normalized.includes('en') ? 'EN' : 'CN';
-}
-
-function resolveSelectTypeVariantLabel(value: unknown): 'Default 默认' | 'Label 内置标签' {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized.includes('label') || normalized.includes('内置标签')) {
-        return 'Label 内置标签';
-    }
-    return 'Default 默认';
 }
 
 function normalizeTagSize(value: unknown): 'mini' | 'small' | 'default' | 'large' {
@@ -3403,49 +3327,6 @@ async function updateTextNodeCharacters(node: TextNode, value: string): Promise<
     }
 }
 
-function matchInputAffixName(value: string, kind: 'prefix' | 'suffix'): boolean {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) return false;
-    if (kind === 'prefix') return normalized.includes('prefix') || normalized.includes('前缀');
-    return normalized.includes('suffix') || normalized.includes('后缀');
-}
-
-function findInputAffixTextNodes(
-    textNodes: TextNode[],
-    mainTextNode?: TextNode | null
-): { prefixNode: TextNode | null; suffixNode: TextNode | null } {
-    const candidates = textNodes.filter((node) => node !== mainTextNode);
-    if (candidates.length === 0) return { prefixNode: null, suffixNode: null };
-
-    let prefixNode: TextNode | null = null;
-    let suffixNode: TextNode | null = null;
-    for (const node of candidates) {
-        const combined = `${String(node.name || '')} ${String(node.parent?.name || '')}`.toLowerCase();
-        if (!prefixNode && matchInputAffixName(combined, 'prefix')) {
-            prefixNode = node;
-        }
-        if (!suffixNode && matchInputAffixName(combined, 'suffix')) {
-            suffixNode = node;
-        }
-        if (prefixNode && suffixNode) break;
-    }
-
-    const sortedByX = [...candidates].sort((a, b) => {
-        const ax = a.absoluteBoundingBox?.x ?? 0;
-        const bx = b.absoluteBoundingBox?.x ?? 0;
-        return ax - bx;
-    });
-    const fallbackPrefix = sortedByX[0] ?? null;
-    const fallbackSuffix = sortedByX.length > 1 ? sortedByX[sortedByX.length - 1] : null;
-
-    const finalPrefix = prefixNode ?? fallbackPrefix;
-    let finalSuffix = suffixNode ?? fallbackSuffix;
-    if (finalPrefix && finalSuffix && finalPrefix.id === finalSuffix.id) {
-        finalSuffix = null;
-    }
-    return { prefixNode: finalPrefix, suffixNode: finalSuffix };
-}
-
 async function createButtonFromFigmaTemplate(
     def: ComponentDefinition,
     params: Record<string, any>
@@ -3503,285 +3384,6 @@ async function createButtonFromFigmaTemplate(
         return null;
     }
 }
-
-async function createTextareaFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const snapshot = def.figmaPropertySnapshot as any;
-    let componentKey = snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '';
-    if (!componentKey) componentKey = String(snapshot?.componentKey || '').trim();
-    if (!componentKey) componentKey = findLocalComponentKeyByName(snapshot?.componentSetName || def.name);
-    if (!componentKey) return null;
-
-    try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-            componentKey,
-            fallbackName: snapshot?.componentSetName || def.name,
-            variantCriteria: {}
-        });
-
-        const normalizedParams: Record<string, any> = { ...params, state: normalizeTextareaState(params.state) };
-        applyFigmaComponentProps(importedInstance, 'textarea', normalizedParams);
-        
-        const rawValue = String(normalizedParams.value ?? '');
-        const placeholder = String(normalizedParams.placeholder ?? '请输入内容');
-        const textToDisplay = rawValue || placeholder;
-        
-        const textNode = importedInstance.findOne(n => n.type === 'TEXT') as TextNode;
-        if (textNode) {
-            try {
-                await figma.loadFontAsync(textNode.fontName as FontName);
-                textNode.characters = textToDisplay;
-            } catch(e) {}
-        }
-
-        const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        try {
-            if (importedInstance.layoutMode !== 'NONE') {
-                importedInstance.layoutSizingHorizontal = 'FIXED';
-            }
-        } catch(e) {}
-        try {
-            importedInstance.resize(width, importedInstance.height);
-        } catch(e) {}
-
-        importedInstance.name = def.name;
-        return importedInstance;
-    } catch (e) {
-        console.warn('[TextareaTemplate] failed to create textarea from original Figma component', e);
-        return null;
-    }
-}
-
-async function createSwitchFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const snapshot = def.figmaPropertySnapshot as any;
-    let componentKey = snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '';
-    if (!componentKey) componentKey = String(snapshot?.componentKey || '').trim();
-    if (!componentKey) componentKey = findLocalComponentKeyByName(snapshot?.componentSetName || def.name);
-    if (!componentKey) return null;
-
-    try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-            componentKey,
-            fallbackName: snapshot?.componentSetName || def.name,
-            variantCriteria: {}
-        });
-
-        // 严格遵循注册表快照进行属性应用
-        applyFigmaComponentProps(importedInstance, 'switch', params);
-
-        importedInstance.name = def.name;
-        return importedInstance;
-    } catch (e) {
-        console.warn('[SwitchTemplate] failed to create switch from original Figma component', e);
-        return null;
-    }
-}
-
-async function createInputFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
-        || String((def.figmaPropertySnapshot as any)?.componentKey || def.figmaBinding?.renderKey || '').trim();
-    if (!componentKey) return null;
-
-    const width = Number(params.width) > 0 ? Number(params.width) : 240;
-    const disabled = Boolean(params.disabled);
-    const error = Boolean(params.error);
-    const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
-    const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
-    const rawValue = String(params.value ?? '');
-    const hasValue = rawValue.length > 0;
-    const filled = Boolean(params.filled);
-    const effectiveFilled = filled || hasValue;
-
-    try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-            componentKey,
-            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
-            variantCriteria: {
-                'Disable 禁用': toVariantBoolean(disabled),
-                'Error 错误': toVariantBoolean(error),
-                'Filled 已填': toVariantBoolean(effectiveFilled),
-                'Prefix 前缀': toVariantBoolean(showPrefix),
-                'Size 尺寸': resolveInputSizeVariantLabel(params.size),
-                'State 状态': resolveInputStateVariantLabel(params.state),
-                'Suffix 后缀': toVariantBoolean(showSuffix)
-            }
-        });
-
-        importedInstance.resize(width, importedInstance.height);
-        const detached = importedInstance.detachInstance();
-
-        const textNodes = detached.findAll((node) => node.type === 'TEXT') as TextNode[];
-        const mainTextNode =
-            textNodes.find((node) => String(node.name || '').trim().toLowerCase() === 'text') ||
-            textNodes[textNodes.length - 1];
-        const placeholder = String(params.placeholder || '请输入');
-        const nextValue = effectiveFilled && hasValue ? rawValue : placeholder;
-        if (mainTextNode) {
-            await updateTextNodeCharacters(mainTextNode, nextValue);
-        }
-
-        const { prefixNode, suffixNode } = findInputAffixTextNodes(textNodes, mainTextNode);
-        const prefixText = String(params.prefixText || '').trim();
-        const suffixText = String(params.suffixText || '').trim();
-        if (showPrefix && prefixText && prefixNode) {
-            await updateTextNodeCharacters(prefixNode, prefixText);
-        }
-        if (showSuffix && suffixText && suffixNode) {
-            await updateTextNodeCharacters(suffixNode, suffixText);
-        }
-
-        detached.name = def.name;
-        return detached;
-    } catch (e) {
-        console.warn('[InputTemplate] failed to create input from original Figma component', e);
-        return null;
-    }
-}
-
-function findSelectDisplayTextNode(root: SceneNode): TextNode | null {
-    if ('children' in root) {
-        const directText = root.children.find((child) => child.type === 'TEXT') as TextNode | undefined;
-        if (directText) return directText;
-
-        const firstChild = root.children[0];
-        if (firstChild && 'findOne' in firstChild) {
-            const nested = firstChild.findOne((node) => node.type === 'TEXT');
-            if (nested && nested.type === 'TEXT') {
-                return nested;
-            }
-        }
-    }
-    return null;
-}
-
-function isSelectDropdownItemNode(node: SceneNode): boolean {
-    const name = String(node.name || '').trim();
-    return name.includes('_components/dropdown_item') || name.includes('dropdown_item');
-}
-
-async function updateSelectDropdownItemLabel(node: SceneNode, label: string): Promise<void> {
-    if (node.type === 'INSTANCE') {
-        const textPropertyName = Object.keys(node.componentProperties || {}).find((key) => key === 'Text' || key.startsWith('Text#'));
-        if (textPropertyName) {
-            node.setProperties({ [textPropertyName]: label });
-            return;
-        }
-    }
-
-    if (!('findOne' in node)) return;
-    const labelNode = node.findOne(
-        (child) =>
-            child.type === 'TEXT' &&
-            (String(child.name || '').trim() === 'Row Label' || String(child.name || '').trim() === label)
-    );
-    if (labelNode && labelNode.type === 'TEXT') {
-        await updateTextNodeCharacters(labelNode, label);
-        return;
-    }
-
-    const fallbackTextNode = node.findOne((child) => child.type === 'TEXT');
-    if (fallbackTextNode && fallbackTextNode.type === 'TEXT') {
-        await updateTextNodeCharacters(fallbackTextNode, label);
-    }
-}
-
-async function applySelectDropdownOptions(root: SceneNode, optionsText: unknown): Promise<void> {
-    const options = parseDelimitedText(optionsText, []);
-    if (options.length === 0) return;
-    if (!('findOne' in root)) return;
-
-    let dropdownRoot = root.findOne((node) => String(node.name || '').includes('Dropdown 下拉菜单'));
-    if (!dropdownRoot) return;
-
-    if (dropdownRoot.type === 'INSTANCE') {
-        const detachedDropdown = dropdownRoot.detachInstance();
-        replaceSceneNode(dropdownRoot, detachedDropdown);
-        dropdownRoot = detachedDropdown;
-    }
-
-    if (!('children' in dropdownRoot)) return;
-
-    let dropdownItems = dropdownRoot.children.filter(isSelectDropdownItemNode);
-    if (dropdownItems.length === 0) return;
-
-    const templateItem = dropdownItems[dropdownItems.length - 1];
-    if ('clone' in templateItem && dropdownItems.length < options.length) {
-        const lastItemIndex = dropdownRoot.children.indexOf(templateItem);
-        for (let index = dropdownItems.length; index < options.length; index += 1) {
-            const nextItem = templateItem.clone();
-            dropdownRoot.insertChild(lastItemIndex + (index - dropdownItems.length) + 1, nextItem);
-        }
-    }
-
-    dropdownItems = dropdownRoot.children.filter(isSelectDropdownItemNode);
-    if (dropdownItems.length > options.length) {
-        dropdownItems
-            .slice(options.length)
-            .forEach((item) => item.remove());
-        dropdownItems = dropdownRoot.children.filter(isSelectDropdownItemNode);
-    }
-
-    for (let index = 0; index < dropdownItems.length; index += 1) {
-        const nextLabel = options[index];
-        if (!nextLabel) break;
-        await updateSelectDropdownItemLabel(dropdownItems[index], nextLabel);
-    }
-}
-
-async function createSelectFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
-        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
-    if (!componentKey) return null;
-
-    const width = Number(params.width) > 0 ? Number(params.width) : 240;
-    const currentValue = String(params.value || '').trim();
-    const placeholder = String(params.placeholder || '请选择');
-    const hasValue = currentValue.length > 0;
-    const filled = Boolean(params.filled);
-    const disabled = Boolean(params.disabled);
-    const multiple = Boolean(params.multiple);
-
-    try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-            componentKey,
-            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
-            variantCriteria: {
-                'Type 类型': resolveSelectTypeVariantLabel(params.selectType ?? params.type),
-                'Size 尺寸': resolveInputSizeVariantLabel(params.size),
-                'State 状态': resolveInputStateVariantLabel(params.state),
-                'Filled 填写': toVariantBoolean(filled),
-                'Multiple 多选': toVariantBoolean(multiple),
-                'Disabled 禁用': toVariantBoolean(disabled)
-            }
-        });
-
-        importedInstance.resize(width, importedInstance.height);
-        const detached = importedInstance.detachInstance();
-        const displayTextNode = findSelectDisplayTextNode(detached);
-        if (displayTextNode) {
-            await updateTextNodeCharacters(displayTextNode, filled && hasValue ? currentValue : placeholder);
-        }
-        await applySelectDropdownOptions(detached, params.optionsText);
-
-        detached.name = def.name;
-        return detached;
-    } catch (e) {
-        console.warn('[SelectTemplate] failed to create select from original Figma component', e);
-        return null;
-    }
-}
-
 type FilterGroupItemType = 'select' | 'input' | 'search';
 
 type FilterGroupItemSpec = {
@@ -4052,327 +3654,6 @@ function applyFigmaComponentProps(
     }
 }
 
-function findCheckboxLabelTextNode(root: SceneNode): TextNode | null {
-    if (!('children' in root)) return null;
-    const directText = root.children.find((child) => child.type === 'TEXT');
-    return directText && directText.type === 'TEXT' ? directText : null;
-}
-
-async function createCheckboxFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
-        || String((def.figmaPropertySnapshot as any)?.componentKey || def.figmaBinding?.renderKey || '').trim();
-    if (!componentKey) return null;
-
-    const label = String(params.label || '选项一');
-    const showLabel = params.showLabel !== false;
-
-    try {
-        const importedInstance = await createFigmaComponentInstanceFromRef({
-            componentKey,
-            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
-            variantCriteria: {
-                'Checked 已选': toVariantBoolean(Boolean(params.checked)),
-                'Indeterminate 半选': toVariantBoolean(Boolean(params.indeterminate)),
-                'Hover 悬浮': toVariantBoolean(Boolean(params.hover)),
-                'Disabled 禁用': toVariantBoolean(Boolean(params.disabled))
-            }
-        });
-
-        const labelPropertyName = Object.keys(importedInstance.componentProperties || {}).find(
-            (key) => key === 'label 标签' || key.startsWith('label 标签#')
-        );
-	        if (labelPropertyName) {
-	            importedInstance.setProperties({ [labelPropertyName]: showLabel });
-	        }
-
-	        const detached = importedInstance.detachInstance();
-	        setNodeClipsContent(detached, false);
-	        if (showLabel) {
-	            const labelNode = findCheckboxLabelTextNode(detached);
-	            if (labelNode) {
-	                await updateTextNodeCharacters(labelNode, label);
-            }
-        }
-
-        detached.name = def.name;
-        return detached;
-    } catch (e) {
-        console.warn('[CheckboxTemplate] failed to create checkbox from original Figma component', e);
-        return null;
-    }
-}
-
-async function createCheckboxGroupFromCheckboxComponents(
-    params: Record<string, any>
-): Promise<FrameNode> {
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    const checkedValues = new Set(parseDelimitedText(params.checkedValues, []));
-    const direction =
-        String(params.direction || 'horizontal').trim().toLowerCase() === 'vertical'
-            ? 'VERTICAL'
-            : 'HORIZONTAL';
-
-    const frame = figma.createFrame();
-    frame.layoutMode = direction;
-    frame.primaryAxisSizingMode = 'AUTO';
-    frame.counterAxisSizingMode = 'AUTO';
-	    frame.counterAxisAlignItems = direction === 'VERTICAL' ? 'MIN' : 'CENTER';
-	    frame.itemSpacing = Number(params.gap) > 0 ? Number(params.gap) : 24;
-	    frame.fills = [];
-	    // Layout-only container: avoid clipping child checkbox borders.
-	    frame.clipsContent = false;
-
-	    for (const option of options) {
-	        const checkboxNode = await renderComponent({
-	            id: `checkbox-${option}`,
-	            componentId: 'checkbox',
-	            params: {
-	                label: option,
-	                showLabel: true,
-	                checked: checkedValues.has(option),
-	                indeterminate: false,
-	                hover: false,
-	                disabled: Boolean(params.disabled)
-	            }
-	        }, { isRoot: false });
-        frame.appendChild(checkboxNode);
-    }
-
-    return frame;
-}
-
-function resolveCheckboxGroupLayoutVariantLabel(value: unknown): 'Horizontal 横向' | 'Vertical 纵向' {
-    const normalized = String(value || '').trim().toLowerCase();
-    return normalized === 'vertical' || normalized.includes('vertical') || normalized.includes('纵向')
-        ? 'Vertical 纵向'
-        : 'Horizontal 横向';
-}
-
-function isCheckboxGroupItemNode(node: SceneNode): boolean {
-    return String(node.name || '').includes('Checkbox 复选框');
-}
-
-async function updateCheckboxGroupItemNode(
-    node: SceneNode,
-    label: string,
-    checked: boolean,
-    disabled: boolean
-): Promise<void> {
-    if (node.type === 'INSTANCE') {
-        const labelToggleProperty = findInstanceComponentPropertyName(node, 'label 标签');
-        const checkedProperty = findInstanceComponentPropertyName(node, 'Checked 已选');
-        const indeterminateProperty = findInstanceComponentPropertyName(node, 'Indeterminate 半选');
-        const hoverProperty = findInstanceComponentPropertyName(node, 'Hover 悬浮');
-        const disabledProperty = findInstanceComponentPropertyName(node, 'Disabled 禁用');
-        const nextProps: Record<string, string | boolean> = {};
-
-        if (labelToggleProperty) nextProps[labelToggleProperty] = true;
-        if (checkedProperty) nextProps[checkedProperty] = toVariantBoolean(checked);
-        if (indeterminateProperty) nextProps[indeterminateProperty] = 'False';
-        if (hoverProperty) nextProps[hoverProperty] = 'False';
-        if (disabledProperty) nextProps[disabledProperty] = toVariantBoolean(disabled);
-
-        if (Object.keys(nextProps).length > 0) {
-            node.setProperties(nextProps);
-        }
-    }
-
-    if (!('findOne' in node)) return;
-    const labelNode =
-        node.findOne((child) => child.type === 'TEXT' && String(child.name || '').trim() === '选项一') ||
-        node.findOne((child) => child.type === 'TEXT');
-
-    if (labelNode && labelNode.type === 'TEXT') {
-        await updateTextNodeCharacters(labelNode, label);
-    }
-}
-
-async function applyCheckboxGroupItems(root: SceneNode, params: Record<string, any>): Promise<void> {
-    if (!('children' in root)) return;
-
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    const checkedValues = new Set(parseDelimitedText(params.checkedValues, []));
-    const disabled = Boolean(params.disabled);
-
-    let itemNodes = root.children.filter(isCheckboxGroupItemNode);
-    if (itemNodes.length === 0) return;
-
-    const templateNode = itemNodes[itemNodes.length - 1];
-    if ('clone' in templateNode && itemNodes.length < options.length) {
-        for (let index = itemNodes.length; index < options.length; index += 1) {
-            root.appendChild(templateNode.clone());
-        }
-    }
-
-    itemNodes = root.children.filter(isCheckboxGroupItemNode);
-    if (itemNodes.length > options.length) {
-        itemNodes.slice(options.length).forEach((item) => item.remove());
-        itemNodes = root.children.filter(isCheckboxGroupItemNode);
-    }
-
-    if ('layoutMode' in root && root.layoutMode !== 'NONE' && Number(params.gap) > 0) {
-        root.itemSpacing = Number(params.gap);
-    }
-
-    for (let index = 0; index < itemNodes.length; index += 1) {
-        const label = options[index];
-        if (!label) break;
-        await updateCheckboxGroupItemNode(itemNodes[index], label, checkedValues.has(label), disabled);
-    }
-}
-
-async function createCheckboxGroupFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    try {
-        return await createCheckboxGroupFromCheckboxComponents(params);
-    } catch (e) {
-        console.warn('[CheckboxGroupTemplate] failed to compose from checkbox component', e);
-    }
-
-    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
-        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
-    if (!componentKey) return null;
-
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    const itemCount = Math.min(8, Math.max(2, options.length));
-
-    try {
-	        const importedInstance = await createFigmaComponentInstanceFromRef({
-	            componentKey,
-	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
-	            variantCriteria: {
-	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
-                'Items 数量': String(itemCount)
-	            }
-	        });
-
-	        setNodeClipsContent(importedInstance, false);
-	        await applyCheckboxGroupItems(importedInstance, params);
-	        importedInstance.name = def.name;
-	        return importedInstance;
-	    } catch (e) {
-	        console.warn('[CheckboxGroupTemplate] failed to create checkbox group from original Figma component', e);
-        return null;
-    }
-}
-
-function resolveRadioGroupLanguageVariantLabel(value: unknown): 'CN' | 'EN' {
-    const normalized = String(value || '').trim().toUpperCase();
-    return normalized === 'EN' ? 'EN' : 'CN';
-}
-
-function isRadioGroupItemNode(node: SceneNode): boolean {
-    return String(node.name || '').includes('Radio 单选框');
-}
-
-async function updateRadioGroupItemNode(
-    node: SceneNode,
-    label: string,
-    selected: boolean,
-    disabled: boolean,
-    language: 'CN' | 'EN'
-): Promise<void> {
-    if (node.type === 'INSTANCE') {
-        const labelToggleProperty = findInstanceComponentPropertyName(node, 'Label 标签');
-        const checkedProperty = findInstanceComponentPropertyName(node, 'Checked 已选');
-        const hoverProperty = findInstanceComponentPropertyName(node, 'Hover 悬浮');
-        const disabledProperty = findInstanceComponentPropertyName(node, 'Disabled 禁用');
-        const languageProperty = findInstanceComponentPropertyName(node, 'Language');
-        const nextProps: Record<string, string | boolean> = {};
-
-        if (labelToggleProperty) nextProps[labelToggleProperty] = true;
-        if (checkedProperty) nextProps[checkedProperty] = toVariantBoolean(selected);
-        if (hoverProperty) nextProps[hoverProperty] = 'False';
-        if (disabledProperty) nextProps[disabledProperty] = toVariantBoolean(disabled);
-        if (languageProperty) nextProps[languageProperty] = language;
-
-        if (Object.keys(nextProps).length > 0) {
-            node.setProperties(nextProps);
-        }
-    }
-
-    if (!('findOne' in node)) return;
-    const labelNode =
-        node.findOne((child) => child.type === 'TEXT' && String(child.name || '').trim() === '选项一') ||
-        node.findOne((child) => child.type === 'TEXT');
-
-    if (labelNode && labelNode.type === 'TEXT') {
-        await updateTextNodeCharacters(labelNode, label);
-    }
-}
-
-async function applyRadioGroupItems(root: SceneNode, params: Record<string, any>): Promise<void> {
-    if (!('children' in root)) return;
-
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    const selectedValue = String(params.value || options[0] || '').trim();
-    const disabled = Boolean(params.disabled);
-    const language = resolveRadioGroupLanguageVariantLabel(params.language);
-
-    let itemNodes = root.children.filter(isRadioGroupItemNode);
-    if (itemNodes.length === 0) return;
-
-    const templateNode = itemNodes[itemNodes.length - 1];
-    if ('clone' in templateNode && itemNodes.length < options.length) {
-        for (let index = itemNodes.length; index < options.length; index += 1) {
-            root.appendChild(templateNode.clone());
-        }
-    }
-
-    itemNodes = root.children.filter(isRadioGroupItemNode);
-    if (itemNodes.length > options.length) {
-        itemNodes.slice(options.length).forEach((item) => item.remove());
-        itemNodes = root.children.filter(isRadioGroupItemNode);
-    }
-
-    if ('layoutMode' in root && root.layoutMode !== 'NONE' && Number(params.gap) > 0) {
-        root.itemSpacing = Number(params.gap);
-    }
-
-    for (let index = 0; index < itemNodes.length; index += 1) {
-        const label = options[index];
-        if (!label) break;
-        await updateRadioGroupItemNode(itemNodes[index], label, label === selectedValue, disabled, language);
-    }
-}
-
-async function createRadioGroupFromFigmaTemplate(
-    def: ComponentDefinition,
-    params: Record<string, any>
-): Promise<SceneNode | null> {
-    const componentKey = (def.figmaPropertySnapshot?.token ? resolveComponentKeyFromToken(def.figmaPropertySnapshot.token) : '')
-        || String((def.figmaPropertySnapshot as any)?.componentKey || '').trim();
-    if (!componentKey) return null;
-
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    const itemCount = Math.min(8, Math.max(2, options.length));
-
-    try {
-	        const importedInstance = await createFigmaComponentInstanceFromRef({
-	            componentKey,
-	            fallbackName: def.figmaPropertySnapshot?.componentSetName || def.name,
-	            variantCriteria: {
-	                'Layout 布局': resolveCheckboxGroupLayoutVariantLabel(params.direction),
-                'Items 数量': String(itemCount),
-                'Language': resolveRadioGroupLanguageVariantLabel(params.language)
-	            }
-	        });
-
-	        setNodeClipsContent(importedInstance, false);
-	        await applyRadioGroupItems(importedInstance, params);
-	        importedInstance.name = def.name;
-	        return importedInstance;
-	    } catch (e) {
-	        console.warn('[RadioGroupTemplate] failed to create radio group from original Figma component', e);
-        return null;
-    }
-}
-
 async function resolveInstanceMainComponentNode(instance: InstanceNode): Promise<ComponentNode | null> {
     const asyncGetter = (instance as unknown as {
         getMainComponentAsync?: () => Promise<ComponentNode | null>;
@@ -4460,7 +3741,6 @@ function normalizeFormFieldControlType(controlType: unknown): string {
     if (normalized.includes('upload') || normalized.includes('上传')) return 'upload';
     if (normalized.includes('button') || normalized.includes('按钮')) return 'button';
     if (normalized.includes('figma-component') || normalized.includes('figma')) return 'figma-component';
-    if (normalized.includes('text') || normalized.includes('文本')) return 'text';
     return 'input';
 }
 
@@ -4656,6 +3936,49 @@ function readInputMainTextNode(root: SceneNode): TextNode | null {
     );
 }
 
+function matchInputAffixName(value: string, kind: 'prefix' | 'suffix'): boolean {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (kind === 'prefix') return normalized.includes('prefix') || normalized.includes('前缀');
+    return normalized.includes('suffix') || normalized.includes('后缀');
+}
+
+function findInputAffixTextNodes(
+    textNodes: TextNode[],
+    mainTextNode?: TextNode | null
+): { prefixNode: TextNode | null; suffixNode: TextNode | null } {
+    const candidates = textNodes.filter((node) => node !== mainTextNode);
+    if (candidates.length === 0) return { prefixNode: null, suffixNode: null };
+
+    let prefixNode: TextNode | null = null;
+    let suffixNode: TextNode | null = null;
+    for (const node of candidates) {
+        const combined = `${String(node.name || '')} ${String(node.parent?.name || '')}`.toLowerCase();
+        if (!prefixNode && matchInputAffixName(combined, 'prefix')) {
+            prefixNode = node;
+        }
+        if (!suffixNode && matchInputAffixName(combined, 'suffix')) {
+            suffixNode = node;
+        }
+        if (prefixNode && suffixNode) break;
+    }
+
+    const sortedByX = [...candidates].sort((a, b) => {
+        const ax = a.absoluteBoundingBox?.x ?? 0;
+        const bx = b.absoluteBoundingBox?.x ?? 0;
+        return ax - bx;
+    });
+    const fallbackPrefix = sortedByX[0] ?? null;
+    const fallbackSuffix = sortedByX.length > 1 ? sortedByX[sortedByX.length - 1] : null;
+
+    const finalPrefix = prefixNode ?? fallbackPrefix;
+    let finalSuffix = suffixNode ?? fallbackSuffix;
+    if (finalPrefix && finalSuffix && finalPrefix.id === finalSuffix.id) {
+        finalSuffix = null;
+    }
+    return { prefixNode: finalPrefix, suffixNode: finalSuffix };
+}
+
 function readInstanceBooleanProperty(instance: InstanceNode, displayNames: string[]): boolean | null {
     for (const displayName of displayNames) {
         const key = findInstanceComponentPropertyName(instance, displayName);
@@ -4675,6 +3998,27 @@ function readInstanceBooleanProperty(instance: InstanceNode, displayNames: strin
         }
     }
     return null;
+}
+
+function findSelectDisplayTextNode(root: SceneNode): TextNode | null {
+    if ('children' in root) {
+        const directText = root.children.find((child) => child.type === 'TEXT') as TextNode | undefined;
+        if (directText) return directText;
+
+        const firstChild = root.children[0];
+        if (firstChild && 'findOne' in firstChild) {
+            const nested = firstChild.findOne((node) => node.type === 'TEXT');
+            if (nested && nested.type === 'TEXT') {
+                return nested;
+            }
+        }
+    }
+    return null;
+}
+
+function isSelectDropdownItemNode(node: SceneNode): boolean {
+    const name = String(node.name || '').trim();
+    return name.includes('_components/dropdown_item') || name.includes('dropdown_item');
 }
 
 function readSelectDropdownOptionTexts(root: SceneNode): string[] {
@@ -4698,6 +4042,14 @@ function readSelectDropdownOptionTexts(root: SceneNode): string[] {
         if (text) optionTexts.push(text);
     }
     return optionTexts;
+}
+
+function isCheckboxGroupItemNode(node: SceneNode): boolean {
+    return String(node.name || '').includes('Checkbox 复选框');
+}
+
+function isRadioGroupItemNode(node: SceneNode): boolean {
+    return String(node.name || '').includes('Radio 单选框');
 }
 
 function collectCheckboxGroupItemNodes(root: SceneNode): SceneNode[] {
@@ -4975,151 +4327,6 @@ function preserveNodeHeight(node: SceneNode, height: number | null): void {
     }
 }
 
-async function updateInputControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
-    if (node.type !== 'INSTANCE') return false;
-
-    const normalizedState = String(params.state || '').trim().toLowerCase();
-    const stateDisabled = normalizedState.includes('disabled') || normalizedState.includes('禁用');
-    const stateError = normalizedState.includes('error') || normalizedState.includes('错误');
-    const disabled = Boolean(params.disabled) || stateDisabled;
-    const error = Boolean(params.error) || stateError;
-    const showPrefix = hasInputAffix(params.showPrefix ?? params.prefix);
-    const showSuffix = hasInputAffix(params.showSuffix ?? params.suffix);
-    const rawValue = String(params.value ?? '');
-    const hasValue = rawValue.length > 0;
-    const filled = Boolean(params.filled);
-    const effectiveFilled = filled || hasValue;
-
-    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
-    applyFigmaComponentProps(node, 'input', {
-        disabled,
-        error,
-        filled: effectiveFilled,
-        showPrefix,
-        size: resolveInputSizeVariantLabel(params.size),
-        state: resolveInputStateVariantLabel(params.state),
-        showSuffix,
-    });
-
-    const widthMode = resolveFormControlWidthMode(params);
-    const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
-    if (width) {
-        node.resize(width, node.height);
-    }
-    applyFormControlWidthModeToNode(node, params);
-
-    const textNodes = node.findAll((child) => child.type === 'TEXT') as TextNode[];
-    const mainTextNode =
-        textNodes.find((child) => String(child.name || '').trim().toLowerCase() === 'text') ||
-        textNodes[textNodes.length - 1];
-    const placeholder = String(params.placeholder || '请输入');
-    const nextValue = effectiveFilled && hasValue ? rawValue : placeholder;
-    if (mainTextNode) {
-        await updateTextNodeCharacters(mainTextNode, nextValue);
-    }
-
-    const { prefixNode, suffixNode } = findInputAffixTextNodes(textNodes, mainTextNode);
-    const prefixText = String(params.prefixText || '').trim();
-    const suffixText = String(params.suffixText || '').trim();
-    if (showPrefix && prefixText && prefixNode) {
-        await updateTextNodeCharacters(prefixNode, prefixText);
-    }
-    if (showSuffix && suffixText && suffixNode) {
-        await updateTextNodeCharacters(suffixNode, suffixText);
-    }
-
-    return true;
-}
-
-async function updateSelectControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
-    if (node.type !== 'INSTANCE') return false;
-
-    const currentValue = String(params.value || '').trim();
-    const placeholder = String(params.placeholder || '请选择');
-    const hasValue = currentValue.length > 0;
-    const filled = Boolean(params.filled);
-    const normalizedState = String(params.state || '').trim().toLowerCase();
-    const stateDisabled = normalizedState.includes('disabled') || normalizedState.includes('禁用');
-    const disabled = Boolean(params.disabled) || stateDisabled;
-    const multiple = Boolean(params.multiple);
-
-    // 使用 applyFigmaComponentProps 应用 propertyMap 中声明的属性（读 registry）
-    applyFigmaComponentProps(node, 'select', {
-        disabled,
-        filled,
-        multiple,
-        size: resolveInputSizeVariantLabel(params.size),
-        state: resolveInputStateVariantLabel(params.state),
-        selectType: resolveSelectTypeVariantLabel(params.selectType ?? params.type),
-    });
-
-    const widthMode = resolveFormControlWidthMode(params);
-    const width = widthMode === 'fill' ? null : toPositiveNumber(params.controlWidth) ?? toPositiveNumber(params.width);
-    if (width) {
-        node.resize(width, node.height);
-    }
-    applyFormControlWidthModeToNode(node, params);
-
-    const displayTextNode = findSelectDisplayTextNode(node);
-    if (displayTextNode) {
-        await updateTextNodeCharacters(displayTextNode, filled && hasValue ? currentValue : placeholder);
-    }
-    await applySelectDropdownOptions(node, params.optionsText);
-    return true;
-}
-
-async function updateCheckboxGroupControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
-    if (node.type !== 'INSTANCE') return false;
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    if (options.length > 8) return false;
-
-    const nextProps: Record<string, string | boolean> = {};
-    const layoutProperty = findInstanceComponentPropertyName(node, 'Layout 布局');
-    const itemsProperty = findInstanceComponentPropertyName(node, 'Items 数量');
-    if (layoutProperty) nextProps[layoutProperty] = resolveCheckboxGroupLayoutVariantLabel(params.direction);
-    if (itemsProperty) nextProps[itemsProperty] = String(Math.min(8, Math.max(2, options.length)));
-    if (Object.keys(nextProps).length > 0) {
-        node.setProperties(nextProps);
-    }
-
-    await applyCheckboxGroupItems(node, params);
-    return true;
-}
-
-async function updateRadioGroupControlTemplateInPlace(node: SceneNode, params: Record<string, any>): Promise<boolean> {
-    if (node.type !== 'INSTANCE') return false;
-    const options = parseDelimitedText(params.optionsText, ['选项一', '选项二']);
-    if (options.length > 8) return false;
-
-    const nextProps: Record<string, string | boolean> = {};
-    const layoutProperty = findInstanceComponentPropertyName(node, 'Layout 布局');
-    const itemsProperty = findInstanceComponentPropertyName(node, 'Items 数量');
-    const languageProperty = findInstanceComponentPropertyName(node, 'Language');
-    if (layoutProperty) nextProps[layoutProperty] = resolveCheckboxGroupLayoutVariantLabel(params.direction);
-    if (itemsProperty) nextProps[itemsProperty] = String(Math.min(8, Math.max(2, options.length)));
-    if (languageProperty) nextProps[languageProperty] = resolveRadioGroupLanguageVariantLabel(params.language);
-    if (Object.keys(nextProps).length > 0) {
-        node.setProperties(nextProps);
-    }
-
-    await applyRadioGroupItems(node, params);
-    return true;
-}
-
-async function updateFormFieldControlTemplateInPlace(root: SceneNode, params: Record<string, any>): Promise<boolean> {
-    const contentContainer = findFormFieldContentContainer(root);
-    if (!contentContainer) return false;
-
-    const existingControlNode = findFormFieldControlNode(contentContainer);
-    if (!existingControlNode) return false;
-
-    // #endregion
-    setNodeClipsContent(existingControlNode, false);
-
-    const controlType = normalizeFormFieldControlType(params.controlType);
-    
-    return false;
-}
 
 function shouldUseChildControlInstance(
     instance: ComponentInstance,
@@ -5135,7 +4342,6 @@ function shouldUseChildControlInstance(
     if (controlType === 'checkbox-group') return child.componentId === 'checkbox-group' || child.componentId === 'figma-component';
     if (controlType === 'radio-group') return child.componentId === 'radio-group' || child.componentId === 'figma-component';
     if (controlType === 'button') return child.componentId === 'button' || child.componentId === 'figma-component';
-    if (controlType === 'text') return child.componentId === 'text';
     if (controlType === 'figma-component') {
         const token = String(params.componentToken || '').trim();
         const key = String(params.componentKey || '').trim();
@@ -5621,9 +4827,7 @@ async function updateFormLayoutParams(
 
     const columnSpacing = toPositiveNumber(normalizedParams.columnSpacing);
     const resolvedFormParams = await resolveFormParamsForRender(normalizedParams, patchedInstance);
-    const computedWidth =
-        toPositiveNumber(normalizedParams.width) ??
-        await resolveFormContentWidth(patchedInstance, resolvedFormParams);
+    const computedWidth = toPositiveNumber(normalizedParams.width);
     if (computedWidth !== null) {
         applyNodeSize(formFrame, computedWidth, null);
         formFrame.counterAxisSizingMode = 'FIXED';
@@ -5944,7 +5148,8 @@ function resolveComponentTokenForControl(componentId: string): string {
 }
 
 function buildFigmaControlInstance(componentId: string, params: Record<string, any>): ComponentInstance {
-    const componentToken = resolveComponentTokenForControl(componentId);
+    const explicitToken = typeof params.componentToken === 'string' ? params.componentToken.trim() : '';
+    const componentToken = explicitToken || resolveComponentTokenForControl(componentId);
     if (!componentToken) {
         return {
             id: 'form-field-control',
@@ -6154,16 +5359,6 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
                 disabled: Boolean(params.disabled),
                 width,
                 forceFigmaKey: true
-            }
-        };
-    }
-
-    if (controlType === 'text') {
-        return {
-            id: 'form-field-control',
-            componentId: 'text',
-            params: {
-                text: params.text || params.value || 'Text'
             }
         };
     }
@@ -6522,9 +5717,17 @@ async function applyEffectStyleRef(
     }
 }
 
+const TEXT_STYLE_IMPORT_FAILED_CACHE = new Map<string, number>();
+const TEXT_STYLE_IMPORT_FAILURE_TTL_MS = 5 * 60 * 1000;
+
 async function resolveTextStyle(bindingKey: string): Promise<TextStyle | null> {
     const cacheHit = TEXT_STYLE_CACHE.get(bindingKey);
     if (cacheHit !== undefined) return cacheHit;
+
+    const failedAt = TEXT_STYLE_IMPORT_FAILED_CACHE.get(bindingKey);
+    if (failedAt && Date.now() - failedAt < TEXT_STYLE_IMPORT_FAILURE_TTL_MS) {
+        return null;
+    }
 
     const binding = getTypographyBindingIndex()[bindingKey];
     if (!binding || !binding.enabled) {
@@ -6542,17 +5745,6 @@ async function resolveTextStyle(bindingKey: string): Promise<TextStyle | null> {
     for (const raw of rawCandidates) {
         const keyCandidate = normalizeTextStyleRef(raw);
         if (!keyCandidate) continue;
-
-        try {
-            const imported = await figma.importStyleByKeyAsync(keyCandidate);
-            if (imported && imported.type === 'TEXT') {
-                const textStyle = imported as TextStyle;
-                TEXT_STYLE_CACHE.set(bindingKey, textStyle);
-                return textStyle;
-            }
-        } catch {
-            // ignore
-        }
 
         try {
             const localByRaw = figma.getStyleById(raw);
@@ -6576,6 +5768,17 @@ async function resolveTextStyle(bindingKey: string): Promise<TextStyle | null> {
             } catch {
                 // ignore
             }
+        }
+
+        try {
+            const imported = await figma.importStyleByKeyAsync(keyCandidate);
+            if (imported && imported.type === 'TEXT') {
+                const textStyle = imported as TextStyle;
+                TEXT_STYLE_CACHE.set(bindingKey, textStyle);
+                return textStyle;
+            }
+        } catch {
+            TEXT_STYLE_IMPORT_FAILED_CACHE.set(bindingKey, Date.now());
         }
     }
 
@@ -6673,7 +5876,28 @@ async function createFigmaComponentInstanceByToken(
     const normalized = String(token || '').trim();
     if (!normalized) return null;
     const componentKey = resolveComponentKeyFromToken(normalized);
-    if (!componentKey) return null;
+    if (!componentKey) {
+        return null;
+    }
+    if (FAST_FAIL_COMPONENT_TOKENS.has(normalized)) {
+        const localComponent = figma.root.findOne(
+            (node) => isComponentOrSetNode(node) && node.key === componentKey
+        ) as ComponentNode | ComponentSetNode | null;
+        if (localComponent) {
+            const sourceNode = localComponent.type === 'COMPONENT_SET'
+                ? (localComponent.defaultVariant || localComponent.children[0])
+                : localComponent;
+            if (sourceNode && sourceNode.type === 'COMPONENT') {
+                const instance = sourceNode.createInstance();
+                return instance;
+            }
+        }
+        return null;
+    }
+    const cachedFailureAt = FIGMA_COMPONENT_INSTANCE_FAILURE_CACHE.get(componentKey);
+    if (cachedFailureAt && Date.now() - cachedFailureAt < FIGMA_COMPONENT_INSTANCE_FAILURE_TTL) {
+        return null;
+    }
 
     const cacheKey = buildTokenCacheKey(normalized, options?.variantCriteria);
     if (cacheKey) {
@@ -6701,6 +5925,9 @@ async function createFigmaComponentInstanceByToken(
             variantCriteria: options?.variantCriteria,
             visible: options?.visible
         });
+        if (instance) {
+            FIGMA_COMPONENT_INSTANCE_FAILURE_CACHE.delete(componentKey);
+        }
         if (cacheKey && instance) {
             try {
                 const template = instance.clone();
@@ -6712,6 +5939,7 @@ async function createFigmaComponentInstanceByToken(
         }
         return instance;
     } catch (e) {
+        FIGMA_COMPONENT_INSTANCE_FAILURE_CACHE.set(componentKey, Date.now());
         console.warn(`[FigmaComponent] failed to create instance for token="${normalized}"`, e);
         return null;
     }
@@ -7065,15 +6293,57 @@ function collectTextNodes(root: SceneNode, options: { skipInstances?: boolean } 
   return results;
 }
 
+function countLeafNodes(root: SceneNode, limit = 2): number {
+  const stack: SceneNode[] = [root];
+  let count = 0;
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) continue;
+    const hasChildren = 'children' in node && node.children.length > 0;
+    if (node !== root && (!hasChildren || (node as any).type === 'TEXT')) {
+      count += 1;
+      if (count >= limit) return count;
+    }
+    if ('children' in node) {
+      for (const child of node.children) {
+        stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+
+function isMultiElementCell(cell: SceneNode, textNodeCount: number): boolean {
+  if (textNodeCount <= 0) return false;
+  if (textNodeCount > 1) return true;
+  return countLeafNodes(cell, 2) >= 2;
+}
+
 function applyCellAutoWidth(cell: SceneNode) {
-  const textNodes = collectTextNodes(cell, { skipInstances: true });
+  const textNodes = collectTextNodes(cell);
   for (const textNode of textNodes) {
     try {
       textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+      if ('layoutGrow' in textNode) {
+        try {
+          (textNode as any).layoutGrow = 0;
+        } catch {}
+      }
+      if ('layoutSizingHorizontal' in textNode) {
+        try {
+          (textNode as any).layoutSizingHorizontal = 'HUG';
+        } catch {}
+      }
     } catch (e) {
       console.warn('Failed to apply auto width', e);
     }
   }
+}
+
+function applyCellAutoWidthIfMultiElement(cell: SceneNode) {
+  const textNodes = collectTextNodes(cell);
+  if (!isMultiElementCell(cell, textNodes.length)) return;
+  applyCellAutoWidth(cell);
 }
 
 async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'center') {
@@ -7109,7 +6379,14 @@ async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right' | 'ce
 
 function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
   const componentId = 'getPluginData' in cell ? cell.getPluginData('component-id') : '';
-  const useAutoWidth = componentId === 'table-cell' || componentId === 'table-header-cell';
+  const isMixedContentCell =
+    componentId === 'table-cell-tag' ||
+    componentId === 'table-cell-avatar' ||
+    componentId === 'table-cell-input' ||
+    componentId === 'table-cell-select' ||
+    componentId === 'table-cell-action-text' ||
+    componentId === 'table-cell-action-icon';
+  const useAutoWidth = componentId === 'table-cell' || componentId === 'table-header-cell' || isMixedContentCell;
   const isTagCell = componentId === 'table-cell-tag';
   const cellParams = 'getPluginData' in cell ? readNodeParams(cell) : {};
   const table = findTableFrameFromNode(cell);
@@ -7136,11 +6413,30 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
         ? Number((cell as any).paddingBottom || 0)
         : 0;
   const textNodes = collectTextNodes(cell, { skipInstances: true });
+  const multiElementCell = isMultiElementCell(cell, textNodes.length);
   for (const textNode of textNodes) {
     try {
       if (isTagCell) {
         textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
         textNode.textTruncation = 'DISABLED';
+      } else if (isMixedContentCell || multiElementCell) {
+        textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+        textNode.textTruncation = 'DISABLED';
+        if ('layoutGrow' in textNode) {
+          try {
+            (textNode as any).layoutGrow = 0;
+          } catch {}
+        }
+        if ('layoutSizingHorizontal' in textNode) {
+          try {
+            (textNode as any).layoutSizingHorizontal = 'HUG';
+          } catch {}
+        }
+        if ('layoutSizingVertical' in textNode) {
+          try {
+            (textNode as any).layoutSizingVertical = 'HUG';
+          } catch {}
+        }
       } else if (mode === 'lineBreak') {
         textNode.textAutoResize = useAutoWidth ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
         textNode.textTruncation = 'DISABLED';
@@ -7172,7 +6468,7 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
       console.warn('Failed to apply text display mode', e);
     }
   }
-  if ('counterAxisSizingMode' in cell) {
+  if (!multiElementCell && 'counterAxisSizingMode' in cell) {
     if (mode === 'lineBreak') {
       try {
         (cell as any).counterAxisSizingMode = 'AUTO';
@@ -7626,9 +6922,7 @@ async function renderComponent(
     frame.clipsContent = false;
     const columnSpacing = toPositiveNumber(params.columnSpacing);
     const resolvedFormParams = await resolveFormParamsForRender(params, instance);
-    const computedWidth =
-        toPositiveNumber(params.width) ??
-        await resolveFormContentWidth(instance, resolvedFormParams);
+    const computedWidth = toPositiveNumber(params.width);
 
     if (params.title) {
         const titleNode = figma.createText();
@@ -7750,11 +7044,13 @@ async function renderComponent(
   else if (instance.componentId === 'form-field') {
     const layout = resolveFormFieldLayout(params);
     const labelAlign = String(params.labelAlign || '').trim().toLowerCase() === 'right' ? 'right' : 'left';
+    const controlType = normalizeFormFieldControlType(params.controlType);
+    const isTextarea = controlType === 'textarea';
     const frame = figma.createFrame();
     frame.layoutMode = layout === 'vertical' ? 'VERTICAL' : 'HORIZONTAL';
     frame.primaryAxisSizingMode = 'AUTO';
     frame.counterAxisSizingMode = 'AUTO';
-    frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : 'CENTER';
+    frame.counterAxisAlignItems = layout === 'vertical' ? 'MIN' : (isTextarea ? 'MIN' : 'CENTER');
     const explicitSpacing = Number(params.labelControlSpacing);
     const resolvedSpacing =
         Number.isFinite(explicitSpacing) && explicitSpacing > 0 ? explicitSpacing : (layout === 'vertical' ? 8 : 20);
@@ -7773,20 +7069,17 @@ async function renderComponent(
         labelWrap.itemSpacing = 4;
         labelWrap.fills = [];
         labelWrap.clipsContent = false;
+        if (layout !== 'vertical' && isTextarea) {
+            labelWrap.paddingTop = 3;
+        }
 
         if (params.required) {
             const requiredIconDef = COMPONENT_DEFS['icon-asterisk'];
-            const requiredIconKey = requiredIconDef?.figmaBinding?.renderKey;
-            if (requiredIconKey) {
-                const requiredIcon = await createFigmaComponentInstanceFromRef({
-                    componentKey: requiredIconKey,
-                    fallbackName: requiredIconDef?.name || 'icon-asterisk'
-                });
-                labelWrap.appendChild(requiredIcon);
-            } else {
-                const requiredIcon = await createMissingFigmaComponentFrame('icon-asterisk');
-                labelWrap.appendChild(requiredIcon);
-            }
+            const requiredToken = String(requiredIconDef?.figmaPropertySnapshot?.token || '').trim();
+            const requiredIcon = requiredToken
+                ? await createFigmaComponentInstanceByToken(requiredToken)
+                : null;
+            labelWrap.appendChild(requiredIcon || await createMissingFigmaComponentFrame('icon-asterisk'));
         }
 
         const labelNode = figma.createText();
@@ -7795,6 +7088,40 @@ async function renderComponent(
         labelNode.characters = `${label}${params.showColon === false ? '' : '：'}`;
         await applyColorVariable(labelNode, 'form-label-text', '#42464E');
         labelWrap.appendChild(labelNode);
+        if (params.showHelpIcon) {
+            const helpIconStart = Date.now();
+            const helpIconDef = COMPONENT_DEFS['icon-info'];
+            const helpToken = String(helpIconDef?.figmaPropertySnapshot?.token || '').trim();
+            const helpKey = helpToken ? resolveComponentKeyFromToken(helpToken) : '';
+            try {
+                const helpIcon = helpToken ? await createFigmaComponentInstanceByToken(helpToken) : null;
+                const resolvedHelpIcon = helpIcon || await createMissingFigmaComponentFrame('icon-info');
+                if ('resize' in resolvedHelpIcon) {
+                    resolvedHelpIcon.resize(14, 14);
+                }
+                if (helpIcon) {
+                    const vectorNodes = helpIcon.findAll((node) => 
+                        node.name === '形状' || 
+                        node.type === 'VECTOR' || 
+                        node.type === 'BOOLEAN_OPERATION' || 
+                        node.type === 'STAR' || 
+                        node.type === 'LINE' || 
+                        node.type === 'ELLIPSE' || 
+                        node.type === 'POLYGON'
+                    );
+                    for (const node of vectorNodes) {
+                        await applyColorVariable(node, 'form-help-text', '#737A87');
+                    }
+                }
+                labelWrap.appendChild(resolvedHelpIcon);
+            } catch {
+                const helpIcon = await createMissingFigmaComponentFrame('icon-info');
+                if ('resize' in helpIcon) {
+                    helpIcon.resize(14, 14);
+                }
+                labelWrap.appendChild(helpIcon);
+            }
+        }
         const labelWidth = resolveFormLabelWidth(params);
         if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
             labelWrap.primaryAxisSizingMode = 'FIXED';
@@ -7807,7 +7134,6 @@ async function renderComponent(
         frame.appendChild(labelWrap);
     }
 
-    const controlType = normalizeFormFieldControlType(params.controlType);
     const controlWidthMode = resolveFormControlWidthMode(params);
     
     // 直接渲染控件节点，不再包裹 controlColumn
@@ -7824,7 +7150,8 @@ async function renderComponent(
 
     frame.appendChild(controlNode);
 
-    const messageText = String(params.errorText || params.descriptionText || params.helpText || '').trim();
+    const descriptionText = params.showDescriptionText ? String(params.descriptionText || '描述文字') : '';
+    const messageText = String(params.errorText || descriptionText || params.helpText || '').trim();
     if (messageText) {
         // 如果有错误信息，包裹在一个单独的垂直容器中以保持流向
         const wrap = figma.createFrame();
@@ -7846,10 +7173,18 @@ async function renderComponent(
         wrap.appendChild(controlNode);
         
         const helpNode = figma.createText();
-        await applyTextStyleBinding(helpNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 12 });
+        const isErrorText = String(params.errorText || '').trim().length > 0;
+        const isDescriptionText = !isErrorText && descriptionText.trim().length > 0;
+        if (isDescriptionText) {
+            await applyTextStyleBinding(helpNode, 'form-description-text-style-key', { family: 'Inter', style: 'Regular', size: 14 });
+        } else {
+            await applyTextStyleBinding(helpNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 12 });
+        }
         helpNode.characters = messageText;
-        if (String(params.errorText || '').trim()) {
+        if (isErrorText) {
             helpNode.fills = [{ type: 'SOLID', color: parseColor('#F5222D') }];
+        } else if (isDescriptionText) {
+            await applyColorVariable(helpNode, 'form-help-text', '#737A87');
         } else {
             await applyColorVariable(helpNode, 'form-help-text', '#737A87');
         }
@@ -8300,7 +7635,6 @@ async function renderComponent(
         await applyTextStyleBinding(textNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
         textNode.characters = displayText;
         await applyColorVariable(textNode, "table-cell-text-key", "#0C0D0E");
-        textNode.layoutGrow = 1;
         frame.appendChild(textNode);
     }
     // 3. Input Cell
@@ -8357,7 +7691,6 @@ async function renderComponent(
             await applyTextStyleBinding(selectText, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
             selectText.characters = displayText;
             await applyColorVariable(selectText, 'table-cell-text-key', '#0C0D0E');
-            selectText.layoutGrow = 1;
             selectFrame.appendChild(selectText);
             frame.appendChild(selectFrame);
         }
@@ -8505,6 +7838,10 @@ async function renderComponent(
         frame.appendChild(textNode);
     }
 
+    if (instance.componentId !== 'table-cell' && instance.componentId !== 'table-header-cell') {
+        applyCellAutoWidth(frame);
+    }
+
     if (typeof params.textAlign === 'string') {
         await applyCellAlignment(frame, params.textAlign as 'left' | 'right' | 'center');
     }
@@ -8566,34 +7903,6 @@ async function renderComponent(
         const width = Number(params.width) > 0 ? Number(params.width) : 100;
         node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
       }
-  }
-  // --- INPUT ---
-  else if (instance.componentId === 'input') {
-    const templateNode = await createInputFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing input component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        const metrics = resolveInputMetrics(params.size);
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
-    }
-  }
-  // --- SELECT ---
-  else if (instance.componentId === 'select') {
-    const templateNode = await createSelectFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing select component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        const metrics = resolveInputMetrics(params.size);
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, metrics.height);
-    }
   }
 	  // --- FILTER GROUP ---
 	  else if (instance.componentId === 'filter-group') {
@@ -8659,122 +7968,22 @@ async function renderComponent(
 
 	    node = frame;
 	  }
-  // --- CHECKBOX ---
-  else if (instance.componentId === 'checkbox') {
-    const templateNode = await createCheckboxFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-        await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
-
-        const checked = Boolean(params.checked);
-        const indeterminate = Boolean(params.indeterminate);
-        const disabled = Boolean(params.disabled);
-        const showLabel = params.showLabel !== false;
-        const label = String(params.label || '选项一');
-
-        const frame = figma.createFrame();
-        frame.layoutMode = 'HORIZONTAL';
-        frame.primaryAxisSizingMode = 'AUTO';
-	        frame.counterAxisSizingMode = 'AUTO';
-	        frame.counterAxisAlignItems = 'CENTER';
-	        frame.itemSpacing = 8;
-	        frame.fills = [];
-	        frame.clipsContent = false;
-
-	        const box = figma.createFrame();
-	        box.layoutMode = 'VERTICAL';
-	        box.primaryAxisSizingMode = 'FIXED';
-	        box.counterAxisSizingMode = 'FIXED';
-        box.primaryAxisAlignItems = 'CENTER';
-	        box.counterAxisAlignItems = 'CENTER';
-	        box.resize(14, 14);
-	        box.cornerRadius = 2;
-	        box.clipsContent = false;
-	        box.strokesIncludedInLayout = true;
-
-        const checkedNow = checked || indeterminate;
-        if (checkedNow) {
-            await applyColorVariable(box, 'checkbox-checked-bg', disabled ? '#85B2FF' : '#1664FF');
-            box.strokes = [];
-
-            const mark = figma.createText();
-            await applyTextStyleBinding(mark, 'text-style-key', { family: 'Inter', style: 'Medium', size: 10 });
-            mark.characters = indeterminate ? '−' : '✓';
-            await applyColorVariable(mark, 'checkbox-checkmark', '#FFFFFF');
-            box.appendChild(mark);
-        } else {
-            await applyColorVariable(box, 'checkbox-bg', '#FFFFFF');
-            await applyStrokeColorVariable(box, 'checkbox-border', '#EAEDF1');
-            box.strokeWeight = 1;
-        }
-        frame.appendChild(box);
-
-        if (showLabel) {
-            const labelNode = figma.createText();
-            await applyTextStyleBinding(labelNode, 'text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
-            labelNode.characters = label;
-            await applyColorVariable(labelNode, 'checkbox-label', disabled ? '#737A87' : '#0C0D0E');
-            frame.appendChild(labelNode);
-        }
-
-        node = frame;
-    }
-  }
-  // --- CHECKBOX GROUP ---
-  else if (instance.componentId === 'checkbox-group') {
-    const templateNode = await createCheckboxGroupFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing checkbox-group component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        const width = Number(params.width) > 0 ? Number(params.width) : 100;
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
-    }
-  }
-  // --- RADIO GROUP ---
-  else if (instance.componentId === 'radio-group') {
-    const templateNode = await createRadioGroupFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing radio-group component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        const width = Number(params.width) > 0 ? Number(params.width) : 100;
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 32);
-    }
-  }
-  // --- TEXTAREA ---
-  else if (instance.componentId === 'textarea') {
-    const templateNode = await createTextareaFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing textarea component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        const width = Number(params.width) > 0 ? Number(params.width) : 240;
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, width, 96);
-    }
-  }
-  // --- SWITCH ---
-  else if (instance.componentId === 'switch') {
-    const templateNode = await createSwitchFromFigmaTemplate(def, params);
-    if (templateNode) {
-        node = templateNode;
-    } else {
-        if (strictRenderMode) {
-          throw new Error(`[Render] Missing switch component for token: ${def.figmaPropertySnapshot?.token || def.name}`);
-        }
-        node = await createMissingFigmaComponentFrame(def.figmaPropertySnapshot?.token || def.name, 44, 22);
-    }
-  }
-  // --- DATEPICKER / TIMEPICKER / INPUTNUMBER / SLIDER / SEGMENTED-PICKER / UPLOAD ---
-  else if (['datepicker', 'timepicker', 'inputnumber', 'slider', 'segmented-picker', 'upload'].includes(instance.componentId)) {
+  // --- INPUT / SELECT / CHECKBOX / GROUP / RADIO / TEXTAREA / SWITCH / DATEPICKER / TIMEPICKER / INPUTNUMBER / SLIDER / SEGMENTED-PICKER / UPLOAD ---
+  else if ([
+    'input',
+    'select',
+    'checkbox',
+    'checkbox-group',
+    'radio-group',
+    'textarea',
+    'switch',
+    'datepicker',
+    'timepicker',
+    'inputnumber',
+    'slider',
+    'segmented-picker',
+    'upload'
+  ].includes(instance.componentId)) {
     const snapshot = def.figmaPropertySnapshot as any;
     const componentKey = (snapshot?.token ? resolveComponentKeyFromToken(snapshot.token) : '') || String(snapshot?.componentKey || '').trim();
     const fallbackWidth = Number(params.width) > 0 ? Number(params.width) : def.runtime?.fallback?.width;
@@ -9945,6 +9154,20 @@ figma.ui.onmessage = async (msg) => {
     });
   }
 
+  if (msg.type === 'inspect-selection-variables') {
+    const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
+    const maxDepthRaw = Number(payload.maxDepth);
+    const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw > 0 ? Math.floor(maxDepthRaw) : 6;
+    const maxChildrenRaw = Number(payload.maxChildren);
+    const maxChildren = Number.isFinite(maxChildrenRaw) && maxChildrenRaw > 0 ? Math.floor(maxChildrenRaw) : 80;
+    const selection = Array.from(figma.currentPage.selection);
+    const result = await inspectSelectionVariables(selection, { maxDepth, maxChildren });
+    figma.ui.postMessage({
+      type: 'inspect-selection-variables-result',
+      data: result
+    });
+  }
+
   if (msg.type === 'create-component') {
     const { component, parentId } = msg;
     // Reset theme on new creation for consistency, or read from UI settings
@@ -10385,6 +9608,7 @@ figma.ui.onmessage = async (msg) => {
       const node = selection[0];
       const column = isTableColumnNode(node) ? node : findTableColumnFromNode(node);
       if (column) {
+        let didClone = false;
         const previousCellType = column.getPluginData('cellType');
         const wasActionCell =
           typeof previousCellType === 'string' && isTableActionCellComponentId(previousCellType);
@@ -10413,6 +9637,7 @@ figma.ui.onmessage = async (msg) => {
               child.remove();
             }
             column.setPluginData('cellType', templateComponentId);
+            didClone = true;
           } else {
             const children = [...column.children];
             for (const child of children) {
@@ -10438,7 +9663,10 @@ figma.ui.onmessage = async (msg) => {
 
         const alignToApply = typeof textAlign === 'string' ? textAlign : undefined;
         let displayToApply = typeof textDisplay === 'string' ? textDisplay : undefined;
-        if (!displayToApply && componentId === 'table-cell') {
+        if (didClone) {
+          displayToApply = undefined;
+        }
+        if (!didClone && !displayToApply && componentId === 'table-cell') {
           const defaultDisplay = getDefaultParams('table-cell').textDisplay;
           displayToApply = typeof defaultDisplay === 'string' ? defaultDisplay : 'ellipsis';
           columnParamPatch.textDisplay = displayToApply;
@@ -10456,6 +9684,13 @@ figma.ui.onmessage = async (msg) => {
               applyCellTextDisplay(child, displayToApply as 'ellipsis' | 'lineBreak');
             }
           }
+        }
+        const cellsToNormalize = column.children.filter((child) => {
+          const id = child.getPluginData('component-id');
+          return isTableCellComponentId(id);
+        });
+        for (const child of cellsToNormalize) {
+          applyCellAutoWidthIfMultiElement(child);
         }
 
         if (typeof columnWidthMode === 'string') {

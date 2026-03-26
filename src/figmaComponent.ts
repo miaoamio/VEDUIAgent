@@ -310,6 +310,30 @@ export interface InspectedVariableReference {
   resolvedValue?: string | number | boolean;
 }
 
+export interface InspectedVariableUsageEntry {
+  nodeId: string;
+  nodeType: SceneNode['type'];
+  nodeName: string;
+  source: string;
+  variable: InspectedVariableReference;
+}
+
+export interface InspectedSelectionVariableUsage {
+  nodeId: string;
+  nodeType: SceneNode['type'];
+  nodeName: string;
+  colorVariables: InspectedVariableUsageEntry[];
+  textVariables: InspectedVariableUsageEntry[];
+  effectVariables: InspectedVariableUsageEntry[];
+}
+
+export interface InspectedSelectionVariablesResult {
+  status: 'ok' | 'error';
+  selectionCount?: number;
+  results?: InspectedSelectionVariableUsage[];
+  error?: string;
+}
+
 export interface InspectedPaintInfo {
   type: string;
   visible?: boolean;
@@ -503,6 +527,31 @@ async function inspectNodeBoundVariables(node: SceneNode): Promise<InspectedComp
     }
   }
 
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
+async function inspectStyleBoundVariables(
+  styleId: string,
+  consumer: SceneNode
+): Promise<Record<string, InspectedVariableReference | InspectedVariableReference[]> | undefined> {
+  const normalized = String(styleId || '').trim();
+  if (!normalized) return undefined;
+  let style: BaseStyle | null = null;
+  try {
+    style = figma.getStyleById(normalized) as BaseStyle | null;
+  } catch {
+    style = null;
+  }
+  if (!style) return undefined;
+  const raw = (style as BaseStyle & { boundVariables?: Record<string, unknown> }).boundVariables;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const output: Record<string, InspectedVariableReference | InspectedVariableReference[]> = {};
+  for (const [field, value] of Object.entries(raw)) {
+    const inspected = await inspectBoundVariablesMap(value, consumer);
+    if (inspected) {
+      output[field] = inspected;
+    }
+  }
   return Object.keys(output).length > 0 ? output : undefined;
 }
 
@@ -853,7 +902,6 @@ export async function loadFigmaComponentByKey(
   if (!componentKey && !componentNodeId) {
     throw new Error("componentKey or componentNodeId is required.");
   }
-
   if (componentKey) {
     const cached = figmaComponentCache.get(componentKey);
     if (cached && !cached.removed) {
@@ -1246,6 +1294,254 @@ async function inspectSceneNodeTree(
   }
 
   return info;
+}
+
+const TEXT_VARIABLE_FIELD_PATTERN = /font|text|line|letter|paragraph|typography|style|weight|size/i;
+const COLOR_VARIABLE_FIELD_PATTERN = /fill|stroke|color/i;
+const EFFECT_VARIABLE_FIELD_PATTERN = /effect|shadow|blur/i;
+
+const classifyVariableUsage = (
+  field: string,
+  variable: InspectedVariableReference,
+  nodeType: SceneNode['type']
+): 'color' | 'text' | 'effect' | undefined => {
+  const resolvedType = String(variable.resolvedType || '').toUpperCase();
+  const lowerField = field.toLowerCase();
+  if (resolvedType === 'COLOR') return 'color';
+  if (resolvedType === 'EFFECT') return 'effect';
+  if (EFFECT_VARIABLE_FIELD_PATTERN.test(lowerField)) return 'effect';
+  if (COLOR_VARIABLE_FIELD_PATTERN.test(lowerField)) return 'color';
+  if (nodeType === 'TEXT') {
+    if (TEXT_VARIABLE_FIELD_PATTERN.test(lowerField) || resolvedType) return 'text';
+    return 'text';
+  }
+  return undefined;
+};
+
+const normalizeVariableList = (
+  value: InspectedVariableReference | InspectedVariableReference[]
+): InspectedVariableReference[] => {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+};
+
+const pushVariableUsage = (
+  bucket: InspectedVariableUsageEntry[],
+  seen: Set<string>,
+  entry: InspectedVariableUsageEntry,
+  category: 'color' | 'text' | 'effect'
+) => {
+  const aliasId = entry.variable.aliasId || entry.variable.variableId || '';
+  const key = `${category}:${entry.nodeId}:${entry.source}:${aliasId}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  bucket.push(entry);
+};
+
+export async function inspectSelectionVariablesFromNode(
+  root: SceneNode,
+  options?: { maxDepth?: number; maxChildren?: number }
+): Promise<InspectedSelectionVariableUsage> {
+  const maxDepth = Number.isFinite(options?.maxDepth) && Number(options?.maxDepth) > 0 ? Math.floor(Number(options?.maxDepth)) : 6;
+  const maxChildren = Number.isFinite(options?.maxChildren) && Number(options?.maxChildren) > 0 ? Math.floor(Number(options?.maxChildren)) : 80;
+  const result: InspectedSelectionVariableUsage = {
+    nodeId: root.id,
+    nodeType: root.type,
+    nodeName: root.name,
+    colorVariables: [],
+    textVariables: [],
+    effectVariables: []
+  };
+  const seen = new Set<string>();
+
+  const collectFromNode = async (node: SceneNode, depth: number) => {
+    const nodeBoundVariables = await inspectNodeBoundVariables(node);
+    if (nodeBoundVariables) {
+      for (const [field, value] of Object.entries(nodeBoundVariables)) {
+        const variables = normalizeVariableList(value);
+        for (const variable of variables) {
+          const category = classifyVariableUsage(field, variable, node.type);
+          if (!category) continue;
+          const entry: InspectedVariableUsageEntry = {
+            nodeId: node.id,
+            nodeType: node.type,
+            nodeName: node.name,
+            source: `boundVariables.${field}`,
+            variable
+          };
+          if (category === 'color') {
+            pushVariableUsage(result.colorVariables, seen, entry, category);
+          } else if (category === 'text') {
+            pushVariableUsage(result.textVariables, seen, entry, category);
+          } else {
+            pushVariableUsage(result.effectVariables, seen, entry, category);
+          }
+        }
+      }
+    }
+
+    if (node.type === 'TEXT') {
+      const textStyleId = (node as TextNode & { textStyleId?: string | symbol }).textStyleId;
+      if (typeof textStyleId === 'string' && textStyleId.trim()) {
+        const styleVariables = await inspectStyleBoundVariables(textStyleId, node);
+        if (styleVariables) {
+          for (const [field, value] of Object.entries(styleVariables)) {
+            const variables = normalizeVariableList(value);
+            for (const variable of variables) {
+              const entry: InspectedVariableUsageEntry = {
+                nodeId: node.id,
+                nodeType: node.type,
+                nodeName: node.name,
+                source: `textStyle.${field}`,
+                variable
+              };
+              pushVariableUsage(result.textVariables, seen, entry, 'text');
+            }
+          }
+        }
+      }
+    }
+
+    const fillStyleId = (node as SceneNode & { fillStyleId?: string | symbol }).fillStyleId;
+    if (typeof fillStyleId === 'string' && fillStyleId.trim()) {
+      const styleVariables = await inspectStyleBoundVariables(fillStyleId, node);
+      if (styleVariables) {
+        for (const [field, value] of Object.entries(styleVariables)) {
+          const variables = normalizeVariableList(value);
+          for (const variable of variables) {
+            const entry: InspectedVariableUsageEntry = {
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeName: node.name,
+              source: `fillStyle.${field}`,
+              variable
+            };
+            pushVariableUsage(result.colorVariables, seen, entry, 'color');
+          }
+        }
+      }
+    }
+
+    const strokeStyleId = (node as SceneNode & { strokeStyleId?: string | symbol }).strokeStyleId;
+    if (typeof strokeStyleId === 'string' && strokeStyleId.trim()) {
+      const styleVariables = await inspectStyleBoundVariables(strokeStyleId, node);
+      if (styleVariables) {
+        for (const [field, value] of Object.entries(styleVariables)) {
+          const variables = normalizeVariableList(value);
+          for (const variable of variables) {
+            const entry: InspectedVariableUsageEntry = {
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeName: node.name,
+              source: `strokeStyle.${field}`,
+              variable
+            };
+            pushVariableUsage(result.colorVariables, seen, entry, 'color');
+          }
+        }
+      }
+    }
+
+    const effectStyleId = (node as SceneNode & { effectStyleId?: string | symbol }).effectStyleId;
+    if (typeof effectStyleId === 'string' && effectStyleId.trim()) {
+      const styleVariables = await inspectStyleBoundVariables(effectStyleId, node);
+      if (styleVariables) {
+        for (const [field, value] of Object.entries(styleVariables)) {
+          const variables = normalizeVariableList(value);
+          for (const variable of variables) {
+            const entry: InspectedVariableUsageEntry = {
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeName: node.name,
+              source: `effectStyle.${field}`,
+              variable
+            };
+            pushVariableUsage(result.effectVariables, seen, entry, 'effect');
+          }
+        }
+      }
+    }
+
+    const fillPaints = await inspectPaintArray(node, 'fills');
+    if (fillPaints) {
+      fillPaints.forEach((paint, index) => {
+        const bindings = paint.boundVariables || [];
+        bindings.forEach((binding) => {
+          const field = binding.field || 'color';
+          const variable = binding.variable;
+          const category = classifyVariableUsage(field, variable, node.type) || 'color';
+          const entry: InspectedVariableUsageEntry = {
+            nodeId: node.id,
+            nodeType: node.type,
+            nodeName: node.name,
+            source: `fills[${index}].${field}`,
+            variable
+          };
+          if (category === 'color') {
+            pushVariableUsage(result.colorVariables, seen, entry, category);
+          } else if (category === 'text') {
+            pushVariableUsage(result.textVariables, seen, entry, category);
+          } else {
+            pushVariableUsage(result.effectVariables, seen, entry, category);
+          }
+        });
+      });
+    }
+
+    const strokePaints = await inspectPaintArray(node, 'strokes');
+    if (strokePaints) {
+      strokePaints.forEach((paint, index) => {
+        const bindings = paint.boundVariables || [];
+        bindings.forEach((binding) => {
+          const field = binding.field || 'color';
+          const variable = binding.variable;
+          const category = classifyVariableUsage(field, variable, node.type) || 'color';
+          const entry: InspectedVariableUsageEntry = {
+            nodeId: node.id,
+            nodeType: node.type,
+            nodeName: node.name,
+            source: `strokes[${index}].${field}`,
+            variable
+          };
+          if (category === 'color') {
+            pushVariableUsage(result.colorVariables, seen, entry, category);
+          } else if (category === 'text') {
+            pushVariableUsage(result.textVariables, seen, entry, category);
+          } else {
+            pushVariableUsage(result.effectVariables, seen, entry, category);
+          }
+        });
+      });
+    }
+
+    if ('children' in node && depth < maxDepth) {
+      const children = node.children.slice(0, maxChildren);
+      for (const child of children) {
+        await collectFromNode(child, depth + 1);
+      }
+    }
+  };
+
+  await collectFromNode(root, 0);
+  return result;
+}
+
+export async function inspectSelectionVariables(
+  selection: SceneNode[],
+  options?: { maxDepth?: number; maxChildren?: number }
+): Promise<InspectedSelectionVariablesResult> {
+  if (!selection || selection.length === 0) {
+    return { status: 'error', error: 'No selection found.' };
+  }
+  const results: InspectedSelectionVariableUsage[] = [];
+  for (const node of selection) {
+    results.push(await inspectSelectionVariablesFromNode(node, options));
+  }
+  return {
+    status: 'ok',
+    selectionCount: selection.length,
+    results
+  };
 }
 
 function buildDiscoveredComponentSchemaResult(

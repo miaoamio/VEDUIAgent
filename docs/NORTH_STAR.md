@@ -426,7 +426,19 @@ renderNotes: {
 
 ---
 
-## 十、待完成事项
+## 十、开发者辅助命令
+
+> 用于规范反查与调试的开发者命令，交互在 UI 输入框中使用（不会触发 AI）。
+
+| 命令 | 作用 | 输出 |
+|------|------|------|
+| `/inspect` | 反查 Figma Component 的属性/变体信息 | JSON（用于 figmaPropertySnapshot） |
+| `/inspect-style` | 反查 Figma Component 的样式信息 | JSON |
+| `/inspect-vars` | 反查当前选中对象使用的色彩/文字/effect 变量 | JSON |
+
+---
+
+## 十一、待完成事项
 
 | 项目 | 说明 |
 |------|------|
@@ -436,7 +448,7 @@ renderNotes: {
 
 ---
 
-## 十一、决策日志
+## 十二、决策日志
 
 > 记录重要架构决策，避免以后再绕回来争论。
 

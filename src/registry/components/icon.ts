@@ -52,8 +52,10 @@ export const iconComponents: ComponentRegistry["components"] = {
       "allowRemove": true
     },
     "figmaBinding": {
-      "nodeType": "INSTANCE",
-      "renderKey": "eaaaf6bb82b8bdb2fc20b81407ba862cea786d2c"
+      "nodeType": "INSTANCE"
+    },
+    "figmaPropertySnapshot": {
+      "token": "lib-basic-icon-required"
     },
     "renderNotes": iconRenderNotes
   },
@@ -97,8 +99,57 @@ export const iconComponents: ComponentRegistry["components"] = {
       "allowRemove": true
     },
     "figmaBinding": {
-      "nodeType": "INSTANCE",
-      "renderKey": "3cf68ee183ff9840dffb8e4ba760dfea519e4a8d"
+      "nodeType": "INSTANCE"
+    },
+    "figmaPropertySnapshot": {
+      "token": "lib-basic-icon-delete"
+    },
+    "renderNotes": iconRenderNotes
+  },
+  "icon-info": {
+    "id": "icon-info",
+    "name": "说明图标",
+    "category": "Icon",
+    "description": "说明提示图标",
+    "schemaVersion": "2.0.0",
+    "prompts": {
+      "description": "说明提示图标",
+      "usage": "用于表单字段的说明提示。",
+      "examples": [
+        "说明图标: { \"componentId\": \"icon-info\" }"
+      ]
+    },
+    "params": {
+      "width": {
+        "type": "number",
+        "default": 0,
+        "description": "宽度覆盖（0 表示不覆盖）"
+      },
+      "height": {
+        "type": "number",
+        "default": 0,
+        "description": "高度覆盖（0 表示不覆盖）"
+      },
+      "clipsContent": {
+        "type": "boolean",
+        "default": false,
+        "description": "裁剪超出组件的内容"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "INSTANCE"
+    },
+    "figmaPropertySnapshot": {
+      "token": "lib-basic-icon-info"
     },
     "renderNotes": iconRenderNotes
   }

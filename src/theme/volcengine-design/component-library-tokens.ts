@@ -160,6 +160,30 @@ export const BASE_LIBRARY_COMPONENT_TOKEN_PACK: Record<string, BaseLibraryCompon
     category: '基础',
     aliases: ['figma-set:Link 链接']
   },
+  'lib-basic-icon-required': {
+    token: 'lib-basic-icon-required',
+    componentKey: 'eaaaf6bb82b8bdb2fc20b81407ba862cea786d2c',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: '必填星号',
+    category: '基础',
+    aliases: ['figma-set:必填星号']
+  },
+  'lib-basic-icon-delete': {
+    token: 'lib-basic-icon-delete',
+    componentKey: '3cf68ee183ff9840dffb8e4ba760dfea519e4a8d',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: '删除图标',
+    category: '基础',
+    aliases: ['figma-set:删除图标']
+  },
+  'lib-basic-icon-info': {
+    token: 'lib-basic-icon-info',
+    componentKey: 'aa643388aaf96237275b5d0ff9e2a1f3304af63a',
+    source: 'Figma组件库词汇表_ComponentSets.json',
+    displayName: 'question-circle',
+    category: '基础',
+    aliases: ['figma-set:question-circle']
+  },
   'lib-data-input-login-form': {
     token: 'lib-data-input-login-form',
     componentKey: 'dac6c37e35b02e175afafd5265ff1280e79d95b1',

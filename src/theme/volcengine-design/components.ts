@@ -59,6 +59,12 @@ const volcengineDesignBasicComponents: ComponentsTheme = {
   'lib-basic-link':   'f41466dcfeadfa7f023b8f76862ccb43196e940e',
 };
 
+const volcengineDesignIconComponents: ComponentsTheme = {
+  'lib-basic-icon-required': 'eaaaf6bb82b8bdb2fc20b81407ba862cea786d2c',
+  'lib-basic-icon-delete': '3cf68ee183ff9840dffb8e4ba760dfea519e4a8d',
+  'lib-basic-icon-info': 'aa643388aaf96237275b5d0ff9e2a1f3304af63a',
+};
+
 const volcengineDesignDataInputComponents: ComponentsTheme = {
   'lib-data-input-login-form':            'dac6c37e35b02e175afafd5265ff1280e79d95b1',
   'lib-data-input-autocomplete':          '355fad193afc9d482a114e9e435bce05c970d60c',
@@ -147,6 +153,7 @@ export const volcengineDesignComponents: ComponentsTheme = {
   ...volcengineDesignNavigationComponents,
   ...volcengineDesignFeedbackComponents,
   ...volcengineDesignBasicComponents,
+  ...volcengineDesignIconComponents,
   ...volcengineDesignDataInputComponents,
   ...volcengineDesignDataDisplayComponents,
   ...volcengineDesignAiComponents,

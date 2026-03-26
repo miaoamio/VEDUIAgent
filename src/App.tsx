@@ -2114,7 +2114,6 @@ function App() {
   const ADVANCED_PARAM_KEYS_BY_COMPONENT: Record<string, Set<string>> = {
     form: new Set(['showColon']),
     'form-field': new Set([
-      'showColon',
       'size',
       'showPrefix',
       'showSuffix',
@@ -4110,8 +4109,7 @@ StepD:
     | 'upload'
     | 'segmented-picker'
     | 'figma-component'
-    | 'button'
-    | 'text';
+    | 'button';
 
   const FORM_LIBRARY_CONTROL_RULES: Array<{
     keywords: string[];
@@ -4299,7 +4297,6 @@ StepD:
     const matchedRule = resolveFormLibraryControlRule(normalized);
     if (matchedRule) return matchedRule.fieldControlType;
     if (normalized.includes('button') || normalized.includes('btn') || normalized.includes('按钮')) return 'button';
-    if (normalized === 'text' || normalized.includes('文本')) return 'text';
     if (normalized.includes('figma')) return 'figma-component';
     return '';
   };
@@ -4473,7 +4470,6 @@ StepD:
 
       if (
         explicitComponentId === 'button' ||
-        explicitComponentId === 'text' ||
         explicitComponentId === 'input' ||
         explicitComponentId === 'select' ||
         explicitComponentId === 'checkbox-group' ||
@@ -4485,16 +4481,6 @@ StepD:
       const normalizedControlType = normalizeFormFieldControlTypeHint(rawType || canonicalToken);
       if (normalizedControlType === 'button') {
         return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
-      }
-
-      if (normalizedControlType === 'text') {
-        return {
-          componentId: 'text',
-          params: {
-            ...explicitParams,
-            text: String(explicitParams.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
-          }
-        };
       }
 
       if (normalizedControlType === 'select') {
@@ -4550,7 +4536,7 @@ StepD:
         };
       }
 
-      if (explicitComponentId === 'button' || explicitComponentId === 'text') {
+      if (explicitComponentId === 'button') {
         return {
           componentId: explicitComponentId,
           params: buildExplicitComponentParams(itemObj)
@@ -4569,15 +4555,6 @@ StepD:
         return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
       }
 
-      if (normalizedControlType === 'text' || rawType.toLowerCase() === 'text') {
-        return {
-          componentId: 'text',
-          params: {
-            text: String(props.text || itemObj.text || itemObj.label || itemObj.name || `文本${index + 1}`)
-          }
-        };
-      }
-
       const label = String(
         props.label ||
         itemObj.label ||
@@ -4590,9 +4567,11 @@ StepD:
         label,
         required: Boolean(props.required ?? itemObj.required),
         helpText: String(props.helpText || itemObj.helpText || ''),
+        showHelpIcon: Boolean(props.showHelpIcon ?? itemObj.showHelpIcon),
         descriptionText: typeof (props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description) === 'string'
           ? String(props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description)
           : '',
+        showDescriptionText: Boolean(props.showDescriptionText ?? itemObj.showDescriptionText),
         errorText: typeof (props.errorText ?? itemObj.errorText) === 'string'
           ? String(props.errorText ?? itemObj.errorText)
           : ''
@@ -5887,6 +5866,43 @@ StepD:
     });
   };
 
+  const inspectSelectionVariables = (payload?: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
+      const handler = (event: MessageEvent) => {
+        const data = event.data.pluginMessage || {};
+        if (data.type === 'inspect-selection-variables-result') {
+          window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
+          resolve(data.data || {});
+        } else if (data.type === 'error') {
+          window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
+          reject(data.message);
+        }
+      };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
+      window.parent.postMessage({
+        pluginMessage: {
+          type: 'inspect-selection-variables',
+          payload: payload && typeof payload === 'object' ? payload : {}
+        }
+      }, '*');
+    });
+  };
+
   const inspectFigmaComponentStructure = (payload: any): Promise<any> => {
     return new Promise((resolve, reject) => {
       const abortSignal = llmAbortRef.current?.signal;
@@ -6472,6 +6488,47 @@ StepD:
 
     // Developer commands — bypass AI, run directly
     const trimmedInput = userInput.trim();
+    if (trimmedInput === '/inspect-vars' || trimmedInput.startsWith('/inspect-vars ')) {
+      setUserInput('');
+      if (componentInspectionRunning) return;
+      setComponentInspectionRunning(true);
+      setUiMessages((prev) => [
+        ...prev,
+        { role: 'user', content: '/inspect-vars' },
+        { role: 'ai', content: '[System]: 正在反查当前选中对象的变量…' }
+      ]);
+      try {
+        const inspectResult = await inspectSelectionVariables();
+        if (inspectResult?.status !== 'ok') {
+          const errLine = `[System]: /inspect-vars 失败: ${String(inspectResult?.error || 'Unknown error')}`;
+          setUiMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: 'ai', content: errLine };
+            return next;
+          });
+        } else {
+          const selectionCount = Number(inspectResult?.selectionCount || 0);
+          const json = JSON.stringify(inspectResult?.results || [], null, 2);
+          setComponentInspectJson(json);
+          const summaryLine = `[System]: /inspect-vars 完成 — selection=${selectionCount}`;
+          setUiMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+            return next;
+          });
+        }
+      } catch (e) {
+        const errLine = `[System]: /inspect-vars 失败: ${String(e)}`;
+        setUiMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { role: 'ai', content: errLine };
+          return next;
+        });
+      } finally {
+        setComponentInspectionRunning(false);
+      }
+      return;
+    }
     if (trimmedInput === '/inspect-style' || trimmedInput.startsWith('/inspect-style ')) {
       const arg = trimmedInput.slice('/inspect-style'.length).trim();
       const key = arg || figmaInstanceInfo?.componentKey || '';
@@ -7941,9 +7998,6 @@ StepD:
     if (key === 'componentToken' || key === 'componentKey' || key === 'variantCriteria') {
       return controlType === 'figma-component';
     }
-    if (key === 'text') {
-      return controlType === 'text';
-    }
     if (key === 'buttonLabel' || key === 'buttonVariant') {
       return controlType === 'button';
     }
@@ -8313,6 +8367,8 @@ StepD:
                 label: resolveOptionLabel(def, key, opt)
               }))}
               onChange={(next) => updateParam(key, next)}
+              groupClassName={def.id === 'form' && key === 'controlWidthMode' ? 'othertabs-group' : undefined}
+              buttonClassName={def.id === 'form' && key === 'controlWidthMode' ? 'othertabs-button' : undefined}
             />
           )}
           {paramDef.type === 'color' && (

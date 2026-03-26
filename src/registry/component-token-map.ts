@@ -8,6 +8,9 @@
 export const SPEC_COMPONENT_TOKEN_MAP: Record<string, string[]> = {
   // Basic
   'lib-basic-button': ['button', 'figma-component'],
+  'lib-basic-icon-required': ['icon-asterisk', 'figma-component'],
+  'lib-basic-icon-delete': ['icon-delete', 'figma-component'],
+  'lib-basic-icon-info': ['icon-info', 'figma-component'],
 
   // Form inputs
   'lib-data-input-input': ['input', 'figma-component'],

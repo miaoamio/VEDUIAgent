@@ -194,6 +194,9 @@ async function ensureTokenColorVariable(token: string, fallbackHex: string): Pro
   }
 }
 
+const COLOR_VARIABLE_IMPORT_FAILED_CACHE = new Map<string, number>();
+const COLOR_VARIABLE_IMPORT_FAILURE_TTL_MS = 5 * 60 * 1000;
+
 async function resolveColorVariable(
   variableKey: string,
   fallbackHex?: string,
@@ -203,6 +206,11 @@ async function resolveColorVariable(
   const cacheKey = allowCreateToken ? variableKey : `${variableKey}::strict`;
   const cacheHit = COLOR_VARIABLE_CACHE.get(cacheKey);
   if (cacheHit !== undefined) return cacheHit;
+
+  const failedAt = COLOR_VARIABLE_IMPORT_FAILED_CACHE.get(cacheKey);
+  if (failedAt && Date.now() - failedAt < COLOR_VARIABLE_IMPORT_FAILURE_TTL_MS) {
+    return null;
+  }
 
   if (typeof figma.variables === 'undefined') {
     console.warn(`[ColorVar] figma.variables unavailable; skip binding for "${variableKey}"`);
@@ -229,15 +237,6 @@ async function resolveColorVariable(
     if (!candidate) continue;
 
     try {
-      const imported = await figma.variables.importVariableByKeyAsync(candidate);
-      if (imported && imported.resolvedType === 'COLOR') {
-        COLOR_VARIABLE_CACHE.set(cacheKey, imported);
-        return imported;
-      }
-    } catch {
-    }
-
-    try {
       const byId = await figma.variables.getVariableByIdAsync(raw);
       if (byId && byId.resolvedType === 'COLOR') {
         COLOR_VARIABLE_CACHE.set(cacheKey, byId);
@@ -255,6 +254,16 @@ async function resolveColorVariable(
         }
       } catch {
       }
+    }
+
+    try {
+      const imported = await figma.variables.importVariableByKeyAsync(candidate);
+      if (imported && imported.resolvedType === 'COLOR') {
+        COLOR_VARIABLE_CACHE.set(cacheKey, imported);
+        return imported;
+      }
+    } catch {
+      COLOR_VARIABLE_IMPORT_FAILED_CACHE.set(cacheKey, Date.now());
     }
   }
 
