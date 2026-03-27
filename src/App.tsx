@@ -1993,6 +1993,7 @@ function compactStructureResult(item: any): any {
 function App() {
   const [userInput, setUserInput] = React.useState('');
   const composerTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const composerRichInputRef = React.useRef<HTMLSpanElement | null>(null);
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
   const [chartOverlayOpen, setChartOverlayOpen] = React.useState(false);
   const [chartShortcutActive, setChartShortcutActive] = React.useState<string | null>(null);
@@ -2507,7 +2508,7 @@ function App() {
     }
   }, []);
 
-  const handlePaste = React.useCallback(async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = React.useCallback(async (event: React.ClipboardEvent<HTMLElement>) => {
     const items = Array.from(event.clipboardData?.items || []);
     const imageFiles = items
       .filter((item) => item.type.startsWith('image/'))
@@ -2539,6 +2540,62 @@ function App() {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
   }, []);
+
+  const clearChartPrompt = React.useCallback(() => {
+    setChartShortcutActive(null);
+    setChartExtraOptions({});
+    setActiveOptionMenu(null);
+    setChartPromptMode(false);
+    setChartMenuOpen(false);
+  }, []);
+
+  const focusComposerInput = React.useCallback(() => {
+    if (chartShortcutActive) {
+      const node = composerRichInputRef.current;
+      if (node) {
+        try {
+          node.focus();
+          const selection = window.getSelection?.();
+          if (selection) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          return;
+        } catch (error) {
+          console.warn('富文本编辑器焦点设置失败:', error);
+        }
+      }
+    }
+    composerTextareaRef.current?.focus();
+  }, [chartShortcutActive]);
+
+  const isComposerRichCaretAtStart = React.useCallback(() => {
+    const root = composerRichInputRef.current;
+    if (!root) return false;
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return false;
+    const anchor = selection.anchorNode;
+    if (!anchor || !root.contains(anchor)) return false;
+    const range = selection.getRangeAt(0);
+    const beforeRange = range.cloneRange();
+    beforeRange.selectNodeContents(root);
+    beforeRange.setEnd(range.endContainer, range.endOffset);
+    return beforeRange.toString().length === 0;
+  }, []);
+
+  React.useEffect(() => {
+    if (!chartShortcutActive) return;
+    const node = composerRichInputRef.current;
+    if (!node) return;
+    const nextText = String(userInput ?? '');
+    const currentText = node.innerText ?? '';
+    if (currentText !== nextText) {
+      node.innerText = nextText;
+    }
+  }, [chartShortcutActive, userInput]);
 
   const removeImageAttachment = React.useCallback((id: string) => {
     setUploadedImages((prev) => prev.filter((image) => image.id !== id));
@@ -6689,7 +6746,7 @@ StepD:
     const extraOptionsText = (CHART_EXTRA_OPTIONS[chartShortcutActive || ''] || [])
       .map(opt => {
         const val = chartExtraOptions[opt.key] || opt.defaultValue;
-        return `${opt.label}: ${val}`;
+        return `${opt.label}：${val}`;
       })
       .join(', ');
     const baseChartText = chartShortcutActive 
@@ -7911,29 +7968,29 @@ StepD:
     defaultValue: string;
   }[]> = {
     '环形图': [
-      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
-      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' },
-      { key: 'sumValue', label: '总数值 Sum', options: ['Off', 'On'], defaultValue: 'On' }
+      { key: 'itemCount', label: '分类数量', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注', options: ['Off', 'On'], defaultValue: 'On' },
+      { key: 'sumValue', label: '总数值', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '饼图': [
-      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
-      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' }
+      { key: 'itemCount', label: '分类数量', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '柱状图': [
-      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
+      { key: 'seriesCount', label: '每组柱数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
     ],
     '条形图': [
-      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
+      { key: 'seriesCount', label: '线数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
     ],
     '折线图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型 Type', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
+      { key: 'chartType', label: '类型', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
     ],
     '面积图': [
-      { key: 'lineCount', label: '线数量 ', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型 Type', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
+      { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
+      { key: 'chartType', label: '类型', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
     ]
   };
   const buildQuickComponentName = (displayName: string, token: string) => {
@@ -10064,85 +10121,33 @@ StepD:
                 className={`composer-box ${chartShortcutActive ? 'with-chart-tag' : ''}`}
                 ref={composerBoxRef}
               >
-                {chartShortcutActive && (
-                  <div
-                    className="composer-chart-tag-row"
-                    ref={chartDropdownRef}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <span className="composer-chart-tag-prefix">生成一个</span>
-                    <div className="composer-chart-tag-wrap">
-                      <button
-                        type="button"
-                        className="composer-chart-tag"
-                        onClick={() => {
-                          setAttachmentMenuOpen(false);
-                          setChartMenuOpen((prev) => {
-                            if (!prev) setActiveOptionMenu(null);
-                            return !prev;
-                          });
-                        }}
-                        disabled={loading}
-                      >
-                        <span className="composer-chart-tag-text">{chartShortcutActive}</span>
-                        <span className="composer-chart-tag-icon" aria-hidden="true">
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                              fillRule="evenodd"
-                              clipRule="evenodd"
-                              d="M3.46129 3.67509C3.22783 3.44164 2.84933 3.44164 2.61587 3.67509L2.19316 4.0978C1.9597 4.33126 1.9597 4.70977 2.19316 4.94322L5.57484 8.32491C5.6922 8.44226 5.8462 8.50062 6.00001 8.49999C6.15382 8.50062 6.30782 8.44226 6.42518 8.32491L9.80686 4.94322C10.0403 4.70977 10.0403 4.33126 9.80686 4.0978L9.38415 3.67509C9.15069 3.44164 8.77219 3.44164 8.53873 3.67509L6.00001 6.21381L3.46129 3.67509Z"
-                              fill="currentColor"
-                            />
-                          </svg>
-                        </span>
-                      </button>
-                      <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
-                        {chartTypeShortcuts.map((shortcut) => (
-                          <button
-                            key={shortcut.label}
-                            type="button"
-                            className={`composer-chart-dropdown-item ${
-                              chartShortcutActive === shortcut.label ? 'active' : ''
-                            }`}
-                            onClick={() => {
-                              setUserInput('');
-                              setChartShortcutActive(shortcut.label);
-                              setChartExtraOptions({});
-                              setActiveOptionMenu(null);
-                              if (shortcut.label === '折线图') {
-                                setChartOverlayOpen(true);
-                              } else {
-                                setChartOverlayOpen(false);
-                              }
-                              setAttachmentMenuOpen(false);
-                              setChartMenuOpen(false);
-                              composerTextareaRef.current?.focus();
-                            }}
-                            disabled={loading}
-                          >
-                            <span className="composer-chart-dropdown-icon" aria-hidden="true">
-                              {chartShortcutIcons[shortcut.label]}
-                            </span>
-                            <span className="composer-chart-dropdown-label">{shortcut.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {CHART_EXTRA_OPTIONS[chartShortcutActive]?.map(opt => {
-                      const value = chartExtraOptions[opt.key] || opt.defaultValue;
-                      const isOpen = activeOptionMenu === opt.key;
-                      return (
-                        <div className="composer-chart-tag-wrap" key={opt.key}>
+                <div className="composer-textarea-wrap" style={{ paddingTop: '10px', transition: 'padding-top 0.2s ease-in-out' }}>
+                  {chartShortcutActive ? (
+                    <div
+                      className="composer-rich-editor"
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        if (!(event.target instanceof HTMLElement)) return;
+                        if (event.target.closest('button')) return;
+                        requestAnimationFrame(() => focusComposerInput());
+                      }}
+                    >
+                      <div className="composer-chart-tag-row" ref={chartDropdownRef}>
+                        <span className="composer-chart-tag-prefix">生成一个</span>
+                        <div className="composer-chart-tag-wrap">
                           <button
                             type="button"
                             className="composer-chart-tag"
                             onClick={() => {
-                              setChartMenuOpen(false);
-                              setActiveOptionMenu(isOpen ? null : opt.key);
+                              setAttachmentMenuOpen(false);
+                              setChartMenuOpen((prev) => {
+                                if (!prev) setActiveOptionMenu(null);
+                                return !prev;
+                              });
                             }}
                             disabled={loading}
                           >
-                            <span className="composer-chart-tag-text">{opt.label}: {value}</span>
+                            <span className="composer-chart-tag-text">{chartShortcutActive}</span>
                             <span className="composer-chart-tag-icon" aria-hidden="true">
                               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path
@@ -10154,81 +10159,164 @@ StepD:
                               </svg>
                             </span>
                           </button>
-                          <div className={`composer-chart-dropdown ${isOpen ? 'open' : ''}`}>
-                            {opt.options.map(val => (
+                          <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
+                            {chartTypeShortcuts.map((shortcut) => (
                               <button
-                                key={val}
+                                key={shortcut.label}
                                 type="button"
-                                className={`composer-chart-dropdown-item ${value === val ? 'active' : ''}`}
+                                className={`composer-chart-dropdown-item ${
+                                  chartShortcutActive === shortcut.label ? 'active' : ''
+                                }`}
                                 onClick={() => {
-                                  setChartExtraOptions(prev => ({ ...prev, [opt.key]: val }));
+                                  setUserInput('');
+                                  setChartShortcutActive(shortcut.label);
+                                  setChartExtraOptions({});
                                   setActiveOptionMenu(null);
-                                  composerTextareaRef.current?.focus();
+                                  if (shortcut.label === '折线图') {
+                                    setChartOverlayOpen(true);
+                                  } else {
+                                    setChartOverlayOpen(false);
+                                  }
+                                  setAttachmentMenuOpen(false);
+                                  setChartMenuOpen(false);
+                                  requestAnimationFrame(() => focusComposerInput());
                                 }}
                                 disabled={loading}
                               >
-                                <span className="composer-chart-dropdown-label">{val}</span>
+                                <span className="composer-chart-dropdown-icon" aria-hidden="true">
+                                  {chartShortcutIcons[shortcut.label]}
+                                </span>
+                                <span className="composer-chart-dropdown-label">{shortcut.label}</span>
                               </button>
                             ))}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div className="composer-textarea-wrap" style={{ 
-                  paddingTop: chartShortcutActive && tagRowHeight > 0
-                    ? `${Math.max(0, tagRowHeight + 26)}px`
-                    : '10px',
-                  transition: 'padding-top 0.2s ease-in-out'
-                }}>
-                  <textarea
-                    className="composer-textarea"
-                    value={userInput}
-                    onChange={(e) => {
-                      const nextValue = e.target.value;
-                      setUserInput(nextValue);
-                      if (!nextValue.trim() && !chartShortcutActive) {
-                        setChartPromptMode(false);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === 'Enter' &&
-                        !e.shiftKey &&
-                        !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
-                        canSend &&
-                        !loading
-                      ) {
-                        e.preventDefault();
-                        onSend();
-                        return;
-                      }
-                      if (
-                        (e.key === 'Backspace' || e.key === 'Delete') &&
-                        userInput === '' &&
+                        {CHART_EXTRA_OPTIONS[chartShortcutActive]?.map((opt) => {
+                          const value = chartExtraOptions[opt.key] || opt.defaultValue;
+                          const isOpen = activeOptionMenu === opt.key;
+                          return (
+                            <div className="composer-chart-tag-wrap" key={opt.key}>
+                              <button
+                                type="button"
+                                className="composer-chart-tag"
+                                onClick={() => {
+                                  setChartMenuOpen(false);
+                                  setActiveOptionMenu(isOpen ? null : opt.key);
+                                }}
+                                disabled={loading}
+                              >
+                                <span className="composer-chart-tag-text">
+                                  {opt.label}： {value}
+                                </span>
+                                <span className="composer-chart-tag-icon" aria-hidden="true">
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                      fillRule="evenodd"
+                                      clipRule="evenodd"
+                                      d="M3.46129 3.67509C3.22783 3.44164 2.84933 3.44164 2.61587 3.67509L2.19316 4.0978C1.9597 4.33126 1.9597 4.70977 2.19316 4.94322L5.57484 8.32491C5.6922 8.44226 5.8462 8.50062 6.00001 8.49999C6.15382 8.50062 6.30782 8.44226 6.42518 8.32491L9.80686 4.94322C10.0403 4.70977 10.0403 4.33126 9.80686 4.0978L9.38415 3.67509C9.15069 3.44164 8.77219 3.44164 8.53873 3.67509L6.00001 6.21381L3.46129 3.67509Z"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </span>
+                              </button>
+                              <div className={`composer-chart-dropdown ${isOpen ? 'open' : ''}`}>
+                                {opt.options.map((val) => (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    className={`composer-chart-dropdown-item ${value === val ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setChartExtraOptions((prev) => ({ ...prev, [opt.key]: val }));
+                                      setActiveOptionMenu(null);
+                                      requestAnimationFrame(() => focusComposerInput());
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    <span className="composer-chart-dropdown-label">{val}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <span
+                        className="composer-rich-input"
+                        contentEditable
+                        suppressContentEditableWarning
+                        ref={composerRichInputRef}
+                        onInput={(e) => {
+                          const nextValue = (e.currentTarget.innerText ?? '').replace(/\u00A0/g, ' ');
+                          setUserInput(nextValue);
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === 'Enter' &&
+                            !e.shiftKey &&
+                            !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
+                            canSend &&
+                            !loading
+                          ) {
+                            e.preventDefault();
+                            onSend();
+                            return;
+                          }
+                          if (!chartShortcutActive) return;
+                          if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+                          if (!isComposerRichCaretAtStart()) return;
+                          if (e.key === 'Delete' && userInput.trim() !== '') return;
+                          e.preventDefault();
+                          clearChartPrompt();
+                          requestAnimationFrame(() => composerTextareaRef.current?.focus());
+                        }}
+                        onPaste={handlePaste}
+                      />
+                    </div>
+                  ) : (
+                    <textarea
+                      className="composer-textarea"
+                      value={userInput}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setUserInput(nextValue);
+                        if (!nextValue.trim() && !chartShortcutActive) {
+                          setChartPromptMode(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === 'Enter' &&
+                          !e.shiftKey &&
+                          !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
+                          canSend &&
+                          !loading
+                        ) {
+                          e.preventDefault();
+                          onSend();
+                          return;
+                        }
+                        if (
+                          (e.key === 'Backspace' || e.key === 'Delete') &&
+                          userInput === '' &&
+                          chartShortcutActive
+                        ) {
+                          e.preventDefault();
+                          clearChartPrompt();
+                        }
+                      }}
+                      onPaste={handlePaste}
+                      placeholder={
                         chartShortcutActive
-                      ) {
-                        e.preventDefault();
-                        setChartShortcutActive(null);
-                        setChartExtraOptions({});
-                        setActiveOptionMenu(null);
-                        setChartPromptMode(false);
-                        setChartMenuOpen(false);
+                          ? ''
+                          : selectionCount > 0
+                            ? '请输入需要调整的地方...'
+                            : '让 VED UI Agent 绘制... ✦'
                       }
-                    }}
-                    onPaste={handlePaste}
-                    placeholder={
-                      chartShortcutActive
-                        ? ''
-                        : selectionCount > 0
-                          ? '请输入需要调整的地方...'
-                          : '让 VED UI Agent 绘制... ✦'
-                    }
-                    disabled={loading}
-                    rows={4}
-                    ref={composerTextareaRef}
-                  />
+                      disabled={loading}
+                      rows={4}
+                      ref={composerTextareaRef}
+                    />
+                  )}
                 </div>
                 <div className="composer-footer">
                   <div className="composer-footer-left">

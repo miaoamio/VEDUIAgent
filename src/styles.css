@@ -350,15 +350,37 @@ h2 {
 }
 
 .composer-chart-tag-row {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  right: 12px;
+  display: contents;
+}
+
+.composer-rich-editor {
+  flex-grow: 1;
+  align-self: stretch;
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
   gap: 4px;
-  z-index: 2;
+  padding: 0 12px 36px;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: text;
+  overflow: auto;
+  min-height: 0;
+}
+
+.composer-rich-input {
+  flex: 1 1 96px;
+  min-width: 96px;
+  align-self: stretch;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: var(--ved-style-body, 400 13px/1.5 "Roboto", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif);
+  letter-spacing: 0;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .composer-chart-tag-wrap {
@@ -1452,6 +1474,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   display: flex;
   flex-direction: column;
   flex-grow: 1;
+  height: 134px;
   border: 1px solid #E4E4E7;
   border-radius: 8px;
   box-shadow: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
@@ -1469,6 +1492,7 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   align-self: stretch;
   display: flex;
   padding-top: 10px;
+  min-height: 0;
 }
 
 .composer-textarea {
@@ -1484,6 +1508,8 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   color: #111827;
   resize: none;
   background: transparent;
+  min-height: 0;
+  height: 100%;
 }
 
 .composer-textarea:focus {
