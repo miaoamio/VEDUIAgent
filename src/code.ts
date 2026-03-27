@@ -8631,7 +8631,7 @@ async function drawAiChart(data: any, options: any) {
   }
   tempText.remove();
   
-  const plotX = maxLabelW + 4; // Exact width + 4px gap
+  const plotX = maxLabelW + 8; // 8px gap between label and axis line
   const rightMargin = 0; 
   const xAxisHeight = 16; 
   const topSpacerHeight = hasTitle ? 6 : 0;
@@ -8730,8 +8730,16 @@ async function drawAiChart(data: any, options: any) {
     label.resize(naturalWidth, 12); 
     label.textAlignVertical = "CENTER";
     label.textAlignHorizontal = "RIGHT";
-    label.x = plotX - naturalWidth - 4;
-    label.y = y - 6; 
+    // Adjust the x coordinate to have an 8px gap with the grid line (which starts at plotX)
+    label.x = plotX - naturalWidth - 8; 
+    
+    // Adjust y position specifically for the 0 label (i === 0) to align with X-axis label top
+    // For i === 0, the grid line is exactly at y = plotH.
+    // X-axis label's y in the parent is plotH + 4 (from xAxisFrame placement).
+    // The previous logic y - 6 centered it on the line.
+    // To make "0Tb/s" sit exactly 0px above the X-axis label (which visually means its bottom edge touches the top edge of the X-axis label text or the X-axis line), we set its y coordinate.
+    // If we want its bottom to align with the X-axis line (which is at y = plotH), and the label height is 12:
+    label.y = i === 0 ? y - 12 : y - 6; 
     
     label.constraints = { horizontal: "MAX", vertical: "SCALE" }; 
     yAxisFrame.appendChild(label);
@@ -8740,8 +8748,7 @@ async function drawAiChart(data: any, options: any) {
   // X-Axis Frame
   const xAxisFrame = figma.createFrame();
   xAxisFrame.name = "X Axis";
-  xAxisFrame.layoutMode = "HORIZONTAL"; 
-  xAxisFrame.itemSpacing = 0;
+  xAxisFrame.layoutMode = "NONE"; 
   xAxisFrame.primaryAxisSizingMode = "FIXED"; 
   xAxisFrame.counterAxisSizingMode = "FIXED"; 
   xAxisFrame.resize(fullPlotW, xAxisHeight); 
@@ -8750,23 +8757,23 @@ async function drawAiChart(data: any, options: any) {
   xAxisFrame.clipsContent = false;
   chartBody.appendChild(xAxisFrame);
 
-  // X Spacer
-  const xSpacer = figma.createFrame();
-  xSpacer.name = "Spacer";
-  xSpacer.layoutMode = "NONE";
-  xSpacer.resize(plotX, xAxisHeight);
-  xSpacer.layoutSizingHorizontal = "FIXED";
-  xSpacer.layoutAlign = "STRETCH"; 
-  xSpacer.fills = [];
-  xAxisFrame.appendChild(xSpacer);
+  // Add the solid X-Axis Line explicitly at the top of xAxisFrame to act as the boundary
+  const xAxisLine = figma.createLine();
+  xAxisLine.name = "X Axis Line";
+  xAxisLine.resize(fullPlotW, 0);
+  xAxisLine.x = 0;
+  xAxisLine.y = 0;
+  // Make the line transparent to "remove" it visually while keeping the layout structure
+  xAxisLine.strokes = [{ type: 'SOLID', color: hexToRgb('#E6E6E6'), opacity: 0 }];
+  xAxisFrame.appendChild(xAxisLine);
 
   // X Labels Container
   const xLabelsContainer = figma.createFrame();
   xLabelsContainer.name = "Labels Container";
   xLabelsContainer.layoutMode = "NONE";
   xLabelsContainer.resize(drawW, xAxisHeight);
-  xLabelsContainer.layoutGrow = 1; 
-  xLabelsContainer.layoutAlign = "STRETCH"; 
+  xLabelsContainer.x = plotX; // Shift container to the right by plotX (yAxis width)
+  xLabelsContainer.y = 0;
   xLabelsContainer.fills = [];
   xLabelsContainer.clipsContent = false;
   xAxisFrame.appendChild(xLabelsContainer);
@@ -8909,7 +8916,8 @@ async function drawAiChart(data: any, options: any) {
         // Standard Horizontal Logic - 所有标签都居中对齐
         label.textAlignHorizontal = "CENTER";
         label.x = x - (finalMaxLabelW / 2);
-        label.y = 0; 
+        // Set y to be close to the axis line (gap of 4px instead of 8px)
+        label.y = 4; 
         
         // Set width to strict limit to ensure no collision
         if (finalMaxLabelW > 0.01) {
