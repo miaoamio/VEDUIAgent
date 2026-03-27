@@ -524,6 +524,8 @@ async function checkSelection() {
               type: 'figma-instance-info',
               data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
             });
+          } else {
+            figma.ui.postMessage({ type: 'figma-instance-info', data: null });
           }
         } else if (componentId === 'figma-component') {
           // AI-managed figma-component stored as FRAME — get key from params
@@ -535,7 +537,11 @@ async function checkSelection() {
               type: 'figma-instance-info',
               data: { componentKey: resolvedKey, componentName: normalizedParams.componentToken || resolvedKey, componentSetName: '', nodeName: effectiveTarget.name }
             });
+          } else {
+            figma.ui.postMessage({ type: 'figma-instance-info', data: null });
           }
+        } else {
+          figma.ui.postMessage({ type: 'figma-instance-info', data: null });
         }
 
         return;
@@ -545,18 +551,39 @@ async function checkSelection() {
   // Clear selection if not an AI container
   figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
 
-  // If the selected node is a plain Figma INSTANCE (not AI-managed), send its key info
-  if (selection.length === 1 && selection[0].type === 'INSTANCE') {
-    const inst = selection[0] as InstanceNode;
-    const mainComponent = await resolveInstanceMainComponentNode(inst);
-    const key = mainComponent?.key ?? '';
-    const compName = mainComponent?.name ?? '';
-    const setName = mainComponent?.parent?.type === 'COMPONENT_SET'
-      ? (mainComponent.parent as ComponentSetNode).name
-      : '';
+  // If the selected node is a plain Figma INSTANCE/COMPONENT (not AI-managed), send its key info
+  if (selection.length === 1 && (selection[0].type === 'INSTANCE' || selection[0].type === 'COMPONENT' || selection[0].type === 'COMPONENT_SET')) {
+    const node = selection[0];
+    let key = '';
+    let compName = node.name;
+    let setName = '';
+
+    if (node.type === 'INSTANCE') {
+      const inst = node as InstanceNode;
+      const mainComponent = await resolveInstanceMainComponentNode(inst);
+      key = mainComponent?.key ?? '';
+      compName = mainComponent?.name ?? '';
+      setName = mainComponent?.parent?.type === 'COMPONENT_SET'
+        ? (mainComponent.parent as ComponentSetNode).name
+        : '';
+    } else if (node.type === 'COMPONENT') {
+      key = (node as ComponentNode).key;
+      setName = node.parent?.type === 'COMPONENT_SET'
+        ? (node.parent as ComponentSetNode).name
+        : '';
+    } else if (node.type === 'COMPONENT_SET') {
+      key = (node as ComponentSetNode).key;
+      setName = node.name;
+    }
+
     figma.ui.postMessage({
       type: 'figma-instance-info',
-      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
+      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: node.name, componentNodeId: node.id }
+    });
+  } else {
+    figma.ui.postMessage({
+      type: 'figma-instance-info',
+      data: null
     });
   }
 }
@@ -4227,14 +4254,6 @@ function syncInputParamsFromNode(currentParams: Record<string, any>, node: Scene
         }
     }
 
-    if (nextParams.disabled === true) {
-        nextParams.state = 'Disabled 禁用';
-    } else if (nextParams.error === true) {
-        nextParams.state = 'Error 错误';
-    } else if (nextParams.state === 'Disabled 禁用' || nextParams.state === 'Error 错误') {
-        nextParams.state = 'Default 默认';
-    }
-
     return nextParams;
 }
 
@@ -4401,7 +4420,7 @@ function applyFormControlWidthModeToNode(node: SceneNode, params: Record<string,
     }
     if ('layoutAlign' in node) {
         try {
-            (node as any).layoutAlign = 'MIN';
+            (node as any).layoutAlign = 'INHERIT';
         } catch {}
     }
 }
@@ -4414,7 +4433,7 @@ function normalizeFormControlVerticalSizing(node: SceneNode): void {
     }
     if ('layoutAlign' in node) {
         try {
-            (node as any).layoutAlign = 'MIN';
+            (node as any).layoutAlign = 'INHERIT';
         } catch {}
     }
 }
@@ -4810,7 +4829,6 @@ async function resolveFormParamsForRender(
     const resolvedFormParams = hasHorizontalLabel ? { ...formParams } : formParams;
     if (hasHorizontalLabel) {
         const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
-        console.log('[DEBUG resolveFormParams] maxLabelWidth:', maxLabelWidth, 'current:', resolvedFormParams.labelWidth);
         if (maxLabelWidth > 0) {
             const currentLabelWidth = Number(resolvedFormParams.labelWidth);
             const mergedLabelWidth =
@@ -4819,7 +4837,6 @@ async function resolveFormParamsForRender(
                     : maxLabelWidth;
             resolvedFormParams.labelWidth = mergedLabelWidth;
             resolvedFormParams.labelWidthPreset = 'custom';
-            console.log('[DEBUG resolveFormParams] mergedLabelWidth:', mergedLabelWidth);
         }
     }
     return resolvedFormParams;
@@ -4836,13 +4853,16 @@ async function renderFormItemNode(
     if (processedChild.componentId === 'form-field' && resolvedFormParams && resolvedFormParams.labelWidth > 0) {
         delete processedChild.params?.labelWidth;
     }
-    const node = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
+    const inheritedChild = inheritFormFieldParams(resolvedFormParams, processedChild);
+    const node = await renderComponent(inheritedChild, { isRoot: false });
     if (node.type === 'FRAME' || node.type === 'INSTANCE') {
-        // In a VERTICAL form layout, child form-field nodes need STRETCH to fill
-        // the form container width. Previously this only applied when
-        // counterAxisSizingMode === 'FIXED', but 'fill' controlWidthMode also needs it.
-        const childControlWidthMode = resolveFormControlWidthMode(processedChild.params || {});
-        if (formFrame.counterAxisSizingMode === 'FIXED' || childControlWidthMode === 'fill') {
+        // Use the INHERITED params (with controlWidthMode from form level),
+        // not the original processedChild.params which may lack controlWidthMode.
+        const childParams = inheritedChild.params || {};
+        const childFillMode = inheritedChild.componentId === 'form-row'
+            ? normalizeFormControlWidthMode(childParams.controlWidthMode)
+            : resolveFormControlWidthMode(childParams);
+        if (formFrame.counterAxisSizingMode === 'FIXED' || childFillMode === 'fill') {
             node.layoutAlign = 'STRETCH';
         }
     }
@@ -4915,9 +4935,7 @@ async function updateFormLayoutParams(
     const nextItemInstances = Array.isArray(patchedInstance.children)
         ? patchedInstance.children.filter((child) => isFormItemInstance(child))
         : [];
-    console.log('[DEBUG updateFormLayout] itemNodes:', itemNodes.length, 'nextItemInstances:', nextItemInstances.length, 'patchedChildren:', patchedInstance.children?.length);
     if (itemNodes.length !== nextItemInstances.length) {
-        console.log('[DEBUG updateFormLayout] COUNT MISMATCH - returning false!');
         return false;
     }
 
@@ -5099,8 +5117,14 @@ function inheritFormFieldParams(
     }
 
     if (instance.componentId === 'form-row' && Array.isArray(instance.children)) {
+        // Inherit controlWidthMode to form-row so it can stretch itself when 'fill'
+        const rowParams = instance.params || {};
         return {
             ...instance,
+            params: {
+                ...rowParams,
+                controlWidthMode: rowParams.controlWidthMode ?? formParams.controlWidthMode
+            },
             children: instance.children.map((child) => inheritFormFieldParams(formParams, child))
         };
     }
@@ -5304,19 +5328,13 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     const width = controlWidthMode === 'fill' ? undefined : (explicitControlWidth !== null ? explicitControlWidth : undefined);
 
     if (controlType === 'input') {
-        const rawState = String(params.state || 'Default 默认');
-        const normalizedState = rawState.trim().toLowerCase();
-        const isErrorState = normalizedState.includes('error') || normalizedState.includes('错误');
-        const isDisabledState = normalizedState.includes('disabled') || normalizedState.includes('禁用');
-        const resolvedState = isErrorState || isDisabledState ? 'Default 默认' : rawState;
-        const error = Boolean(params.error) || isErrorState;
-        const disabled = Boolean(params.disabled) || isDisabledState;
+        const error = Boolean(params.error);
+        const disabled = Boolean(params.disabled);
         return buildFigmaControlInstance('input', {
             placeholder: params.placeholder || '请输入',
             value: params.value || '',
             width,
             size: params.size || 'Default 32',
-            state: resolvedState,
             filled: Boolean(params.filled),
             error,
             disabled,
@@ -5345,15 +5363,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
 
     if (controlType === 'select') {
         return buildFigmaControlInstance('select', {
-            placeholder: params.placeholder || '请选择',
-            value: params.value || '',
-            width,
             size: params.size || 'Default 32',
-            state: params.state || 'Default 默认',
-            filled: Boolean(params.filled),
-            disabled: Boolean(params.disabled),
-            multiple: Boolean(params.multiple),
-            selectType: params.selectType || 'Default 默认',
             optionsText: params.optionsText || '选项一,选项二',
             forceFigmaKey: true
         });
@@ -7086,8 +7096,9 @@ async function renderComponent(
         await applyColorVariable(titleNode, 'card-title', '#0C0D0E');
         frame.appendChild(titleNode);
     }
-
-    const shouldStretchChildren = computedWidth !== null;
+    const formControlWidthMode = normalizeFormControlWidthMode(resolvedFormParams.controlWidthMode);
+    const fallbackFormWidth = isRoot && computedWidth === null && formControlWidthMode === 'fill' ? 720 : null;
+    const shouldStretchChildren = computedWidth !== null || formControlWidthMode === 'fill';
     const showActionArea = params.showActionArea !== false;
     const isButtonRow = (child: any) => child.componentId === 'form-row'
         && Array.isArray(child.children)
@@ -7166,6 +7177,10 @@ async function renderComponent(
     }
     if (computedWidth !== null) {
         setFixedWidth(frame, computedWidth);
+    } else if (fallbackFormWidth !== null) {
+        setFixedWidth(frame, fallbackFormWidth);
+    } else if (formControlWidthMode === 'fill') {
+        setFillWidth(frame);
     }
     node = frame;
   }
@@ -7197,6 +7212,17 @@ async function renderComponent(
     }
     if (Number.isFinite(width) && width > 0) {
         setFixedWidth(frame, width);
+    } else if (rowControlWidthMode === 'fill') {
+        // When controlWidthMode is 'fill', the form-row itself must also stretch
+        // to fill the parent form container. In a VERTICAL form, this means STRETCH;
+        // the form-row children (form-fields) then use layoutGrow to divide space.
+        try {
+            (frame as any).layoutSizingHorizontal = 'FILL';
+            frame.layoutAlign = 'STRETCH';
+            // CRITICAL: primaryAxisSizingMode must be 'FIXED' for layoutGrow on
+            // children to work — 'AUTO' wraps to content, leaving no extra space.
+            frame.primaryAxisSizingMode = 'FIXED';
+        } catch {}
     }
     node = frame;
   }
@@ -7289,7 +7315,6 @@ async function renderComponent(
             }
         }
         const labelWidth = resolveFormLabelWidth(params);
-        console.log('[DEBUG form-field-render] label:', params.label, 'params.labelWidth:', params.labelWidth, 'resolvedLabelWidth:', labelWidth, 'layout:', layout);
         if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
             labelWrap.primaryAxisSizingMode = 'FIXED';
             // Use the provided labelWidth directly to ensure alignment. 
@@ -7374,6 +7399,12 @@ async function renderComponent(
         try {
             (frame as any).layoutSizingHorizontal = 'FILL';
             frame.layoutGrow = 1;
+            // For horizontal form-field layout, primaryAxisSizingMode must be 'FIXED'
+            // so that the frame actually distributes space to children via layoutGrow.
+            // 'AUTO' wraps to content and leaves no extra space for children to grow into.
+            if (layout !== 'vertical') {
+                frame.primaryAxisSizingMode = 'FIXED';
+            }
         } catch {}
     }
 
@@ -8186,7 +8217,16 @@ async function renderComponent(
         });
         applyFigmaComponentProps(importedInstance, instance.componentId, params);
         const targetWidth = Number(params.width) > 0 ? Number(params.width) : importedInstance.width;
-        importedInstance.resize(targetWidth, importedInstance.height);
+        try {
+            if ('layoutSizingHorizontal' in importedInstance) {
+                importedInstance.layoutSizingHorizontal = 'FIXED';
+            }
+        } catch (e) {}
+        try {
+            importedInstance.resize(targetWidth, importedInstance.height);
+        } catch (e) {
+            console.warn("Failed to resize", e);
+        }
         node = importedInstance;
       } catch (e) {
         if (strictRenderMode || !canFallback) {
@@ -9398,7 +9438,6 @@ figma.ui.onmessage = async (msg) => {
       }
 
       const componentId = node.getPluginData('component-id');
-      console.log('[DEBUG update-component] resolved componentId:', componentId, 'nodeId:', node.id, 'nodeName:', node.name);
       
       if (componentId) {
         let shouldRefreshSelection = true;
@@ -9435,9 +9474,7 @@ figma.ui.onmessage = async (msg) => {
             params.width = 0;
           }
           if (componentId === 'form' && node.type === 'FRAME') {
-            console.log('[DEBUG form-path] calling updateFormLayoutParams for form');
             const updated = await updateFormLayoutParams(node, previousParams, params);
-            console.log('[DEBUG form-path] updateFormLayoutParams returned:', updated);
             if (updated) {
               figma.currentPage.selection = [node];
               checkSelection();
@@ -9461,7 +9498,6 @@ figma.ui.onmessage = async (msg) => {
           let isLayoutChange = true;
           if (componentId === 'form-field') {
             isLayoutChange = isFormFieldLayoutAffecting(previousParams, params);
-            console.log('[DEBUG form-field-update] isLayoutChange:', isLayoutChange, 'prevLabel:', previousParams.label, 'nextLabel:', params.label);
             if (!isLayoutChange) {
               const existingLabelWidth = getFormFieldLabelWrapWidth(node);
               if (existingLabelWidth) {
@@ -9477,22 +9513,21 @@ figma.ui.onmessage = async (msg) => {
                 ? patchFormFieldInstanceSnapshot(snapshot, previousParams, params)
                 : baseInstance;
           const replacement = await renderComponent(instanceToRender);
-
-          if (replaceSceneNode(node, replacement)) {
+          selectionUpdateSuppressed = true;
+          const replaced = replaceSceneNode(node, replacement);
+          if (replaced) {
             if (componentId === 'form-field' && isLayoutChange) {
               const formFrame = findAncestorFormFrame(replacement as SceneNode);
-              console.log('[DEBUG label-align] isLayoutChange=true, formFrame found:', !!formFrame);
               if (formFrame) {
                 const formParams = readNodeParams(formFrame);
                 const fieldNodes = collectFormItemNodes(formFrame);
                 const fieldIndex = fieldNodes.indexOf(replacement as SceneNode);
-                console.log('[DEBUG label-align] fieldNodes.length:', fieldNodes.length, 'fieldIndex:', fieldIndex, 'formParams.labelWidth:', formParams.labelWidth);
                 const updated = await updateFormLayoutParams(formFrame, formParams, formParams);
-                console.log('[DEBUG label-align] updateFormLayoutParams returned:', updated);
                 if (updated) {
                   const nextFieldNodes = collectFormItemNodes(formFrame);
                   const nextSelection = nextFieldNodes[fieldIndex] || formFrame;
                   figma.currentPage.selection = [nextSelection];
+                  selectionUpdateSuppressed = false;
                   checkSelection();
                   figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
                   return;
@@ -9500,10 +9535,12 @@ figma.ui.onmessage = async (msg) => {
               }
             }
             figma.currentPage.selection = [replacement];
+            selectionUpdateSuppressed = false;
             checkSelection();
             figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
             return;
           }
+          selectionUpdateSuppressed = false;
         }
 
         node.setPluginData('params', JSON.stringify(params));

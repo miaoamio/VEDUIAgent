@@ -6432,8 +6432,14 @@ StepD:
     const now = new Date().toISOString();
     const results = Array.isArray(inspectResult?.results) ? inspectResult.results : [];
     const items = results
-      .filter((item: any) => item?.status === 'ok')
       .map((item: any) => {
+        if (item?.status === 'error') {
+          return {
+            token: item.token || undefined,
+            componentKey: String(item.componentKey || ''),
+            error: item.error || 'Unknown error'
+          };
+        }
         const props = Array.isArray(item.properties) ? item.properties : [];
         return {
           token: item.token || undefined,
@@ -7866,6 +7872,7 @@ StepD:
     Object.values(BASE_COMPONENT_TOKEN_PACK).forEach((profile) => {
       const token = String(profile?.token || '').trim();
       if (!token) return;
+      if (token.includes('-icon-')) return;
       let category = String(profile?.category || '其他').trim() || '其他';
       if (category === '布局') return;
       if (category === '未分类' || category === '其他') return;
@@ -7998,7 +8005,7 @@ StepD:
     return controlType === 'switch';
   }
     if (key === 'optionsText') {
-      return controlType === 'checkbox-group' || controlType === 'radio-group';
+      return false;
     }
     if (key === 'size' || key === 'showPrefix' || key === 'showSuffix' || key === 'prefixText' || key === 'suffixText') {
       return false;
@@ -8533,21 +8540,13 @@ StepD:
             const effectiveParams = buildEffectiveParams(def, selectedComponent.params || {});
             const isFormField = def.id === 'form-field';
             const isInput = def.id === 'input';
+            const isSelect = def.id === 'select';
             const formFieldControlType = isFormField ? normalizeFormControlType(effectiveParams.controlType) : '';
-            const useMergedFormFieldText =
-              (isFormField && (formFieldControlType === 'input' || formFieldControlType === 'select')) ||
-              isInput;
             const useFormFieldValueOnly = isFormField && formFieldControlType === 'radio-group';
-            const showFormFieldTextControl = useMergedFormFieldText || useFormFieldValueOnly;
-            const formFieldCurrentValue = showFormFieldTextControl ? String(effectiveParams.value ?? '') : '';
-            const formFieldCachedValue = showFormFieldTextControl ? String(effectiveParams.cachedValue ?? '') : '';
-            const formFieldTextValue = useMergedFormFieldText
-              ? formFieldTextMode === 'value'
-                ? formFieldCurrentValue
-                : String(effectiveParams.placeholder ?? '')
-              : useFormFieldValueOnly
-                ? formFieldCurrentValue
-                : '';
+            const showFormFieldTextControl = false; // Hide the text fill field entirely
+            const formFieldCurrentValue = '';
+            const formFieldCachedValue = '';
+            const formFieldTextValue = '';
             const formFieldHiddenKeys = new Set([
               'label',
               'helpText',
@@ -8558,7 +8557,9 @@ StepD:
               'variantCriteria',
               'text',
               'checkedValues',
-              'language'
+              'language',
+              'placeholder',
+              'value'
             ]);
             const paramKeys = Object.keys(def.params).filter((key) => {
               const paramDef = def.params[key];
@@ -8566,7 +8567,9 @@ StepD:
               if (COMPONENT_HIDDEN_PARAM_KEYS[def.id]?.has(key)) return false;
               if (isFormField && !shouldDisplayFormFieldParam(key, effectiveParams)) return false;
               if (isInput && !shouldDisplayInputParam(key, effectiveParams)) return false;
-              if (useMergedFormFieldText && (key === 'placeholder' || key === 'value')) return false;
+              if (isSelect && ['state', 'multiple', 'selectType', 'placeholder', 'value'].includes(key)) return false;
+              if (isInput && ['placeholder', 'value', 'cachedValue', 'filled'].includes(key)) return false;
+              if (isFormField && ['placeholder', 'value', 'cachedValue', 'filled'].includes(key)) return false;
               if (isFormField && formFieldHiddenKeys.has(key)) return false;
               if (def.id === 'figma-component' && key === 'variantCriteria' && figmaVariantProperties.length > 0) return false;
               if (def.id === 'figma-component' && ['componentToken', 'componentKey', 'fallbackName', 'width', 'height'].includes(key)) {
@@ -8578,12 +8581,17 @@ StepD:
             const isForm = def.id === 'form';
             const orderedParamKeys = isForm
               ? ['layout', 'title', 'controlWidthMode', 'showColon', 'showActionArea'].filter((key) => paramKeys.includes(key))
-              : (isFormField || isInput)
+              : isFormField
                 ? [
-                    ...['controlType', 'state', 'size'].filter((key) => paramKeys.includes(key)),
-                    ...paramKeys.filter((key) => !['controlType', 'state', 'size'].includes(key))
+                    ...['controlType', 'size'].filter((key) => paramKeys.includes(key)),
+                    ...paramKeys.filter((key) => !['controlType', 'size'].includes(key))
                   ]
-                : paramKeys;
+                : (isInput || isSelect)
+                  ? [
+                      ...['size'].filter((key) => paramKeys.includes(key)),
+                      ...paramKeys.filter((key) => key !== 'size')
+                    ]
+                  : paramKeys;
             const advancedParamKeySet =
               ADVANCED_PARAM_KEYS_BY_COMPONENT[def.id] || new Set<string>();
             const commonParamKeys = orderedParamKeys.filter((key) => !advancedParamKeySet.has(key));
@@ -8598,37 +8606,14 @@ StepD:
               advancedParamKeysList,
               selectedComponent.params || {}
             );
-            const primaryFormFieldKeyCount = (isFormField || isInput)
-              ? ['controlType', 'state', 'size'].filter((key) => commonParamKeys.includes(key)).length
-              : 0;
+            const primaryFormFieldKeyCount = isFormField
+              ? ['controlType', 'size'].filter((key) => commonParamKeys.includes(key)).length
+              : (isInput || isSelect)
+                ? ['size'].filter((key) => commonParamKeys.includes(key)).length
+                : 0;
             const formFieldTextControl = showFormFieldTextControl ? (
               <FieldRow key="form-field-text" label={useFormFieldValueOnly ? '选中值' : '填写文字'}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {useMergedFormFieldText && (
-                    <SegmentedControl
-                      value={formFieldTextMode === 'value' ? 'value' : 'placeholder'}
-                      onChange={(next) => {
-                        const nextMode = next === 'value' ? 'value' : 'placeholder';
-                        setFormFieldTextMode(nextMode);
-                        if (nextMode === 'placeholder') {
-                          const nextCachedValue = formFieldCurrentValue.trim().length > 0
-                            ? formFieldCurrentValue
-                            : formFieldCachedValue;
-                          updateParams({ value: '', filled: false, cachedValue: nextCachedValue });
-                          return;
-                        }
-                        if (!formFieldCurrentValue && formFieldCachedValue) {
-                          updateParams({ value: formFieldCachedValue, cachedValue: formFieldCachedValue, filled: true });
-                        }
-                      }}
-                      groupClassName="othertabs-group"
-                      buttonClassName="othertabs-button"
-                      options={[
-                        { value: 'value', label: '已填写' },
-                        { value: 'placeholder', label: '占位文字' }
-                      ]}
-                    />
-                  )}
                   <TextInputControl
                     value={formFieldTextValue}
                     onChange={(next) => {

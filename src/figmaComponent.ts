@@ -867,12 +867,17 @@ async function resolveSchemaSourceNode(
     targetNode = node;
   } else if (node.type === 'INSTANCE') {
     try {
-      const main = await node.getMainComponentAsync();
+      const main = await (node as InstanceNode).getMainComponentAsync();
       if (main) {
         targetNode = main;
       }
     } catch (e) {
-      // fallback if async fails
+      try {
+        const syncMain = (node as InstanceNode).mainComponent;
+        if (syncMain) {
+          targetNode = syncMain;
+        }
+      } catch (err) {}
     }
   }
 

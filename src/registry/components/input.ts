@@ -24,7 +24,7 @@ const selectRenderNotes = {
 
 
 const datepickerRenderNotes = {
-  actionHint: "日期选择器优先复用 Datepicker 组件。",
+  actionHint: "日期选择器请直接使用 Figma Datepicker 组件，不要自己绘制。",
   paramRules: [
     "placeholder/value 仅影响展示文本。",
     "size 控制高度。"
@@ -35,7 +35,7 @@ const datepickerRenderNotes = {
 };
 
 const timepickerRenderNotes = {
-  actionHint: "时间选择器优先复用 Timepicker 组件。",
+  actionHint: "时间选择器请直接使用 Figma Timepicker 组件，不要自己绘制。",
   paramRules: [
     "placeholder/value 仅影响展示文本。",
     "size 控制高度。"
@@ -120,18 +120,6 @@ export const inputComponents: ComponentRegistry["components"] = {
           "Large 36"
         ]
       },
-      "state": {
-        "type": "select",
-        "default": "Default 默认",
-        "description": "状态",
-        "enumValues": [
-          "Default 默认",
-          "Hover 悬浮",
-          "Active 激活",
-          "Error 错误",
-          "Disabled 禁用"
-        ]
-      },
       "filled": {
         "type": "boolean",
         "default": false,
@@ -169,7 +157,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       },
       "width": {
         "type": "number",
-        "default": 0,
+        "default": 240,
         "description": "宽度"
       },
       "controlWidthMode": {
@@ -295,16 +283,6 @@ export const inputComponents: ComponentRegistry["components"] = {
           ]
         },
         {
-          "propertyName": "State 状态",
-          "type": "VARIANT",
-          "defaultValue": "Default 默认",
-          "options": [
-            "Default 默认",
-            "Hover 悬浮",
-            "Active 激活"
-          ]
-        },
-        {
           "propertyName": "Suffix 后缀",
           "type": "VARIANT",
           "defaultValue": "False",
@@ -320,7 +298,6 @@ export const inputComponents: ComponentRegistry["components"] = {
         "Fill 已填": { "sourceParam": "filled", "transform": "boolean" },
         "Prefix 前缀": { "sourceParam": "showPrefix", "transform": "boolean" },
         "Size 尺寸": { "sourceParam": "size" },
-        "State 状态": { "sourceParam": "state" },
         "Suffix 后缀": { "sourceParam": "showSuffix", "transform": "boolean" }
       }
     },
@@ -333,16 +310,6 @@ export const inputComponents: ComponentRegistry["components"] = {
     "description": "选择框控件（自定义包装）",
     "schemaVersion": "2.0.0",
     "params": {
-      "placeholder": {
-        "type": "string",
-        "default": "请选择",
-        "description": "占位文案"
-      },
-      "value": {
-        "type": "string",
-        "default": "",
-        "description": "当前值"
-      },
       "size": {
         "type": "select",
         "default": "Default 32",
@@ -354,46 +321,9 @@ export const inputComponents: ComponentRegistry["components"] = {
           "Large 36"
         ]
       },
-      "state": {
-        "type": "select",
-        "default": "Default 默认",
-        "description": "状态",
-        "enumValues": [
-          "Default 默认",
-          "Hover 悬浮",
-          "Active 激活",
-          "Error 错误",
-          "Disabled 禁用"
-        ]
-      },
-      "filled": {
-        "type": "boolean",
-        "default": false,
-        "description": "已填"
-      },
-      "disabled": {
-        "type": "boolean",
-        "default": false,
-        "description": "禁用"
-      },
-      "multiple": {
-        "type": "boolean",
-        "default": false,
-        "description": "多选"
-      },
-      "selectType": {
-        "type": "string",
-        "default": "Default 默认",
-        "description": "选择器类型"
-      },
-      "optionsText": {
-        "type": "string",
-        "default": "选项一,选项二",
-        "description": "选项文案"
-      },
       "width": {
         "type": "number",
-        "default": 0,
+        "default": 240,
         "description": "宽度"
       },
       "controlWidthMode": {
@@ -508,14 +438,7 @@ export const inputComponents: ComponentRegistry["components"] = {
         }
       ],
       "propertyMap": {
-        "Placeholder 占位符#115960:0": { "sourceParam": "placeholder" },
-        "Value#115960:55": { "sourceParam": "value" },
-        "Disabled 禁用": { "sourceParam": "disabled", "transform": "boolean" },
-        "Filled 填写": { "sourceParam": "filled", "transform": "boolean" },
-        "Multiple 多选": { "sourceParam": "multiple", "transform": "boolean" },
-        "Size 尺寸": { "sourceParam": "size" },
-        "State 状态": { "sourceParam": "state" },
-        "Type 类型": { "sourceParam": "selectType" }
+        "Size 尺寸": { "sourceParam": "size" }
       }
     },
     "renderNotes": selectRenderNotes
@@ -740,6 +663,38 @@ export const inputComponents: ComponentRegistry["components"] = {
         "type": "boolean",
         "default": false,
         "description": "禁用"
+      },
+      "width": {
+        "type": "number",
+        "default": 240,
+        "description": "宽度"
+      },
+      "controlWidthMode": {
+        "type": "select",
+        "default": "fill",
+        "description": "宽度模式",
+        "enumValues": [
+          "fixed",
+          "fill"
+        ]
+      },
+      "controlWidth": {
+        "type": "number",
+        "default": 0,
+        "description": "控件宽度"
+      },
+      "type": {
+      "type": "select",
+      "default": "Date 日期",
+      "description": "类型",
+      "enumValues": [
+        "Date 日期",
+        "DateRange 日期范围",
+        "DateTimeRange 日期时间范围",
+        "RelativeDate 相对时间",
+        "RelativeDateRange 相对时间范围",
+        "RelativeDateTimeRang 相对日期时间范围"
+      ]
       }
     },
     "capabilities": {
@@ -765,12 +720,21 @@ export const inputComponents: ComponentRegistry["components"] = {
     },
     "figmaPropertySnapshot": {
       "token": "lib-data-input-datepicker",
-      "inspectedAt": "2026-03-22T10:51:23.062Z",
+      "inspectedAt": "2026-03-27T05:45:40.387Z",
       "source": "discover_component_props",
       "componentSetName": "Datepicker 日期选择器",
       "properties": [
         {
-          "propertyName": "Filled 填写",
+          "propertyName": "Disabled 禁用",
+          "type": "VARIANT",
+          "defaultValue": "False",
+          "options": [
+            "False",
+            "True"
+          ]
+        },
+        {
+          "propertyName": "Filled 已填",
           "type": "VARIANT",
           "defaultValue": "False",
           "options": [
@@ -800,29 +764,25 @@ export const inputComponents: ComponentRegistry["components"] = {
           ]
         },
         {
-          "propertyName": "Disabled 禁用",
+          "propertyName": "Type 类型",
           "type": "VARIANT",
-          "defaultValue": "False",
+          "defaultValue": "Date 日期",
           "options": [
-            "False",
-            "True"
-          ]
-        },
-        {
-          "propertyName": "Format 格式",
-          "type": "VARIANT",
-          "defaultValue": "YYYY-MM-DD",
-          "options": [
-            "YYYY-MM-DD",
-            "YYYY/MM/DD"
+            "Date 日期",
+            "DateRange 日期范围",
+            "DateTimeRange 日期时间范围",
+            "RelativeDate 相对时间",
+            "RelativeDateRange 相对时间范围",
+            "RelativeDateTimeRang 相对日期时间范围"
           ]
         }
       ],
       "propertyMap": {
-        "Filled 填写": { "sourceParam": "value", "transform": "string:boolean" },
+        "Disabled 禁用": { "sourceParam": "disabled", "transform": "boolean" },
+        "Filled 已填": { "sourceParam": "value", "transform": "string:boolean" },
         "Size 尺寸": { "sourceParam": "size" },
         "State 状态": { "sourceParam": "state" },
-        "Disabled 禁用": { "sourceParam": "disabled", "transform": "boolean" }
+        "Type 类型": { "sourceParam": "type" }
       }
     },
     "renderNotes": datepickerRenderNotes
@@ -871,6 +831,25 @@ export const inputComponents: ComponentRegistry["components"] = {
         "type": "boolean",
         "default": false,
         "description": "禁用"
+      },
+      "width": {
+        "type": "number",
+        "default": 240,
+        "description": "宽度"
+      },
+      "controlWidthMode": {
+        "type": "select",
+        "default": "fill",
+        "description": "宽度模式",
+        "enumValues": [
+          "fixed",
+          "fill"
+        ]
+      },
+      "controlWidth": {
+        "type": "number",
+        "default": 0,
+        "description": "控件宽度"
       }
     },
     "capabilities": {
@@ -996,7 +975,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       },
       "width": {
         "type": "number",
-        "default": 0,
+        "default": 240,
         "description": "宽度"
       }
     },
@@ -1110,7 +1089,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       },
       "width": {
         "type": "number",
-        "default": 180,
+        "default": 240,
         "description": "宽度"
       }
     },
@@ -1255,7 +1234,7 @@ export const inputComponents: ComponentRegistry["components"] = {
       },
       "width": {
         "type": "number",
-        "default": 0,
+        "default": 240,
         "description": "宽度"
       }
     },
