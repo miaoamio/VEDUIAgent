@@ -30,7 +30,7 @@ import {
   parseColor,
   setCurrentTheme
 } from './engine/skills/resolve/color';
-import { setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resolve/layout';
+import { setFillWidth, setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resolve/layout';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 
@@ -4983,6 +4983,23 @@ async function updateFormLayoutParams(
             resolvedFormParams
         );
         replaceSceneNode(itemNode, childNode);
+        // replaceSceneNode inherits layoutGrow/layoutAlign/layoutSizingHorizontal
+        // from the OLD node, which overwrites what renderFormItemNode just set.
+        // Re-apply fill-mode properties after replacement.
+        if (childNode.type === 'FRAME' || childNode.type === 'INSTANCE') {
+            const childParams = (syncedInstance as any).params || {};
+            const childIsRow = syncedInstance.componentId === 'form-row';
+            const childFillMode = childIsRow
+                ? normalizeFormControlWidthMode(childParams.controlWidthMode ?? resolvedFormParams.controlWidthMode)
+                : resolveFormControlWidthMode(childParams);
+            if (formFrame.counterAxisSizingMode === 'FIXED' || childFillMode === 'fill') {
+                childNode.layoutAlign = 'STRETCH';
+            }
+            if (childFillMode === 'fill') {
+                try { (childNode as any).layoutSizingHorizontal = 'FILL'; } catch {}
+                childNode.layoutGrow = 1;
+            }
+        }
     }
 
     writeNodeParams(formFrame, normalizedParams);
@@ -5101,6 +5118,11 @@ function inheritFormFieldParams(
                     : inheritedAlign === 'top'
                         ? 'vertical'
                         : 'horizontal';
+        const resolvedControlWidthMode =
+            currentParams.controlWidthMode === undefined ||
+            currentParams.controlWidthMode === FORM_FIELD_DEFAULTS.controlWidthMode
+                ? (formParams.controlWidthMode ?? currentParams.controlWidthMode)
+                : currentParams.controlWidthMode;
         const nextParams = {
             ...currentParams,
             align: inheritedAlign,
@@ -5109,7 +5131,7 @@ function inheritFormFieldParams(
             labelWidthPreset: currentParams.labelWidthPreset || formParams.labelWidthPreset || 'custom',
             labelWidth: formParams.labelWidth ?? currentParams.labelWidth,
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
-            controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
+            controlWidthMode: resolvedControlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
             ...(formParams.requiredMark === false ? { required: false } : {})
         };
@@ -5119,11 +5141,15 @@ function inheritFormFieldParams(
     if (instance.componentId === 'form-row' && Array.isArray(instance.children)) {
         // Inherit controlWidthMode to form-row so it can stretch itself when 'fill'
         const rowParams = instance.params || {};
+        const resolvedRowControlWidthMode =
+            rowParams.controlWidthMode === undefined || rowParams.controlWidthMode === 'fixed'
+                ? (formParams.controlWidthMode ?? rowParams.controlWidthMode)
+                : rowParams.controlWidthMode;
         return {
             ...instance,
             params: {
                 ...rowParams,
-                controlWidthMode: rowParams.controlWidthMode ?? formParams.controlWidthMode
+                controlWidthMode: resolvedRowControlWidthMode
             },
             children: instance.children.map((child) => inheritFormFieldParams(formParams, child))
         };
@@ -7360,9 +7386,14 @@ async function renderComponent(
         if (controlWidthMode === 'fill') {
             if (layout !== 'vertical') {
                 wrap.layoutGrow = 1;
+                wrap.primaryAxisSizingMode = 'AUTO';
             } else {
                 wrap.layoutAlign = 'STRETCH';
             }
+            // The wrap is VERTICAL, so horizontal is the counter axis.
+            // Set it to FIXED so children with STRETCH fill the wrap width.
+            try { (wrap as any).layoutSizingHorizontal = 'FILL'; } catch {}
+            wrap.counterAxisSizingMode = 'FIXED';
         }
         
         // 把控件移到包裹里
@@ -7399,10 +7430,17 @@ async function renderComponent(
         try {
             (frame as any).layoutSizingHorizontal = 'FILL';
             frame.layoutGrow = 1;
-            // For horizontal form-field layout, primaryAxisSizingMode must be 'FIXED'
-            // so that the frame actually distributes space to children via layoutGrow.
-            // 'AUTO' wraps to content and leaves no extra space for children to grow into.
-            if (layout !== 'vertical') {
+            if (layout === 'vertical') {
+                // VERTICAL form-field: horizontal is the counter axis.
+                // counterAxisSizingMode must be FIXED so that children with
+                // layoutAlign='STRETCH' stretch to the frame's actual width
+                // (resolved from the parent form container), not just to
+                // the widest sibling.
+                frame.counterAxisSizingMode = 'FIXED';
+            } else {
+                // HORIZONTAL form-field: horizontal is the primary axis.
+                // primaryAxisSizingMode must be FIXED so that layoutGrow on
+                // children distributes real space instead of AUTO-wrapping.
                 frame.primaryAxisSizingMode = 'FIXED';
             }
         } catch {}
@@ -7414,6 +7452,10 @@ async function renderComponent(
         try {
             (controlNode as any).resize(controlNode.width, targetHeight);
         } catch {}
+        // resize() resets layoutSizingHorizontal to FIXED — re-apply fill if needed.
+        if (controlWidthMode === 'fill' && INPUT_LIKE_CONTROL_TYPES.has(controlType)) {
+            applyFormControlWidthModeToNode(controlNode, params);
+        }
     }
 
     node = frame;
