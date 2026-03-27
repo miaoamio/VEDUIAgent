@@ -5,3 +5,8 @@ dist
 .trae
 node_modules
 .figma/
+-e 
+# Cloudflare Worker
+worker/node_modules/
+worker/.dev.vars
+worker/.wrangler/

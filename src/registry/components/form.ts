@@ -649,7 +649,6 @@ export const formComponents: ComponentRegistry["components"] = {
         "default": "input",
         "description": "控件类型",
         "enumValues": [
-          "figma-component",
           "input",
           "select",
           "checkbox-group",
@@ -751,11 +750,7 @@ export const formComponents: ComponentRegistry["components"] = {
         "default": false,
         "description": "开关控件是否开启（仅 controlType=switch 时生效）"
       },
-      "disabled": {
-        "type": "boolean",
-        "default": false,
-        "description": "是否禁用（适用于 input/select/checkbox-group/radio-group/button/switch）"
-      },
+
       "buttonLabel": {
         "type": "string",
         "default": "按钮",
@@ -798,7 +793,6 @@ export const formComponents: ComponentRegistry["components"] = {
         "allowedComponents": [
           "radio-group",
           "button",
-          "figma-component",
           "text"
         ],
         "required": false,

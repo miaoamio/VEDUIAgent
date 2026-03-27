@@ -23,7 +23,7 @@ const volcengineDesignTableComponents: ComponentsTheme = {
   'table-cell-icon-delete':      '3cf68ee183ff9840dffb8e4ba760dfea519e4a8d',
   'table-cell-icon-action-more': '27e130c675fe44532f717656d04b2597eb05a67d',
   'table-cell-input':            'e1c520fea681ece9994290c63d0b77ad19dbf7fa',
-  'table-cell-select':           'c6efa40648f460da75700c4694c7918fa404e208',
+  'table-cell-select':           'd124dbe0576b8dfd900897124bd14e888e4db6f3',
   'table-cell-state':            'e8ec559c3604ae1e23b354c120d63b481f333527',
   'table-header-icon':           'e53fcaef4cf94334b30b019356eaeedde137887b',
 };

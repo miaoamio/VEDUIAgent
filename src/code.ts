@@ -367,8 +367,10 @@ function findAncestorFormFieldNode(node: SceneNode | null): SceneNode | null {
 
 function isFormFieldLayoutAffecting(prev: Record<string, any>, next: Record<string, any>): boolean {
      const keys = [
+         'label',
          'required',
-         'showHelpIcon'
+         'showHelpIcon',
+         'showColon'
      ];
      return keys.some((k) => String(prev[k] || '') !== String(next[k] || ''));
  }
@@ -4190,6 +4192,25 @@ function syncInputParamsFromNode(currentParams: Record<string, any>, node: Scene
         }
     }
 
+    if (node.type === 'INSTANCE') {
+        const errorProp = readInstanceBooleanProperty(node, ['Error 错误', 'Error']);
+        if (errorProp !== null) {
+            nextParams.error = errorProp;
+        }
+        const disabledProp = readInstanceBooleanProperty(node, ['Disable 禁用', 'Disabled 禁用', 'Disable', 'Disabled']);
+        if (disabledProp !== null) {
+            nextParams.disabled = disabledProp;
+        }
+    }
+
+    if (nextParams.disabled === true) {
+        nextParams.state = 'Disabled 禁用';
+    } else if (nextParams.error === true) {
+        nextParams.state = 'Error 错误';
+    } else if (nextParams.state === 'Disabled 禁用' || nextParams.state === 'Error 错误') {
+        nextParams.state = 'Default 默认';
+    }
+
     return nextParams;
 }
 
@@ -4717,16 +4738,17 @@ function syncFormItemLabelsFromNode(
     if (!node) return instance;
     if (instance.componentId === 'form-field') {
         const currentParams = instance.params || {};
-        const currentLabel = String(currentParams.label || '').trim();
-        if (currentLabel) return instance;
-        const labelFromNode = readFormFieldLabelTextFromNode(node);
-        if (!labelFromNode) return instance;
+        // Sync full form-field params (label + control text) from the live canvas node,
+        // so that layout-only re-renders (e.g. required/label change triggering label-width
+        // realignment) do not reset user-edited input text in sibling fields.
+        const syncedParams = syncFormFieldParamsFromNode(currentParams, node);
+        const hasChanges = Object.keys(syncedParams).some(
+            (key) => syncedParams[key] !== currentParams[key]
+        );
+        if (!hasChanges) return instance;
         return {
             ...instance,
-            params: {
-                ...currentParams,
-                label: labelFromNode
-            }
+            params: syncedParams
         };
     }
     if (instance.componentId === 'form-row' && Array.isArray(instance.children) && 'children' in node) {
@@ -4764,6 +4786,7 @@ async function resolveFormParamsForRender(
     const resolvedFormParams = hasHorizontalLabel ? { ...formParams } : formParams;
     if (hasHorizontalLabel) {
         const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
+        console.log('[DEBUG resolveFormParams] maxLabelWidth:', maxLabelWidth, 'current:', resolvedFormParams.labelWidth);
         if (maxLabelWidth > 0) {
             const currentLabelWidth = Number(resolvedFormParams.labelWidth);
             const mergedLabelWidth =
@@ -4772,6 +4795,7 @@ async function resolveFormParamsForRender(
                     : maxLabelWidth;
             resolvedFormParams.labelWidth = mergedLabelWidth;
             resolvedFormParams.labelWidthPreset = 'custom';
+            console.log('[DEBUG resolveFormParams] mergedLabelWidth:', mergedLabelWidth);
         }
     }
     return resolvedFormParams;
@@ -4785,6 +4809,9 @@ async function renderFormItemNode(
     resolvedFormParams: Record<string, any>
 ): Promise<SceneNode> {
     const processedChild = normalizeFormChildInstance(instance, columnSpacing);
+    if (processedChild.componentId === 'form-field' && resolvedFormParams && resolvedFormParams.labelWidth > 0) {
+        delete processedChild.params?.labelWidth;
+    }
     const node = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
     if ((node.type === 'FRAME' || node.type === 'INSTANCE') && formFrame.counterAxisSizingMode === 'FIXED') {
         node.layoutAlign = 'STRETCH';
@@ -4858,7 +4885,11 @@ async function updateFormLayoutParams(
     const nextItemInstances = Array.isArray(patchedInstance.children)
         ? patchedInstance.children.filter((child) => isFormItemInstance(child))
         : [];
-    if (itemNodes.length !== nextItemInstances.length) return false;
+    console.log('[DEBUG updateFormLayout] itemNodes:', itemNodes.length, 'nextItemInstances:', nextItemInstances.length, 'patchedChildren:', patchedInstance.children?.length);
+    if (itemNodes.length !== nextItemInstances.length) {
+        console.log('[DEBUG updateFormLayout] COUNT MISMATCH - returning false!');
+        return false;
+    }
 
     const rowSpacing = Number(normalizedParams.rowSpacing);
     const resolvedRowSpacing =
@@ -5028,7 +5059,7 @@ function inheritFormFieldParams(
             layout: inferredLayout,
             labelAlign: currentParams.labelAlign || (inheritedAlign === 'right' ? 'right' : 'left'),
             labelWidthPreset: currentParams.labelWidthPreset || formParams.labelWidthPreset || 'custom',
-            labelWidth: currentParams.labelWidth ?? formParams.labelWidth,
+            labelWidth: formParams.labelWidth ?? currentParams.labelWidth,
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
             controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
@@ -5243,14 +5274,22 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     const width = controlWidthMode === 'fill' ? undefined : (explicitControlWidth !== null ? explicitControlWidth : undefined);
 
     if (controlType === 'input') {
+        const rawState = String(params.state || 'Default 默认');
+        const normalizedState = rawState.trim().toLowerCase();
+        const isErrorState = normalizedState.includes('error') || normalizedState.includes('错误');
+        const isDisabledState = normalizedState.includes('disabled') || normalizedState.includes('禁用');
+        const resolvedState = isErrorState || isDisabledState ? 'Default 默认' : rawState;
+        const error = Boolean(params.error) || isErrorState;
+        const disabled = Boolean(params.disabled) || isDisabledState;
         return buildFigmaControlInstance('input', {
             placeholder: params.placeholder || '请输入',
             value: params.value || '',
             width,
             size: params.size || 'Default 32',
-            state: params.state || 'Default 默认',
+            state: resolvedState,
             filled: Boolean(params.filled),
-            disabled: Boolean(params.disabled),
+            error,
+            disabled,
             showPrefix: Boolean(params.showPrefix ?? params.prefix),
             prefixText: params.prefixText || '',
             showSuffix: Boolean(params.showSuffix ?? params.suffix),
@@ -6462,6 +6501,7 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
   const tableParams = table ? readNodeParams(table) : {};
   const sizingParams = { ...tableParams, ...cellParams };
   const isHeader = componentId === 'table-header-cell';
+  const layoutMode = isHeader ? 'ellipsis' : mode;
   const targetHeight = isHeader
     ? resolveTableHeaderHeight(sizingParams)
     : resolveTableBodyHeight(sizingParams);
@@ -6506,7 +6546,7 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
             (textNode as any).layoutSizingVertical = 'HUG';
           } catch {}
         }
-      } else if (mode === 'lineBreak') {
+      } else if (layoutMode === 'lineBreak') {
         textNode.textAutoResize = useAutoWidth ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
         textNode.textTruncation = 'DISABLED';
         if ('layoutSizingHorizontal' in textNode) {
@@ -6520,12 +6560,22 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
           } catch {}
         }
       } else {
-        textNode.textAutoResize = 'HEIGHT';
-        textNode.textTruncation = 'ENDING';
-        if ('layoutSizingHorizontal' in textNode) {
-          try {
-            (textNode as any).layoutSizingHorizontal = 'FILL';
-          } catch {}
+        if (isHeader) {
+          textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+          textNode.textTruncation = 'DISABLED';
+          if ('layoutSizingHorizontal' in textNode) {
+            try {
+              (textNode as any).layoutSizingHorizontal = 'HUG';
+            } catch {}
+          }
+        } else {
+          textNode.textAutoResize = 'HEIGHT';
+          textNode.textTruncation = 'ENDING';
+          if ('layoutSizingHorizontal' in textNode) {
+            try {
+              (textNode as any).layoutSizingHorizontal = 'FILL';
+            } catch {}
+          }
         }
         if ('layoutSizingVertical' in textNode) {
           try {
@@ -6538,7 +6588,7 @@ function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
     }
   }
   if (!multiElementCell && 'counterAxisSizingMode' in cell) {
-    if (mode === 'lineBreak') {
+    if (layoutMode === 'lineBreak') {
       try {
         (cell as any).counterAxisSizingMode = 'AUTO';
       } catch {}
@@ -6685,12 +6735,17 @@ async function setSceneText(node: SceneNode, text: string) {
     target.characters = nextText;
     if (isTableTextContext(node) || isTableTextContext(target)) {
       const cell = findTableCellFromNode(node) || findTableCellFromNode(target);
-      const cellParams = cell ? readNodeParams(cell) : {};
-      const displayMode = String(cellParams.textDisplay || '').trim();
-      if (displayMode === 'lineBreak') {
+      const cellComponentId = cell ? cell.getPluginData('component-id') : '';
+      if (cellComponentId === 'table-header-cell') {
         target.textAutoResize = 'WIDTH_AND_HEIGHT';
-      } else if (displayMode === 'ellipsis') {
-        target.textAutoResize = 'NONE';
+      } else {
+        const cellParams = cell ? readNodeParams(cell) : {};
+        const displayMode = String(cellParams.textDisplay || '').trim();
+        if (displayMode === 'lineBreak') {
+          target.textAutoResize = 'WIDTH_AND_HEIGHT';
+        } else if (displayMode === 'ellipsis') {
+          target.textAutoResize = 'NONE';
+        }
       }
     }
   } catch (e) {
@@ -7203,6 +7258,7 @@ async function renderComponent(
             }
         }
         const labelWidth = resolveFormLabelWidth(params);
+        console.log('[DEBUG form-field-render] label:', params.label, 'params.labelWidth:', params.labelWidth, 'resolvedLabelWidth:', labelWidth, 'layout:', layout);
         if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
             labelWrap.primaryAxisSizingMode = 'FIXED';
             // Use the provided labelWidth directly to ensure alignment. 
@@ -7210,6 +7266,7 @@ async function renderComponent(
             labelWrap.resize(labelWidth, labelWrap.height);
             labelWrap.setPluginData('form-label-wrap', 'true');
             labelWrap.setPluginData('form-label-min-width', String(labelWidth));
+            labelWrap.setPluginData('form-label-auto-resize', 'true');
         }
         frame.appendChild(labelWrap);
     }
@@ -7617,16 +7674,16 @@ async function renderComponent(
     const isHeader = instance.componentId === 'table-header-cell';
     const cellHeight = isHeader ? resolveTableHeaderHeight(params) : resolveTableBodyHeight(params);
     const autoHeightMode =
-      params.textDisplay === 'lineBreak' ||
+      (!isHeader && params.textDisplay === 'lineBreak') ||
       params.height === 0 ||
       params.height === 'auto' ||
       params.height === 'AUTO' ||
       params.rowHeight === 0 ||
       params.rowHeight === 'auto' ||
       params.rowHeight === 'AUTO' ||
-      params.headerHeight === 0 ||
+      (!isHeader && (params.headerHeight === 0 ||
       params.headerHeight === 'auto' ||
-      params.headerHeight === 'AUTO' ||
+      params.headerHeight === 'AUTO')) ||
       params.bodyHeight === 0 ||
       params.bodyHeight === 'auto' ||
       params.bodyHeight === 'AUTO';
@@ -7746,9 +7803,15 @@ async function renderComponent(
     }
     else if (instance.componentId === 'table-cell-select') {
         const displayText = params.text || params.value || params.placeholder || '请选择';
-        const selectInstance = await createFigmaComponentInstanceByToken('table-cell-select');
+        const selectInstance = await createFigmaComponentInstanceByToken('table-cell-select', {
+            variantCriteria: { 'Size 尺寸': 'Mini 24' }
+        });
         if (selectInstance) {
             selectInstance.layoutGrow = 1;
+            const sizePropName = findInstanceComponentPropertyName(selectInstance, 'Size 尺寸');
+            if (sizePropName) {
+                selectInstance.setProperties({ [sizePropName]: 'Mini 24' });
+            }
             await trySetFirstTextInInstance(selectInstance, displayText);
             frame.appendChild(selectInstance);
         } else {
@@ -7916,7 +7979,11 @@ async function renderComponent(
         frame.appendChild(textNode);
     }
 
-    if (instance.componentId !== 'table-cell' && instance.componentId !== 'table-header-cell') {
+    if (
+      instance.componentId !== 'table-cell' &&
+      instance.componentId !== 'table-header-cell' &&
+      instance.componentId !== 'table-cell-select'
+    ) {
         applyCellAutoWidth(frame);
     }
 
@@ -9290,6 +9357,7 @@ figma.ui.onmessage = async (msg) => {
       }
 
       const componentId = node.getPluginData('component-id');
+      console.log('[DEBUG update-component] resolved componentId:', componentId, 'nodeId:', node.id, 'nodeName:', node.name);
       
       if (componentId) {
         let shouldRefreshSelection = true;
@@ -9326,7 +9394,9 @@ figma.ui.onmessage = async (msg) => {
             params.width = 0;
           }
           if (componentId === 'form' && node.type === 'FRAME') {
+            console.log('[DEBUG form-path] calling updateFormLayoutParams for form');
             const updated = await updateFormLayoutParams(node, previousParams, params);
+            console.log('[DEBUG form-path] updateFormLayoutParams returned:', updated);
             if (updated) {
               figma.currentPage.selection = [node];
               checkSelection();
@@ -9350,6 +9420,7 @@ figma.ui.onmessage = async (msg) => {
           let isLayoutChange = true;
           if (componentId === 'form-field') {
             isLayoutChange = isFormFieldLayoutAffecting(previousParams, params);
+            console.log('[DEBUG form-field-update] isLayoutChange:', isLayoutChange, 'prevLabel:', previousParams.label, 'nextLabel:', params.label);
             if (!isLayoutChange) {
               const existingLabelWidth = getFormFieldLabelWrapWidth(node);
               if (existingLabelWidth) {
@@ -9369,11 +9440,14 @@ figma.ui.onmessage = async (msg) => {
           if (replaceSceneNode(node, replacement)) {
             if (componentId === 'form-field' && isLayoutChange) {
               const formFrame = findAncestorFormFrame(replacement as SceneNode);
+              console.log('[DEBUG label-align] isLayoutChange=true, formFrame found:', !!formFrame);
               if (formFrame) {
                 const formParams = readNodeParams(formFrame);
                 const fieldNodes = collectFormItemNodes(formFrame);
                 const fieldIndex = fieldNodes.indexOf(replacement as SceneNode);
+                console.log('[DEBUG label-align] fieldNodes.length:', fieldNodes.length, 'fieldIndex:', fieldIndex, 'formParams.labelWidth:', formParams.labelWidth);
                 const updated = await updateFormLayoutParams(formFrame, formParams, formParams);
+                console.log('[DEBUG label-align] updateFormLayoutParams returned:', updated);
                 if (updated) {
                   const nextFieldNodes = collectFormItemNodes(formFrame);
                   const nextSelection = nextFieldNodes[fieldIndex] || formFrame;

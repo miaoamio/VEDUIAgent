@@ -22,6 +22,7 @@ export const TextInputControl = ({
 }) => {
   const [innerValue, setInnerValue] = React.useState(value);
   const composingRef = React.useRef(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (!composingRef.current) {
@@ -31,10 +32,12 @@ export const TextInputControl = ({
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextValue = event.target.value;
-    setInnerValue(nextValue);
-    if (!composingRef.current) {
-      onChange(nextValue);
+    // IME 组合期间只更新 DOM 不触发 React 重渲染，避免抖动
+    if (composingRef.current) {
+      return;
     }
+    setInnerValue(nextValue);
+    onChange(nextValue);
   };
 
   const handleCompositionStart = () => {
@@ -43,6 +46,7 @@ export const TextInputControl = ({
 
   const handleCompositionEnd = (event: React.CompositionEvent<HTMLInputElement>) => {
     composingRef.current = false;
+    // compositionEnd 后从 DOM 读取最终值
     const nextValue = event.currentTarget.value;
     setInnerValue(nextValue);
     onChange(nextValue);
@@ -50,6 +54,7 @@ export const TextInputControl = ({
 
   return (
     <input
+      ref={inputRef}
       type="text"
       value={innerValue}
       onChange={handleChange}

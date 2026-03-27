@@ -160,7 +160,7 @@ const BASE_TABLE_COMPONENT_TOKEN_PACK: Record<string, BaseComponentTokenProfile>
   ),
   'table-cell-select': baseComponentToken(
     'table-cell-select',
-    '27245acbfd46e812fb383443f0aac88df751fa15',
+    'd124dbe0576b8dfd900897124bd14e888e4db6f3',
     'legacy/table/packages/figma-plugin/src/code.ts',
     ['SELECT_COMPONENT_KEY']
   ),

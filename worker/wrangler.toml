@@ -1,0 +1,14 @@
+name = "figma-ui-agent-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+# 不要在这里放 API Key，用 wrangler secret 注入
+ARK_MODEL = "ep-20260129104027-mzlwg"
+ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+
+# 允许的来源域名（逗号分隔），空字符串表示允许所有
+ALLOWED_ORIGINS = ""
+
+# 每分钟每 IP 最大请求数
+RATE_LIMIT_PER_MINUTE = "30"

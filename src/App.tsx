@@ -2169,7 +2169,9 @@ function App() {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        const nextTab = data?.componentId === 'figma-component' ? 'chat' : 'selection';
+        const nextIsChart = Boolean(data?.componentId && data.componentId.startsWith('chart'));
+        const nextTab =
+          data?.componentId === 'figma-component' || nextIsChart ? 'chat' : 'selection';
         const multiTaskActive = isMultiTaskExecutionActive(
           Boolean(deferSelectionAutoSwitchRef.current),
           loading,
@@ -2183,7 +2185,6 @@ function App() {
           setSelectedComponent(data);
           setSelectionVersion((prev) => prev + 1);
         }
-        const nextIsChart = Boolean(data?.componentId && data.componentId.startsWith('chart'));
         // 仅当覆盖层已打开且新选择仍是图表时保持打开；否则不自动打开并关闭覆盖层，避免绘制后自动弹出与闪烁。
         setChartOverlayOpen((prev) => (prev ? nextIsChart : false));
       }
@@ -2222,8 +2223,9 @@ function App() {
     if (!deferSelectionAutoSwitchRef.current) return;
     if (loading) return;
     if (selectionCount <= 0) return;
+    if (selectedComponent?.componentId?.startsWith('chart')) return;
     setActiveTabWithRef('selection');
-  }, [loading, selectionCount]);
+  }, [loading, selectionCount, selectedComponent?.componentId]);
 
   React.useEffect(() => {
     if (!selectedComponent || (selectedComponent.componentId !== 'form-field' && selectedComponent.componentId !== 'input')) return;
@@ -6671,8 +6673,10 @@ StepD:
         }
       : null;
 
-    const apiKey = '58347098-9b5b-4180-b539-95ea7c05e155';
-    const url = 'https://ark-cn-beijing.bytedance.net/api/v3/chat/completions';
+    // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
+    // 开发环境使用本地 Worker (wrangler dev)，生产环境使用部署后的 Worker URL
+    const WORKER_URL = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+    const url = `${WORKER_URL}/api/chat`;
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -6687,7 +6691,7 @@ StepD:
                 }
                 const res = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         model: "ep-20260129104027-mzlwg", 
                         messages: msgs,
