@@ -34,6 +34,9 @@ import { setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resol
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 
+// Opt-in to incremental loading performance improvements and fix documentchange error
+figma.skipInvisibleInstanceChildren = true;
+
 // This shows the HTML page in "ui.html".
 figma.showUI(__html__, { width: 398, height: 680 });
 
@@ -8447,8 +8450,8 @@ async function drawAiChart(data: any, options: any) {
   }
 
   let frame: FrameNode | null = null;
-  let width = 600;
-  let height = 300;
+  let width = 360;
+  let height = 180;
   let useSelection = false;
 
   // Check selection - support RECTANGLE, FRAME, GROUP
@@ -8488,18 +8491,19 @@ async function drawAiChart(data: any, options: any) {
   if (!frame) {
     frame = figma.createFrame();
     frame.name = "AI Chart";
-    frame.resize(600, 300);
+    frame.resize(width, height);
     frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
     frame.cornerRadius = 8;
     frame.clipsContent = false; // Prevent clipping of labels
-    frame.effects = [{
-      type: "DROP_SHADOW",
-      color: { r: 0, g: 0, b: 0, a: 0.1 },
-      offset: { x: 0, y: 2 },
-      radius: 10,
-      visible: true,
-      blendMode: "NORMAL"
-    }];
+    
+    // Set stroke color to #EAEDF1
+    frame.strokes = [{ type: 'SOLID', color: hexToRgb('#EAEDF1') }];
+    frame.strokeWeight = 1;
+    
+    // Remove drop shadow by keeping effects empty
+    frame.effects = [];
+    
+    centerNodeInViewport(frame);
   }
 
   // Create AI Chart Container inside the frame
@@ -8770,6 +8774,10 @@ async function drawAiChart(data: any, options: any) {
   const count = data.labels.length;
   const isBarChart = options.type === 'bar';
   
+  // Normalize Y values carefully
+  const safeRange = range === 0 ? 1 : range;
+
+  
   // 根据图表类型选择不同的X轴标签布局
   let labelPositions: number[] = [];
   
@@ -8941,9 +8949,10 @@ async function drawAiChart(data: any, options: any) {
       // 基础柱状图
       data.datasets.forEach((ds: any, seriesIndex: number) => {
         ds.data.forEach((val: number, i: number) => {
-          const normalizedY = (val - niceMin) / (range || 1);
-          const barHeight = normalizedY * plotH;
-          const barY = plotH - barHeight;
+          // Calculate height from 0 instead of niceMin to ensure proper rendering within bounds
+          const normalizedY = Math.max(0, (val - Math.max(0, niceMin)) / safeRange);
+          const barHeight = Math.max(0.1, normalizedY * plotH); // Ensure at least 0.1px height to be visible
+          const barY = Math.max(0, plotH - barHeight);
           
           // 计算柱子中心位置 - boundaryGap=true布局
           const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
@@ -8967,9 +8976,10 @@ async function drawAiChart(data: any, options: any) {
       // 分组柱状图
       data.datasets.forEach((ds: any, seriesIndex: number) => {
         ds.data.forEach((val: number, i: number) => {
-          const normalizedY = (val - niceMin) / (range || 1);
-          const barHeight = normalizedY * plotH;
-          const barY = plotH - barHeight;
+          // Calculate height from 0 instead of niceMin to ensure proper rendering within bounds
+          const normalizedY = Math.max(0, (val - Math.max(0, niceMin)) / safeRange);
+          const barHeight = Math.max(0.1, normalizedY * plotH);
+          const barY = Math.max(0, plotH - barHeight);
           
           // 计算分组中心位置 - boundaryGap=true布局
           const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
@@ -9039,11 +9049,11 @@ async function drawAiChart(data: any, options: any) {
       data.datasets.forEach((ds: any, seriesIndex: number) => {
         ds.data.forEach((val: number, i: number) => {
           const baseValue = stackedValues[i][seriesIndex];
-          const normalizedBase = (baseValue - allMin) / stackedRange;
-          const normalizedTop = (baseValue + val - allMin) / stackedRange;
+          const normalizedBase = Math.max(0, (baseValue - Math.max(0, allMin)) / stackedRange);
+          const normalizedTop = Math.max(0, (baseValue + val - Math.max(0, allMin)) / stackedRange);
           
-          const barHeight = (normalizedTop - normalizedBase) * plotH;
-          const barY = plotH - normalizedTop * plotH;
+          const barHeight = Math.max(0.1, (normalizedTop - normalizedBase) * plotH);
+          const barY = Math.max(0, plotH - normalizedTop * plotH);
           
           // 计算柱子中心位置 - boundaryGap=true布局
           const categoryCenterX = categorySlotWidth / 2 + i * categorySlotWidth;
@@ -9071,8 +9081,9 @@ async function drawAiChart(data: any, options: any) {
     data.datasets.forEach((ds: any) => {
       const pathData = ds.data.map((val: number, i: number) => {
         const x = i * stepX;
-        const normalizedY = (val - niceMin) / (range || 1);
-        const y = plotH - normalizedY * plotH;
+        // Clamp normalizedY to avoid exceeding drawing bounds
+        const normalizedY = Math.max(0, Math.min(1, (val - niceMin) / safeRange));
+        const y = Math.max(0, plotH - normalizedY * plotH);
         return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
       }).join(' ');
 

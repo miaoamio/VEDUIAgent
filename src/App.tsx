@@ -1980,7 +1980,7 @@ function App() {
   const chartUiHtml = React.useMemo(
     () =>
       AI_CHART_UI_HTML.replace(
-        '<script src="lib/echarts.min.js"></script>',
+        '<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>',
         `<script>${ECHARTS_BUNDLE_SOURCE}</script>`
       ),
     []
