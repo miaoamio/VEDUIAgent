@@ -684,18 +684,6 @@ export const formComponents: ComponentRegistry["components"] = {
           "Large 36"
         ]
       },
-      "state": {
-        "type": "select",
-        "default": "Default 默认",
-        "description": "状态",
-        "enumValues": [
-          "Default 默认",
-          "Hover 悬浮",
-          "Active 激活",
-          "Error 错误",
-          "Disabled 禁用"
-        ]
-      },
       "showPrefix": {
         "type": "boolean",
         "default": false,
@@ -715,16 +703,6 @@ export const formComponents: ComponentRegistry["components"] = {
         "type": "string",
         "default": "",
         "description": "输入框后缀文本"
-      },
-      "multiple": {
-        "type": "boolean",
-        "default": false,
-        "description": "多选"
-      },
-      "selectType": {
-        "type": "boolean",
-        "default": false,
-        "description": "内置标签"
       },
       "optionsText": {
         "type": "string",

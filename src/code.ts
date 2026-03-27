@@ -30,7 +30,7 @@ import {
   parseColor,
   setCurrentTheme
 } from './engine/skills/resolve/color';
-import { setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resolve/layout';
+import { setFillWidth, setFillWidthPreserveHeight, setFixedWidth } from './engine/skills/resolve/layout';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 
@@ -527,6 +527,8 @@ async function checkSelection() {
               type: 'figma-instance-info',
               data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
             });
+          } else {
+            figma.ui.postMessage({ type: 'figma-instance-info', data: null });
           }
         } else if (componentId === 'figma-component') {
           // AI-managed figma-component stored as FRAME — get key from params
@@ -538,7 +540,11 @@ async function checkSelection() {
               type: 'figma-instance-info',
               data: { componentKey: resolvedKey, componentName: normalizedParams.componentToken || resolvedKey, componentSetName: '', nodeName: effectiveTarget.name }
             });
+          } else {
+            figma.ui.postMessage({ type: 'figma-instance-info', data: null });
           }
+        } else {
+          figma.ui.postMessage({ type: 'figma-instance-info', data: null });
         }
 
         return;
@@ -548,18 +554,39 @@ async function checkSelection() {
   // Clear selection if not an AI container
   figma.ui.postMessage({ type: 'selection-cleared', data: { count: 0, canvasHint } });
 
-  // If the selected node is a plain Figma INSTANCE (not AI-managed), send its key info
-  if (selection.length === 1 && selection[0].type === 'INSTANCE') {
-    const inst = selection[0] as InstanceNode;
-    const mainComponent = await resolveInstanceMainComponentNode(inst);
-    const key = mainComponent?.key ?? '';
-    const compName = mainComponent?.name ?? '';
-    const setName = mainComponent?.parent?.type === 'COMPONENT_SET'
-      ? (mainComponent.parent as ComponentSetNode).name
-      : '';
+  // If the selected node is a plain Figma INSTANCE/COMPONENT (not AI-managed), send its key info
+  if (selection.length === 1 && (selection[0].type === 'INSTANCE' || selection[0].type === 'COMPONENT' || selection[0].type === 'COMPONENT_SET')) {
+    const node = selection[0];
+    let key = '';
+    let compName = node.name;
+    let setName = '';
+
+    if (node.type === 'INSTANCE') {
+      const inst = node as InstanceNode;
+      const mainComponent = await resolveInstanceMainComponentNode(inst);
+      key = mainComponent?.key ?? '';
+      compName = mainComponent?.name ?? '';
+      setName = mainComponent?.parent?.type === 'COMPONENT_SET'
+        ? (mainComponent.parent as ComponentSetNode).name
+        : '';
+    } else if (node.type === 'COMPONENT') {
+      key = (node as ComponentNode).key;
+      setName = node.parent?.type === 'COMPONENT_SET'
+        ? (node.parent as ComponentSetNode).name
+        : '';
+    } else if (node.type === 'COMPONENT_SET') {
+      key = (node as ComponentSetNode).key;
+      setName = node.name;
+    }
+
     figma.ui.postMessage({
       type: 'figma-instance-info',
-      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
+      data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: node.name, componentNodeId: node.id }
+    });
+  } else {
+    figma.ui.postMessage({
+      type: 'figma-instance-info',
+      data: null
     });
   }
 }
@@ -603,7 +630,7 @@ function isFormLabelWrapNode(node: SceneNode | null | undefined): boolean {
   return node.getPluginData('form-label-wrap') === 'true';
 }
 
-function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
+async function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   const labelWraps: FrameNode[] = [];
   
   const collectLabelWraps = (node: SceneNode) => {
@@ -618,23 +645,38 @@ function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   };
   
   collectLabelWraps(form);
-  if (labelWraps.length <= 1) return;
+  if (labelWraps.length === 0) return;
   
-  // 始终取所有标签容器中的最大宽度
-  let maxWidth = 0;
+  // 临时设置为 AUTO 以获取所有标签的真实宽度
+  const minWidths: number[] = [];
   for (const wrap of labelWraps) {
-    if (wrap.width > maxWidth) maxWidth = wrap.width;
+    const minWidthStr = wrap.getPluginData('form-label-min-width');
+    const minWidth = minWidthStr ? Number(minWidthStr) : 0;
+    minWidths.push(Number.isFinite(minWidth) && minWidth > 0 ? minWidth : 0);
+    wrap.primaryAxisSizingMode = 'AUTO';
+  }
+  
+  // 强制等待 Figma 布局引擎计算完成
+  await new Promise(r => setTimeout(r, 0));
+  
+  // 始终取所有标签容器中的最大真实宽度
+  let maxWidth = 0;
+  for (let i = 0; i < labelWraps.length; i++) {
+    const wrap = labelWraps[i];
+    const minWidth = minWidths[i];
+    const autoWidth = wrap.width; // 此时应为真实 auto 宽度
+    const finalWidth = Math.max(minWidth, autoWidth);
+    if (finalWidth > maxWidth) maxWidth = finalWidth;
   }
   
   if (!Number.isFinite(maxWidth) || maxWidth <= 0) return;
   
-  // 只把宽度小于最大值的标签扩展到最大值
+  // 恢复为 FIXED 并设置为最大宽度
   for (const wrap of labelWraps) {
-    if (wrap.width < maxWidth - 0.1) {
-      try {
-        wrap.resize(maxWidth, wrap.height);
-      } catch {}
-    }
+    try {
+      wrap.primaryAxisSizingMode = 'FIXED';
+      wrap.resize(maxWidth, wrap.height);
+    } catch {}
   }
 }
 
@@ -668,30 +710,16 @@ figma.on('documentchange', async (event) => {
       if (parent && parent.type === 'FRAME') {
         const isLabelWrap = parent.getPluginData('form-label-wrap') === 'true';
         if (isLabelWrap && parent.getPluginData('form-label-auto-resize') === 'true') {
-          const minWidthStr = parent.getPluginData('form-label-min-width');
-          const minWidth = minWidthStr ? Number(minWidthStr) : 0;
-          if (Number.isFinite(minWidth) && minWidth > 0) {
-            try {
-              parent.primaryAxisSizingMode = 'AUTO';
-              await new Promise(r => setTimeout(r, 0));
-              const autoWidth = parent.width;
-              parent.primaryAxisSizingMode = 'FIXED';
-              parent.resize(Math.max(minWidth, autoWidth), parent.height);
-              
-              const form = findFormFrameFromNode(parent);
-              if (form) {
-                const key = form.id;
-                const existing = pendingFormLabelSync.get(key);
-                if (existing) {
-                  if (!existing.sourceNodes.includes(parent)) {
-                    existing.sourceNodes.push(parent);
-                  }
-                } else {
-                  pendingFormLabelSync.set(key, { form, sourceNodes: [parent] });
-                }
+          const form = findFormFrameFromNode(parent);
+          if (form) {
+            const key = form.id;
+            const existing = pendingFormLabelSync.get(key);
+            if (existing) {
+              if (!existing.sourceNodes.includes(parent)) {
+                existing.sourceNodes.push(parent);
               }
-            } catch (e) {
-              console.warn('form-label-wrap resize failed', e);
+            } else {
+              pendingFormLabelSync.set(key, { form, sourceNodes: [parent] });
             }
           }
         }
@@ -707,14 +735,17 @@ figma.on('documentchange', async (event) => {
         const formsToSync = pendingFormLabelSync;
         pendingFormLabelSync = new Map();
         formLabelSyncTimer = null;
-        try {
-          for (const { form, sourceNodes } of formsToSync.values()) {
-            alignFormLabelWidths(form, sourceNodes);
+        
+        (async () => {
+          try {
+            for (const { form, sourceNodes } of formsToSync.values()) {
+              await alignFormLabelWidths(form, sourceNodes);
+            }
+          } finally {
+            formLabelSyncInProgress = false;
+            formLabelSyncMuteUntil = Date.now() + 200;
           }
-        } finally {
-          formLabelSyncInProgress = false;
-          formLabelSyncMuteUntil = Date.now() + 200;
-        }
+        })();
       }, 120);
     }
   }
@@ -4230,14 +4261,6 @@ function syncInputParamsFromNode(currentParams: Record<string, any>, node: Scene
         }
     }
 
-    if (nextParams.disabled === true) {
-        nextParams.state = 'Disabled 禁用';
-    } else if (nextParams.error === true) {
-        nextParams.state = 'Error 错误';
-    } else if (nextParams.state === 'Disabled 禁用' || nextParams.state === 'Error 错误') {
-        nextParams.state = 'Default 默认';
-    }
-
     return nextParams;
 }
 
@@ -4404,7 +4427,7 @@ function applyFormControlWidthModeToNode(node: SceneNode, params: Record<string,
     }
     if ('layoutAlign' in node) {
         try {
-            (node as any).layoutAlign = 'MIN';
+            (node as any).layoutAlign = 'INHERIT';
         } catch {}
     }
 }
@@ -4417,7 +4440,7 @@ function normalizeFormControlVerticalSizing(node: SceneNode): void {
     }
     if ('layoutAlign' in node) {
         try {
-            (node as any).layoutAlign = 'MIN';
+            (node as any).layoutAlign = 'INHERIT';
         } catch {}
     }
 }
@@ -4813,7 +4836,6 @@ async function resolveFormParamsForRender(
     const resolvedFormParams = hasHorizontalLabel ? { ...formParams } : formParams;
     if (hasHorizontalLabel) {
         const maxLabelWidth = await resolveAutoFormLabelWidth(formParams, instance);
-        console.log('[DEBUG resolveFormParams] maxLabelWidth:', maxLabelWidth, 'current:', resolvedFormParams.labelWidth);
         if (maxLabelWidth > 0) {
             const currentLabelWidth = Number(resolvedFormParams.labelWidth);
             const mergedLabelWidth =
@@ -4822,7 +4844,6 @@ async function resolveFormParamsForRender(
                     : maxLabelWidth;
             resolvedFormParams.labelWidth = mergedLabelWidth;
             resolvedFormParams.labelWidthPreset = 'custom';
-            console.log('[DEBUG resolveFormParams] mergedLabelWidth:', mergedLabelWidth);
         }
     }
     return resolvedFormParams;
@@ -4839,13 +4860,16 @@ async function renderFormItemNode(
     if (processedChild.componentId === 'form-field' && resolvedFormParams && resolvedFormParams.labelWidth > 0) {
         delete processedChild.params?.labelWidth;
     }
-    const node = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
+    const inheritedChild = inheritFormFieldParams(resolvedFormParams, processedChild);
+    const node = await renderComponent(inheritedChild, { isRoot: false });
     if (node.type === 'FRAME' || node.type === 'INSTANCE') {
-        // In a VERTICAL form layout, child form-field nodes need STRETCH to fill
-        // the form container width. Previously this only applied when
-        // counterAxisSizingMode === 'FIXED', but 'fill' controlWidthMode also needs it.
-        const childControlWidthMode = resolveFormControlWidthMode(processedChild.params || {});
-        if (formFrame.counterAxisSizingMode === 'FIXED' || childControlWidthMode === 'fill') {
+        // Use the INHERITED params (with controlWidthMode from form level),
+        // not the original processedChild.params which may lack controlWidthMode.
+        const childParams = inheritedChild.params || {};
+        const childFillMode = inheritedChild.componentId === 'form-row'
+            ? normalizeFormControlWidthMode(childParams.controlWidthMode)
+            : resolveFormControlWidthMode(childParams);
+        if (formFrame.counterAxisSizingMode === 'FIXED' || childFillMode === 'fill') {
             node.layoutAlign = 'STRETCH';
         }
     }
@@ -4891,6 +4915,8 @@ async function updateFormItemCount(
             insertIndex += 1;
         }
     }
+    // Re-align label-wrap widths after adding/removing form items.
+    await alignFormLabelWidths(formFrame);
     writeNodeParams(formFrame, normalizedParams);
     writeComponentInstanceSnapshot(formFrame, patchedInstance);
     return true;
@@ -4918,9 +4944,7 @@ async function updateFormLayoutParams(
     const nextItemInstances = Array.isArray(patchedInstance.children)
         ? patchedInstance.children.filter((child) => isFormItemInstance(child))
         : [];
-    console.log('[DEBUG updateFormLayout] itemNodes:', itemNodes.length, 'nextItemInstances:', nextItemInstances.length, 'patchedChildren:', patchedInstance.children?.length);
     if (itemNodes.length !== nextItemInstances.length) {
-        console.log('[DEBUG updateFormLayout] COUNT MISMATCH - returning false!');
         return false;
     }
 
@@ -4968,8 +4992,45 @@ async function updateFormLayoutParams(
             resolvedFormParams
         );
         replaceSceneNode(itemNode, childNode);
+        // replaceSceneNode inherits layoutGrow/layoutAlign/layoutSizingHorizontal
+        // from the OLD node, which overwrites what renderFormItemNode just set.
+        // Re-apply fill-mode properties after replacement.
+        if (childNode.type === 'FRAME' || childNode.type === 'INSTANCE') {
+            // Use inherited params to determine fill mode. syncedInstance.params
+            // does NOT have controlWidthMode (it's inherited from form level).
+            const inheritedParams = inheritFormFieldParams(resolvedFormParams, syncedInstance).params || {};
+            const childIsRow = syncedInstance.componentId === 'form-row';
+            const childFillMode = childIsRow
+                ? normalizeFormControlWidthMode(inheritedParams.controlWidthMode)
+                : resolveFormControlWidthMode(inheritedParams);
+            // replaceSceneNode copies old layoutAlign/layoutGrow/layoutSizingHorizontal
+            // which overwrites what renderFormItemNode set. Re-apply:
+            // 1. STRETCH: when form has FIXED width, ALL children (not just fill) must STRETCH.
+            //    Also set layoutSizingHorizontal='FILL' because replaceSceneNode may have
+            //    set it to 'HUG' which conflicts with STRETCH.
+            if (formFrame.counterAxisSizingMode === 'FIXED' || childFillMode === 'fill') {
+                childNode.layoutAlign = 'STRETCH';
+                try { (childNode as any).layoutSizingHorizontal = 'FILL'; } catch {}
+            }
+            // 2. Fill-specific: restore layoutSizingHorizontal, layoutGrow, axis sizing
+            if (childFillMode === 'fill') {
+                try { (childNode as any).layoutSizingHorizontal = 'FILL'; } catch {}
+                childNode.layoutGrow = 1;
+                if ('layoutMode' in childNode && childNode.layoutMode === 'HORIZONTAL') {
+                    childNode.primaryAxisSizingMode = 'FIXED';
+                } else if ('layoutMode' in childNode && childNode.layoutMode === 'VERTICAL') {
+                    childNode.counterAxisSizingMode = 'FIXED';
+                }
+            }
+
+        }
     }
 
+
+    // After all replaceSceneNode calls, label-wrap widths may have been reset
+    // to content width by Figma layout recalculation. Re-align them immediately
+    // instead of waiting for documentchange debounce.
+    await alignFormLabelWidths(formFrame);
     writeNodeParams(formFrame, normalizedParams);
     writeComponentInstanceSnapshot(formFrame, patchedInstance);
     return true;
@@ -5086,6 +5147,11 @@ function inheritFormFieldParams(
                     : inheritedAlign === 'top'
                         ? 'vertical'
                         : 'horizontal';
+        const resolvedControlWidthMode =
+            currentParams.controlWidthMode === undefined ||
+            currentParams.controlWidthMode === FORM_FIELD_DEFAULTS.controlWidthMode
+                ? (formParams.controlWidthMode ?? currentParams.controlWidthMode)
+                : currentParams.controlWidthMode;
         const nextParams = {
             ...currentParams,
             align: inheritedAlign,
@@ -5094,7 +5160,7 @@ function inheritFormFieldParams(
             labelWidthPreset: currentParams.labelWidthPreset || formParams.labelWidthPreset || 'custom',
             labelWidth: formParams.labelWidth ?? currentParams.labelWidth,
             controlWidth: currentParams.controlWidth ?? formParams.controlWidth,
-            controlWidthMode: currentParams.controlWidthMode ?? formParams.controlWidthMode,
+            controlWidthMode: resolvedControlWidthMode,
             showColon: currentParams.showColon ?? formParams.showColon,
             ...(formParams.requiredMark === false ? { required: false } : {})
         };
@@ -5102,8 +5168,18 @@ function inheritFormFieldParams(
     }
 
     if (instance.componentId === 'form-row' && Array.isArray(instance.children)) {
+        // Inherit controlWidthMode to form-row so it can stretch itself when 'fill'
+        const rowParams = instance.params || {};
+        const resolvedRowControlWidthMode =
+            rowParams.controlWidthMode === undefined || rowParams.controlWidthMode === 'fixed'
+                ? (formParams.controlWidthMode ?? rowParams.controlWidthMode)
+                : rowParams.controlWidthMode;
         return {
             ...instance,
+            params: {
+                ...rowParams,
+                controlWidthMode: resolvedRowControlWidthMode
+            },
             children: instance.children.map((child) => inheritFormFieldParams(formParams, child))
         };
     }
@@ -5307,19 +5383,13 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
     const width = controlWidthMode === 'fill' ? undefined : (explicitControlWidth !== null ? explicitControlWidth : undefined);
 
     if (controlType === 'input') {
-        const rawState = String(params.state || 'Default 默认');
-        const normalizedState = rawState.trim().toLowerCase();
-        const isErrorState = normalizedState.includes('error') || normalizedState.includes('错误');
-        const isDisabledState = normalizedState.includes('disabled') || normalizedState.includes('禁用');
-        const resolvedState = isErrorState || isDisabledState ? 'Default 默认' : rawState;
-        const error = Boolean(params.error) || isErrorState;
-        const disabled = Boolean(params.disabled) || isDisabledState;
+        const error = Boolean(params.error);
+        const disabled = Boolean(params.disabled);
         return buildFigmaControlInstance('input', {
             placeholder: params.placeholder || '请输入',
             value: params.value || '',
             width,
             size: params.size || 'Default 32',
-            state: resolvedState,
             filled: Boolean(params.filled),
             error,
             disabled,
@@ -5348,15 +5418,7 @@ function createControlInstanceFromFormFieldParams(params: Record<string, any>): 
 
     if (controlType === 'select') {
         return buildFigmaControlInstance('select', {
-            placeholder: params.placeholder || '请选择',
-            value: params.value || '',
-            width,
             size: params.size || 'Default 32',
-            state: params.state || 'Default 默认',
-            filled: Boolean(params.filled),
-            disabled: Boolean(params.disabled),
-            multiple: Boolean(params.multiple),
-            selectType: params.selectType || 'Default 默认',
             optionsText: params.optionsText || '选项一,选项二',
             forceFigmaKey: true
         });
@@ -7089,8 +7151,9 @@ async function renderComponent(
         await applyColorVariable(titleNode, 'card-title', '#0C0D0E');
         frame.appendChild(titleNode);
     }
-
-    const shouldStretchChildren = computedWidth !== null;
+    const formControlWidthMode = normalizeFormControlWidthMode(resolvedFormParams.controlWidthMode);
+    const fallbackFormWidth = isRoot && computedWidth === null && formControlWidthMode === 'fill' ? 720 : null;
+    const shouldStretchChildren = computedWidth !== null || formControlWidthMode === 'fill';
     const showActionArea = params.showActionArea !== false;
     const isButtonRow = (child: any) => child.componentId === 'form-row'
         && Array.isArray(child.children)
@@ -7169,6 +7232,10 @@ async function renderComponent(
     }
     if (computedWidth !== null) {
         setFixedWidth(frame, computedWidth);
+    } else if (fallbackFormWidth !== null) {
+        setFixedWidth(frame, fallbackFormWidth);
+    } else if (formControlWidthMode === 'fill') {
+        setFillWidth(frame);
     }
     node = frame;
   }
@@ -7200,6 +7267,17 @@ async function renderComponent(
     }
     if (Number.isFinite(width) && width > 0) {
         setFixedWidth(frame, width);
+    } else if (rowControlWidthMode === 'fill') {
+        // When controlWidthMode is 'fill', the form-row itself must also stretch
+        // to fill the parent form container. In a VERTICAL form, this means STRETCH;
+        // the form-row children (form-fields) then use layoutGrow to divide space.
+        try {
+            (frame as any).layoutSizingHorizontal = 'FILL';
+            frame.layoutAlign = 'STRETCH';
+            // CRITICAL: primaryAxisSizingMode must be 'FIXED' for layoutGrow on
+            // children to work — 'AUTO' wraps to content, leaving no extra space.
+            frame.primaryAxisSizingMode = 'FIXED';
+        } catch {}
     }
     node = frame;
   }
@@ -7292,7 +7370,6 @@ async function renderComponent(
             }
         }
         const labelWidth = resolveFormLabelWidth(params);
-        console.log('[DEBUG form-field-render] label:', params.label, 'params.labelWidth:', params.labelWidth, 'resolvedLabelWidth:', labelWidth, 'layout:', layout);
         if (layout !== 'vertical' && Number.isFinite(labelWidth) && labelWidth > 0) {
             labelWrap.primaryAxisSizingMode = 'FIXED';
             // Use the provided labelWidth directly to ensure alignment. 
@@ -7338,9 +7415,14 @@ async function renderComponent(
         if (controlWidthMode === 'fill') {
             if (layout !== 'vertical') {
                 wrap.layoutGrow = 1;
+                wrap.primaryAxisSizingMode = 'AUTO';
             } else {
                 wrap.layoutAlign = 'STRETCH';
             }
+            // The wrap is VERTICAL, so horizontal is the counter axis.
+            // Set it to FIXED so children with STRETCH fill the wrap width.
+            try { (wrap as any).layoutSizingHorizontal = 'FILL'; } catch {}
+            wrap.counterAxisSizingMode = 'FIXED';
         }
         
         // 把控件移到包裹里
@@ -7377,6 +7459,19 @@ async function renderComponent(
         try {
             (frame as any).layoutSizingHorizontal = 'FILL';
             frame.layoutGrow = 1;
+            if (layout === 'vertical') {
+                // VERTICAL form-field: horizontal is the counter axis.
+                // counterAxisSizingMode must be FIXED so that children with
+                // layoutAlign='STRETCH' stretch to the frame's actual width
+                // (resolved from the parent form container), not just to
+                // the widest sibling.
+                frame.counterAxisSizingMode = 'FIXED';
+            } else {
+                // HORIZONTAL form-field: horizontal is the primary axis.
+                // primaryAxisSizingMode must be FIXED so that layoutGrow on
+                // children distributes real space instead of AUTO-wrapping.
+                frame.primaryAxisSizingMode = 'FIXED';
+            }
         } catch {}
     }
 
@@ -7386,6 +7481,10 @@ async function renderComponent(
         try {
             (controlNode as any).resize(controlNode.width, targetHeight);
         } catch {}
+        // resize() resets layoutSizingHorizontal to FIXED — re-apply fill if needed.
+        if (controlWidthMode === 'fill' && INPUT_LIKE_CONTROL_TYPES.has(controlType)) {
+            applyFormControlWidthModeToNode(controlNode, params);
+        }
     }
 
     node = frame;
@@ -8189,7 +8288,16 @@ async function renderComponent(
         });
         applyFigmaComponentProps(importedInstance, instance.componentId, params);
         const targetWidth = Number(params.width) > 0 ? Number(params.width) : importedInstance.width;
-        importedInstance.resize(targetWidth, importedInstance.height);
+        try {
+            if ('layoutSizingHorizontal' in importedInstance) {
+                importedInstance.layoutSizingHorizontal = 'FIXED';
+            }
+        } catch (e) {}
+        try {
+            importedInstance.resize(targetWidth, importedInstance.height);
+        } catch (e) {
+            console.warn("Failed to resize", e);
+        }
         node = importedInstance;
       } catch (e) {
         if (strictRenderMode || !canFallback) {
@@ -8631,7 +8739,7 @@ async function drawAiChart(data: any, options: any) {
   }
   tempText.remove();
   
-  const plotX = maxLabelW + 4; // Exact width + 4px gap
+  const plotX = maxLabelW + 8; // 8px gap between label and axis line
   const rightMargin = 0; 
   const xAxisHeight = 16; 
   const topSpacerHeight = hasTitle ? 6 : 0;
@@ -8730,8 +8838,16 @@ async function drawAiChart(data: any, options: any) {
     label.resize(naturalWidth, 12); 
     label.textAlignVertical = "CENTER";
     label.textAlignHorizontal = "RIGHT";
-    label.x = plotX - naturalWidth - 4;
-    label.y = y - 6; 
+    // Adjust the x coordinate to have an 8px gap with the grid line (which starts at plotX)
+    label.x = plotX - naturalWidth - 8; 
+    
+    // Adjust y position specifically for the 0 label (i === 0) to align with X-axis label top
+    // For i === 0, the grid line is exactly at y = plotH.
+    // X-axis label's y in the parent is plotH + 4 (from xAxisFrame placement).
+    // The previous logic y - 6 centered it on the line.
+    // To make "0Tb/s" sit exactly 0px above the X-axis label (which visually means its bottom edge touches the top edge of the X-axis label text or the X-axis line), we set its y coordinate.
+    // If we want its bottom to align with the X-axis line (which is at y = plotH), and the label height is 12:
+    label.y = i === 0 ? y - 12 : y - 6; 
     
     label.constraints = { horizontal: "MAX", vertical: "SCALE" }; 
     yAxisFrame.appendChild(label);
@@ -8740,8 +8856,7 @@ async function drawAiChart(data: any, options: any) {
   // X-Axis Frame
   const xAxisFrame = figma.createFrame();
   xAxisFrame.name = "X Axis";
-  xAxisFrame.layoutMode = "HORIZONTAL"; 
-  xAxisFrame.itemSpacing = 0;
+  xAxisFrame.layoutMode = "NONE"; 
   xAxisFrame.primaryAxisSizingMode = "FIXED"; 
   xAxisFrame.counterAxisSizingMode = "FIXED"; 
   xAxisFrame.resize(fullPlotW, xAxisHeight); 
@@ -8750,23 +8865,23 @@ async function drawAiChart(data: any, options: any) {
   xAxisFrame.clipsContent = false;
   chartBody.appendChild(xAxisFrame);
 
-  // X Spacer
-  const xSpacer = figma.createFrame();
-  xSpacer.name = "Spacer";
-  xSpacer.layoutMode = "NONE";
-  xSpacer.resize(plotX, xAxisHeight);
-  xSpacer.layoutSizingHorizontal = "FIXED";
-  xSpacer.layoutAlign = "STRETCH"; 
-  xSpacer.fills = [];
-  xAxisFrame.appendChild(xSpacer);
+  // Add the solid X-Axis Line explicitly at the top of xAxisFrame to act as the boundary
+  const xAxisLine = figma.createLine();
+  xAxisLine.name = "X Axis Line";
+  xAxisLine.resize(fullPlotW, 0);
+  xAxisLine.x = 0;
+  xAxisLine.y = 0;
+  // Make the line transparent to "remove" it visually while keeping the layout structure
+  xAxisLine.strokes = [{ type: 'SOLID', color: hexToRgb('#E6E6E6'), opacity: 0 }];
+  xAxisFrame.appendChild(xAxisLine);
 
   // X Labels Container
   const xLabelsContainer = figma.createFrame();
   xLabelsContainer.name = "Labels Container";
   xLabelsContainer.layoutMode = "NONE";
   xLabelsContainer.resize(drawW, xAxisHeight);
-  xLabelsContainer.layoutGrow = 1; 
-  xLabelsContainer.layoutAlign = "STRETCH"; 
+  xLabelsContainer.x = plotX; // Shift container to the right by plotX (yAxis width)
+  xLabelsContainer.y = 0;
   xLabelsContainer.fills = [];
   xLabelsContainer.clipsContent = false;
   xAxisFrame.appendChild(xLabelsContainer);
@@ -8909,7 +9024,8 @@ async function drawAiChart(data: any, options: any) {
         // Standard Horizontal Logic - 所有标签都居中对齐
         label.textAlignHorizontal = "CENTER";
         label.x = x - (finalMaxLabelW / 2);
-        label.y = 0; 
+        // Set y to be close to the axis line (gap of 4px instead of 8px)
+        label.y = 4; 
         
         // Set width to strict limit to ensure no collision
         if (finalMaxLabelW > 0.01) {
@@ -9409,7 +9525,6 @@ figma.ui.onmessage = async (msg) => {
       }
 
       const componentId = node.getPluginData('component-id');
-      console.log('[DEBUG update-component] resolved componentId:', componentId, 'nodeId:', node.id, 'nodeName:', node.name);
       
       if (componentId) {
         let shouldRefreshSelection = true;
@@ -9446,9 +9561,7 @@ figma.ui.onmessage = async (msg) => {
             params.width = 0;
           }
           if (componentId === 'form' && node.type === 'FRAME') {
-            console.log('[DEBUG form-path] calling updateFormLayoutParams for form');
             const updated = await updateFormLayoutParams(node, previousParams, params);
-            console.log('[DEBUG form-path] updateFormLayoutParams returned:', updated);
             if (updated) {
               figma.currentPage.selection = [node];
               checkSelection();
@@ -9472,7 +9585,6 @@ figma.ui.onmessage = async (msg) => {
           let isLayoutChange = true;
           if (componentId === 'form-field') {
             isLayoutChange = isFormFieldLayoutAffecting(previousParams, params);
-            console.log('[DEBUG form-field-update] isLayoutChange:', isLayoutChange, 'prevLabel:', previousParams.label, 'nextLabel:', params.label);
             if (!isLayoutChange) {
               const existingLabelWidth = getFormFieldLabelWrapWidth(node);
               if (existingLabelWidth) {
@@ -9488,22 +9600,21 @@ figma.ui.onmessage = async (msg) => {
                 ? patchFormFieldInstanceSnapshot(snapshot, previousParams, params)
                 : baseInstance;
           const replacement = await renderComponent(instanceToRender);
-
-          if (replaceSceneNode(node, replacement)) {
+          selectionUpdateSuppressed = true;
+          const replaced = replaceSceneNode(node, replacement);
+          if (replaced) {
             if (componentId === 'form-field' && isLayoutChange) {
               const formFrame = findAncestorFormFrame(replacement as SceneNode);
-              console.log('[DEBUG label-align] isLayoutChange=true, formFrame found:', !!formFrame);
               if (formFrame) {
                 const formParams = readNodeParams(formFrame);
                 const fieldNodes = collectFormItemNodes(formFrame);
                 const fieldIndex = fieldNodes.indexOf(replacement as SceneNode);
-                console.log('[DEBUG label-align] fieldNodes.length:', fieldNodes.length, 'fieldIndex:', fieldIndex, 'formParams.labelWidth:', formParams.labelWidth);
                 const updated = await updateFormLayoutParams(formFrame, formParams, formParams);
-                console.log('[DEBUG label-align] updateFormLayoutParams returned:', updated);
                 if (updated) {
                   const nextFieldNodes = collectFormItemNodes(formFrame);
                   const nextSelection = nextFieldNodes[fieldIndex] || formFrame;
                   figma.currentPage.selection = [nextSelection];
+                  selectionUpdateSuppressed = false;
                   checkSelection();
                   figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
                   return;
@@ -9511,10 +9622,12 @@ figma.ui.onmessage = async (msg) => {
               }
             }
             figma.currentPage.selection = [replacement];
+            selectionUpdateSuppressed = false;
             checkSelection();
             figma.ui.postMessage({ type: 'action-done', message: `Updated ${componentId}` });
             return;
           }
+          selectionUpdateSuppressed = false;
         }
 
         node.setPluginData('params', JSON.stringify(params));
