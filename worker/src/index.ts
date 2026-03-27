@@ -106,7 +106,9 @@ export default {
             COUNT(*) as total_events,
             SUM(session_count) as total_sessions,
             SUM(gen_count) as total_generations,
-            SUM(token_count) as total_tokens
+            SUM(token_count) as total_tokens,
+            SUM(prompt_tokens) as total_prompt_tokens,
+            SUM(completion_tokens) as total_completion_tokens
           FROM user_metrics
         `).first();
 
@@ -116,7 +118,9 @@ export default {
             date(datetime(created_at / 1000, 'unixepoch')) as date,
             SUM(session_count) as daily_sessions,
             SUM(gen_count) as daily_generations,
-            SUM(token_count) as daily_tokens
+            SUM(token_count) as daily_tokens,
+            SUM(prompt_tokens) as daily_prompt_tokens,
+            SUM(completion_tokens) as daily_completion_tokens
           FROM user_metrics
           GROUP BY date
           ORDER BY date DESC
@@ -155,6 +159,8 @@ export default {
           sessionCount?: number;   // 累加对话次数
           genCount?: number;       // 累加生成次数
           tokenCount?: number;     // 累加消耗 token
+          promptTokens?: number;   // 输入 tokens
+          completionTokens?: number; // 输出 tokens
           details?: string;        // 其他 JSON 信息
         };
 
@@ -163,20 +169,22 @@ export default {
         const sessionCount = body.sessionCount || 0;
         const genCount = body.genCount || 0;
         const tokenCount = body.tokenCount || 0;
+        const promptTokens = body.promptTokens || 0;
+        const completionTokens = body.completionTokens || 0;
         const details = body.details || "{}";
         const timestamp = Date.now();
 
         if (env.DB) {
           // 插入数据到 D1
           await env.DB.prepare(
-            `INSERT INTO user_metrics (user_id, event_type, session_count, gen_count, token_count, details, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
-          ).bind(userId, eventType, sessionCount, genCount, tokenCount, details, timestamp).run();
+            `INSERT INTO user_metrics (user_id, event_type, session_count, gen_count, token_count, prompt_tokens, completion_tokens, details, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(userId, eventType, sessionCount, genCount, tokenCount, promptTokens, completionTokens, details, timestamp).run();
         } else {
           console.warn("DB binding not found, logging track event: ", body);
         }
 
-        return new Response(JSON.stringify({ success: true }), {
+        return new Response(JSON.stringify({ success: true, logged: true }), {
           status: 200,
           headers: { ...cors, "Content-Type": "application/json" }
         });

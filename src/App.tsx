@@ -2137,6 +2137,7 @@ function App() {
   const trackEvent = React.useCallback((eventType: string, data: any) => {
       // Figma 插件环境下，currentUser可能为空，可以通过主进程传递，这里先给默认值
       const userId = (globalThis as any).__FIGMA_USER_ID__ || "anonymous";
+      console.log(`[Track] ${eventType}:`, data); // Debug logging
       fetch(trackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -6825,15 +6826,16 @@ StepD:
                     throw new DOMException('Aborted', 'AbortError');
                 }
                 const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        model: "ep-20260129104027-mzlwg", 
-                        messages: msgs,
-                        stream: true 
-                    }),
-                    signal: abortController.signal
-                });
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            model: "ep-20260129104027-mzlwg", 
+                            messages: msgs,
+                            stream: true,
+                            stream_options: { include_usage: true }
+                        }),
+                        signal: abortController.signal
+                    });
 
                 if (res.status === 429) {
                     // Try to parse error body for more info
@@ -6903,15 +6905,22 @@ StepD:
                                     fullContent += content;
                                     if (onStream) onStream(content);
                                 }
-                                // Record token usage if present
-                                if (json.usage && json.usage.total_tokens) {
+                                // In streaming SSE, usage is typically sent in a final chunk where choices may be empty or delta is empty
+                                const usage = json.usage || json.x_groq?.usage || json.usage_info || json.usage_metadata;
+                                if (usage && usage.total_tokens) {
+                                    console.log("Found token usage in stream:", usage);
                                     trackEvent("token_usage", {
-                                        tokenCount: json.usage.total_tokens,
-                                        details: JSON.stringify({ usage: json.usage })
+                                        tokenCount: usage.total_tokens,
+                                        promptTokens: usage.prompt_tokens || 0,
+                                        completionTokens: usage.completion_tokens || 0,
+                                        details: JSON.stringify({ usage })
                                     });
                                 }
                             } catch (e) {
-                                console.error('Error parsing stream:', e);
+                                // Ignore "[DONE]" message parse error
+                                if (line.trim() !== 'data: [DONE]') {
+                                    console.error('Error parsing stream:', e);
+                                }
                             }
                         }
                     }

@@ -6,6 +6,8 @@ CREATE TABLE user_metrics (
   session_count INTEGER DEFAULT 0,
   gen_count INTEGER DEFAULT 0,
   token_count INTEGER DEFAULT 0,
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
   details TEXT,
   created_at INTEGER NOT NULL
 );

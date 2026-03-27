@@ -1439,35 +1439,52 @@ function MetricsView() {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', marginBottom: '40px' }}>
-        {[
-          { label: '总事件数', value: data.totals.total_events || 0, bg: '#ffffff', border: '1px solid #e5e6eb', color: '#1d2129', icon: 'M4 6h16M4 12h16M4 18h16' },
-          { label: '总发起对话数', value: data.totals.total_sessions || 0, bg: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
-          { label: '总 AI 生成次数', value: data.totals.total_generations || 0, bg: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', icon: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
-          { label: '总消耗 Token', value: (data.totals.total_tokens || 0).toLocaleString(), bg: '#fffbeb', border: '1px solid #fef3c7', color: '#b45309', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' }
-        ].map((item, i) => (
-          <div key={i} style={{ 
-            flex: 1, 
-            background: item.bg, 
-            padding: '24px', 
-            borderRadius: '12px', 
-            border: item.border,
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4e5969', fontSize: '14px', fontWeight: 500 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d={item.icon} />
-              </svg>
-              {item.label}
-            </div>
-            <div style={{ fontSize: '36px', fontWeight: 700, color: item.color, lineHeight: 1 }}>
-              {item.value}
-            </div>
+      <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e6eb', padding: '32px', marginBottom: '40px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', paddingRight: '24px' }}>
+          <div style={{ fontSize: '14px', color: '#1d2129', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '4px', height: '16px', background: '#1d2129', borderRadius: '2px' }}></div>
+            调用总量tokens
           </div>
-        ))}
+          <div style={{ fontSize: '48px', fontWeight: 600, color: '#1d2129', lineHeight: 1 }}>
+            {(data.totals.total_tokens || 0).toLocaleString()}
+          </div>
+        </div>
+        
+        <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', padding: '0 24px' }}>
+          <div style={{ fontSize: '14px', color: '#4e5969', marginBottom: '12px' }}>
+            输入tokens
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
+            {(data.totals.total_prompt_tokens || 0).toLocaleString()}
+          </div>
+        </div>
+        
+        <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', padding: '0 24px' }}>
+          <div style={{ fontSize: '14px', color: '#4e5969', marginBottom: '12px' }}>
+            输出tokens
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
+            {(data.totals.total_completion_tokens || 0).toLocaleString()}
+          </div>
+        </div>
+        
+        <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', padding: '0 24px' }}>
+          <div style={{ fontSize: '14px', color: '#4e5969', marginBottom: '12px' }}>
+            对话次数
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
+            {(data.totals.total_sessions || 0).toLocaleString()}
+          </div>
+        </div>
+
+        <div style={{ flex: '1', paddingLeft: '24px' }}>
+          <div style={{ fontSize: '14px', color: '#4e5969', marginBottom: '12px' }}>
+            AI生成次数
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
+            {(data.totals.total_generations || 0).toLocaleString()}
+          </div>
+        </div>
       </div>
 
       <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1d2129', marginBottom: '16px' }}>近 7 天趋势</h3>
