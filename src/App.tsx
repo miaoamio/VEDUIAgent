@@ -5689,7 +5689,6 @@ StepD:
         }
       }, '*');
       // #region debug-point B:create-component-send
-      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:5096",msg:"[DEBUG] create-component send",data:{hasParentId:Boolean(parentIdVal)}})}).catch(()=>{});
       // #endregion
     });
   };
@@ -5704,7 +5703,6 @@ StepD:
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
         // #region debug-point C:apply-envelope-recv
-        fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:5113",msg:"[DEBUG] apply-envelope recv",data:{type:data.type,hasResult:typeof data.result !== 'undefined',hasMessage:Boolean(data.message)}})}).catch(()=>{});
         // #endregion
         if (data.type === 'apply-result') {
           window.removeEventListener('message', handler);
@@ -5739,7 +5737,6 @@ StepD:
         }
       }, '*');
       // #region debug-point C:apply-envelope-send
-      fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"20260319-tn-init",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:5139",msg:"[DEBUG] apply-envelope send",data:{mode:applyMode,hasParentId:Boolean(parentId)}})}).catch(()=>{});
       // #endregion
     });
   };

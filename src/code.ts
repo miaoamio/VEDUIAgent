@@ -632,6 +632,10 @@ function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   }
 }
 
+
+// Wrap in async init to support dynamic-page mode (same pattern as SmartTable)
+async function initDocumentChangeListener() {
+  await figma.loadAllPagesAsync();
 figma.on('documentchange', async (event) => {
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
@@ -766,7 +770,11 @@ figma.on('documentchange', async (event) => {
       tableRowSyncMuteUntil = Date.now() + 200;
     }
   }, 120);
-});
+
+});  // end figma.on documentchange
+}
+initDocumentChangeListener();
+
 
 const TABLE_DEFAULT_PARAMS = getDefaultParams('table');
 
