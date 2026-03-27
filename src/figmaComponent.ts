@@ -821,7 +821,16 @@ function selectRepresentativeVariantNodes(
   };
 }
 
-function findComponentByFallbackName(fallbackName: string): ComponentNode | ComponentSetNode | null {
+let allPagesReadyPromise: Promise<void> | null = null;
+
+function ensureAllPagesLoaded(): Promise<void> {
+  if (!allPagesReadyPromise) {
+    allPagesReadyPromise = figma.loadAllPagesAsync();
+  }
+  return allPagesReadyPromise;
+}
+
+async function findComponentByFallbackName(fallbackName: string): Promise<ComponentNode | ComponentSetNode | null> {
   const normalized = fallbackName.trim().toLowerCase();
   if (!normalized) return null;
 
@@ -844,6 +853,7 @@ function findComponentByFallbackName(fallbackName: string): ComponentNode | Comp
   const fromCurrentPage = figma.currentPage.findOne(isTarget) as ComponentNode | ComponentSetNode | null;
   if (fromCurrentPage) return fromCurrentPage;
 
+  await ensureAllPagesLoaded();
   return figma.root.findOne(isTarget) as ComponentNode | ComponentSetNode | null;
 }
 
@@ -959,7 +969,7 @@ export async function loadFigmaComponentByKey(
     }
 
     if (options.fallbackName) {
-      const localByName = findComponentByFallbackName(options.fallbackName);
+      const localByName = await findComponentByFallbackName(options.fallbackName);
       if (localByName) {
         cacheLoadedFigmaComponent(localByName, [componentKey, localByName.key]);
         return localByName;
@@ -1157,7 +1167,11 @@ async function resolveInstanceMainComponent(instance: InstanceNode): Promise<Com
     }
   }
 
-  return instance.mainComponent || null;
+  try {
+    return instance.mainComponent || null;
+  } catch {
+    return null;
+  }
 }
 
 async function inspectSceneNodeTree(

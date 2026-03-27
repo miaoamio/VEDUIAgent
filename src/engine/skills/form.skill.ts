@@ -717,8 +717,7 @@ export const buildNormalizedFormComponentFromSource = (
           ...fieldBaseParams,
           controlType: normalizedControlType,
           ...(controlToken ? { componentToken: controlToken } : {}),
-          ...buildInputParamsFromSource(props, itemObj),
-          ...(props.checked !== undefined || itemObj.checked !== undefined ? { checked: Boolean(props.checked ?? itemObj.checked) } : {})
+          ...buildInputParamsFromSource(props, itemObj)
         },
         children: inputLayout ? [inputLayout] : undefined
       };

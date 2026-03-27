@@ -745,12 +745,6 @@ export const formComponents: ComponentRegistry["components"] = {
         "default": "选项一",
         "description": "复选组默认勾选值，支持逗号分隔多个值"
       },
-      "checked": {
-        "type": "boolean",
-        "default": false,
-        "description": "开关控件是否开启（仅 controlType=switch 时生效）"
-      },
-
       "buttonLabel": {
         "type": "string",
         "default": "按钮",

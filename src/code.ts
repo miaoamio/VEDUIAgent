@@ -189,7 +189,7 @@ function registerTemplateNode(cacheKey: string, kind: TemplateCacheKind, node: S
   node.y = 0;
 }
 
-function cleanupLegacyPrewarmTemplates(): void {
+async function cleanupLegacyPrewarmTemplates(): Promise<void> {
   const componentKeyToToken = new Map<string, string>();
   for (const token of TABLE_CELL_PREWARM_TOKENS) {
     const componentKey = resolveComponentTokenProfile(token)?.profile.componentKey;
@@ -202,7 +202,8 @@ function cleanupLegacyPrewarmTemplates(): void {
   for (const node of candidates) {
     if (node.getPluginData(TEMPLATE_CACHE_NODE_KEY) === 'true') continue;
     if (node.visible || node.x > -99999 || node.y > -99999) continue;
-    const componentKey = node.mainComponent?.key;
+    const mainComponent = await resolveInstanceMainComponentNode(node);
+    const componentKey = mainComponent?.key;
     if (!componentKey) continue;
     const token = componentKeyToToken.get(componentKey);
     if (!token) continue;
@@ -219,7 +220,7 @@ function cleanupLegacyPrewarmTemplates(): void {
   }
 }
 
-function hydrateTemplateCaches(): void {
+async function hydrateTemplateCaches(): Promise<void> {
   const frame = getTemplateCacheFrame();
   const existing = figma.currentPage.findAll((node) => {
     if (!('getPluginData' in node)) return false;
@@ -266,7 +267,7 @@ function hydrateTemplateCaches(): void {
     node.visible = false;
     TAG_TEMPLATE_CACHE.set(cacheKey, node);
   }
-  cleanupLegacyPrewarmTemplates();
+  await cleanupLegacyPrewarmTemplates();
 }
 
 hydrateTemplateCaches();
@@ -396,7 +397,7 @@ type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 let selectionUpdateSuppressed = false;
 
 // Helper to check selection and notify UI
-function checkSelection() {
+async function checkSelection() {
   if (selectionUpdateSuppressed) {
     return;
   }
@@ -512,10 +513,11 @@ function checkSelection() {
         // For figma-component, read from params; for other INSTANCE nodes, read from mainComponent.
         if (effectiveTarget.type === 'INSTANCE') {
           const inst = effectiveTarget as InstanceNode;
-          const key = inst.mainComponent?.key ?? '';
-          const compName = inst.mainComponent?.name ?? '';
-          const setName = inst.mainComponent?.parent?.type === 'COMPONENT_SET'
-            ? (inst.mainComponent.parent as ComponentSetNode).name
+          const mainComponent = await resolveInstanceMainComponentNode(inst);
+          const key = mainComponent?.key ?? '';
+          const compName = mainComponent?.name ?? '';
+          const setName = mainComponent?.parent?.type === 'COMPONENT_SET'
+            ? (mainComponent.parent as ComponentSetNode).name
             : '';
           if (key) {
             figma.ui.postMessage({
@@ -546,10 +548,11 @@ function checkSelection() {
   // If the selected node is a plain Figma INSTANCE (not AI-managed), send its key info
   if (selection.length === 1 && selection[0].type === 'INSTANCE') {
     const inst = selection[0] as InstanceNode;
-    const key = inst.mainComponent?.key ?? '';
-    const compName = inst.mainComponent?.name ?? '';
-    const setName = inst.mainComponent?.parent?.type === 'COMPONENT_SET'
-      ? (inst.mainComponent.parent as ComponentSetNode).name
+    const mainComponent = await resolveInstanceMainComponentNode(inst);
+    const key = mainComponent?.key ?? '';
+    const compName = mainComponent?.name ?? '';
+    const setName = mainComponent?.parent?.type === 'COMPONENT_SET'
+      ? (mainComponent.parent as ComponentSetNode).name
       : '';
     figma.ui.postMessage({
       type: 'figma-instance-info',
@@ -632,10 +635,19 @@ function alignFormLabelWidths(form: FrameNode, sourceNodes: SceneNode[] = []) {
   }
 }
 
+let allPagesReadyPromise: Promise<void> | null = null;
+
+function ensureAllPagesLoaded(): Promise<void> {
+  if (!allPagesReadyPromise) {
+    allPagesReadyPromise = figma.loadAllPagesAsync();
+  }
+  return allPagesReadyPromise;
+}
+
 
 // Wrap in async init to support dynamic-page mode (same pattern as SmartTable)
 async function initDocumentChangeListener() {
-  await figma.loadAllPagesAsync();
+  await ensureAllPagesLoaded();
 figma.on('documentchange', async (event) => {
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
@@ -3719,7 +3731,11 @@ async function resolveInstanceMainComponentNode(instance: InstanceNode): Promise
         }
     }
 
-    return instance.mainComponent || null;
+    try {
+        return instance.mainComponent || null;
+    } catch {
+        return null;
+    }
 }
 
 function resolveFormAlignVariantLabel(value: unknown): 'Top 顶部对齐' | 'Left 左对齐' | 'Right 右对齐' {
@@ -4821,8 +4837,14 @@ async function renderFormItemNode(
         delete processedChild.params?.labelWidth;
     }
     const node = await renderComponent(inheritFormFieldParams(resolvedFormParams, processedChild), { isRoot: false });
-    if ((node.type === 'FRAME' || node.type === 'INSTANCE') && formFrame.counterAxisSizingMode === 'FIXED') {
-        node.layoutAlign = 'STRETCH';
+    if (node.type === 'FRAME' || node.type === 'INSTANCE') {
+        // In a VERTICAL form layout, child form-field nodes need STRETCH to fill
+        // the form container width. Previously this only applied when
+        // counterAxisSizingMode === 'FIXED', but 'fill' controlWidthMode also needs it.
+        const childControlWidthMode = resolveFormControlWidthMode(processedChild.params || {});
+        if (formFrame.counterAxisSizingMode === 'FIXED' || childControlWidthMode === 'fill') {
+            node.layoutAlign = 'STRETCH';
+        }
     }
     return node;
 }
@@ -5996,6 +6018,7 @@ async function createFigmaComponentInstanceByToken(
         return null;
     }
     if (FAST_FAIL_COMPONENT_TOKENS.has(normalized)) {
+        await ensureAllPagesLoaded();
         const localComponent = figma.root.findOne(
             (node) => isComponentOrSetNode(node) && node.key === componentKey
         ) as ComponentNode | ComponentSetNode | null;
@@ -7342,6 +7365,16 @@ async function renderComponent(
 
     if (INPUT_LIKE_CONTROL_TYPES.has(controlType)) {
         applyFormControlWidthModeToNode(controlNode, params);
+    }
+
+    // When controlWidthMode is "fill", the form-field frame itself must also
+    // stretch to fill the parent form container, otherwise layoutGrow on the
+    // control node has no effect (parent is AUTO-sized and provides no space).
+    if (controlWidthMode === 'fill') {
+        try {
+            (frame as any).layoutSizingHorizontal = 'FILL';
+            frame.layoutGrow = 1;
+        } catch {}
     }
 
     // 只在确实需要调整高度时才去调整（例如兜底节点）

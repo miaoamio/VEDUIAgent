@@ -19,6 +19,22 @@ function isParentContainer(node: BaseNode | null): node is ParentContainer {
   return Boolean(node && typeof (node as ParentContainer).appendChild === "function");
 }
 
+async function resolveInstanceMainComponent(instance: InstanceNode): Promise<ComponentNode | null> {
+  const asyncGetter = (instance as unknown as {
+    getMainComponentAsync?: () => Promise<ComponentNode | null>;
+  }).getMainComponentAsync;
+  if (typeof asyncGetter === "function") {
+    try {
+      return await asyncGetter.call(instance);
+    } catch {}
+  }
+  try {
+    return instance.mainComponent || null;
+  } catch {
+    return null;
+  }
+}
+
 function isFrameNode(node: SceneNode): node is FrameNode {
   return node.type === "FRAME";
 }
@@ -762,7 +778,8 @@ async function createFigmaNode(
             fallbackName: definition.name,
             variantCriteria: criteria
           });
-          if (matchesVariantProps(instance.mainComponent?.variantProperties || undefined, criteria)) {
+          const mainComponent = await resolveInstanceMainComponent(instance);
+          if (matchesVariantProps(mainComponent?.variantProperties || undefined, criteria)) {
             break;
           }
           instance.remove();
