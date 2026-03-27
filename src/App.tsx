@@ -2535,16 +2535,20 @@ function App() {
     if (chartShortcutActive) {
       const node = composerRichInputRef.current;
       if (node) {
-        node.focus();
-        const selection = window.getSelection?.();
-        if (selection) {
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          range.collapse(false);
-          selection.removeAllRanges();
-          selection.addRange(range);
+        try {
+          node.focus();
+          const selection = window.getSelection?.();
+          if (selection) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          return;
+        } catch (error) {
+          console.warn('富文本编辑器焦点设置失败:', error);
         }
-        return;
       }
     }
     composerTextareaRef.current?.focus();
