@@ -753,24 +753,66 @@ function UserMessageBubble({
                 <div className="user-attachment-name">{image.name}</div>
               </div>
             ))}
-            {tables.map((table) => (
-              <div key={table.id} className={`user-attachment-card table ${table.parseError ? 'error' : ''}`}>
-                <span className="user-attachment-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="18" height="18" rx="4" fill="#E8F5E9"/>
-                    <path d="M8 8H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                    <path d="M8 12H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                    <path d="M8 16H14" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                  </svg>
-                </span>
-                <div className="user-attachment-meta">
-                  <div className="user-attachment-name">{table.name}</div>
-                  <div className={`user-attachment-subtle ${table.parseError ? 'user-attachment-error' : ''}`}>
-                    {table.parseError ? table.parseError : formatTableKind(table.kind)}
+            {tables.map((table) => {
+              const svgBaseId = `svg_${String(table.id).replace(/[^a-zA-Z0-9]/g, '') || 'file'}`;
+              const clipId = `${svgBaseId}_clip0`;
+              const filter0Id = `${svgBaseId}_filter0`;
+              const filter1Id = `${svgBaseId}_filter1`;
+              return (
+                <div key={table.id} className={`user-attachment-card table ${table.parseError ? 'error' : ''}`}>
+                  <span className="user-attachment-icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 49 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <g clipPath={`url(#${clipId})`}>
+                        <path d="M34.2241 3.08579C33.8491 2.71071 33.3403 2.5 32.8099 2.5H10.2207C9.11613 2.5 8.2207 3.39543 8.2207 4.5V44.5C8.2207 45.6046 9.11613 46.5 10.2207 46.5H42.2207C43.3253 46.5 44.2207 45.6046 44.2207 44.5V13.9108C44.2207 13.3804 44.01 12.8717 43.6349 12.4966L34.2241 3.08579Z" fill="#309256" />
+                        <path d="M44.2212 13.999H34.7207C33.6161 13.999 32.7207 13.1036 32.7207 11.999V2.5H32.8104C33.3408 2.5 33.8495 2.71071 34.2246 3.08579L43.6354 12.4966C44.0105 12.8717 44.2212 13.3804 44.2212 13.9108V13.999Z" fill="#2A814B" />
+                        <rect x="15.09" y="19.885" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                        <rect x="15.09" y="26.586" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                        <rect x="15.09" y="33.289" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                        <rect x="32.102" y="19.883" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                        <rect x="32.102" y="26.586" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                        <rect x="32.102" y="33.289" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                        <g filter={`url(#${filter0Id})`}>
+                          <rect x="4.222" y="16.088" width="21.737" height="23" rx="1" fill="#35A15F" />
+                        </g>
+                        <g filter={`url(#${filter1Id})`}>
+                          <path d="M9.2874 33.4362L12.7327 27.5751V27.5102L9.2793 21.7383H13.284L15.1242 25.4673H15.1891L17.0374 21.7383H20.8475L17.2238 27.5264V27.5913L20.8313 33.4362H17.0049L14.9864 29.9098H14.9215L12.9192 33.4362H9.2874Z" fill="#FEFFFF" />
+                        </g>
+                      </g>
+                      <defs>
+                        <filter id={filter0Id} x="-4.778" y="7.088" width="43.737" height="45" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                          <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                          <feColorMatrix in="SourceAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+                          <feOffset dx="2" dy="2" />
+                          <feGaussianBlur stdDeviation="5.5" />
+                          <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0" />
+                          <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_7669_37741" />
+                          <feBlend in="SourceGraphic" in2="effect1_dropShadow_7669_37741" result="shape" />
+                        </filter>
+                        <filter id={filter1Id} x="1.279" y="15.738" width="27.568" height="27.697" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                          <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                          <feColorMatrix in="SourceAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+                          <feOffset dy="2" />
+                          <feGaussianBlur stdDeviation="4" />
+                          <feComposite in2="hardAlpha" operator="out" />
+                          <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.15 0" />
+                          <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_7669_37741" />
+                          <feBlend in="SourceGraphic" in2="effect1_dropShadow_7669_37741" result="shape" />
+                        </filter>
+                        <clipPath id={clipId}>
+                          <path fill="#fff" transform="translate(.222 .5)" d="M0 0H48V48H0z" />
+                        </clipPath>
+                      </defs>
+                    </svg>
+                  </span>
+                  <div className="user-attachment-meta">
+                    <div className="user-attachment-name">{table.name}</div>
+                    <div className={`user-attachment-subtle ${table.parseError ? 'user-attachment-error' : ''}`}>
+                      {table.parseError ? table.parseError : formatTableKind(table.kind)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1980,7 +2022,7 @@ function App() {
   const chartUiHtml = React.useMemo(
     () =>
       AI_CHART_UI_HTML.replace(
-        '<script src="lib/echarts.min.js"></script>',
+        '<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>',
         `<script>${ECHARTS_BUNDLE_SOURCE}</script>`
       ),
     []
@@ -9906,32 +9948,74 @@ StepD:
                       </button>
                     </div>
                   ))}
-                  {uploadedTables.map((table) => (
-                    <div key={table.id} className="attachment-card table-card">
-                      <span className="attachment-file-icon" aria-hidden="true">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="3" y="3" width="18" height="18" rx="4" fill="#E8F5E9"/>
-                          <path d="M8 8H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                          <path d="M8 12H16" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                          <path d="M8 16H14" stroke="#2E7D32" strokeWidth="1.6" strokeLinecap="round"/>
-                        </svg>
-                      </span>
-                      <div className="attachment-meta">
-                        <div className="attachment-name">{table.name}</div>
-                        <div className={`attachment-subtle ${table.parseError ? 'attachment-error-text' : ''}`}>
-                          {table.parseError ? table.parseError : `${formatTableKind(table.kind)} · ${formatBytes(table.size)}`}
+                  {uploadedTables.map((table) => {
+                    const svgBaseId = `svg_${String(table.id).replace(/[^a-zA-Z0-9]/g, '') || 'file'}`;
+                    const clipId = `${svgBaseId}_clip0`;
+                    const filter0Id = `${svgBaseId}_filter0`;
+                    const filter1Id = `${svgBaseId}_filter1`;
+                    return (
+                      <div key={table.id} className="attachment-card table-card">
+                        <span className="attachment-file-icon" aria-hidden="true">
+                          <svg width="22" height="22" viewBox="0 0 49 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <g clipPath={`url(#${clipId})`}>
+                              <path d="M34.2241 3.08579C33.8491 2.71071 33.3403 2.5 32.8099 2.5H10.2207C9.11613 2.5 8.2207 3.39543 8.2207 4.5V44.5C8.2207 45.6046 9.11613 46.5 10.2207 46.5H42.2207C43.3253 46.5 44.2207 45.6046 44.2207 44.5V13.9108C44.2207 13.3804 44.01 12.8717 43.6349 12.4966L34.2241 3.08579Z" fill="#309256" />
+                              <path d="M44.2212 13.999H34.7207C33.6161 13.999 32.7207 13.1036 32.7207 11.999V2.5H32.8104C33.3408 2.5 33.8495 2.71071 34.2246 3.08579L43.6354 12.4966C44.0105 12.8717 44.2212 13.3804 44.2212 13.9108V13.999Z" fill="#2A814B" />
+                              <rect x="15.09" y="19.885" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                              <rect x="15.09" y="26.586" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                              <rect x="15.09" y="33.289" width="14.184" height="2.702" rx=".5" fill="#fff" />
+                              <rect x="32.102" y="19.883" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                              <rect x="32.102" y="26.586" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                              <rect x="32.102" y="33.289" width="6.369" height="2.702" rx=".5" fill="#fff" />
+                              <g filter={`url(#${filter0Id})`}>
+                                <rect x="4.222" y="16.088" width="21.737" height="23" rx="1" fill="#35A15F" />
+                              </g>
+                              <g filter={`url(#${filter1Id})`}>
+                                <path d="M9.2874 33.4362L12.7327 27.5751V27.5102L9.2793 21.7383H13.284L15.1242 25.4673H15.1891L17.0374 21.7383H20.8475L17.2238 27.5264V27.5913L20.8313 33.4362H17.0049L14.9864 29.9098H14.9215L12.9192 33.4362H9.2874Z" fill="#FEFFFF" />
+                              </g>
+                            </g>
+                            <defs>
+                              <filter id={filter0Id} x="-4.778" y="7.088" width="43.737" height="45" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                                <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                                <feColorMatrix in="SourceAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+                                <feOffset dx="2" dy="2" />
+                                <feGaussianBlur stdDeviation="5.5" />
+                                <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0" />
+                                <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_7669_37741" />
+                                <feBlend in="SourceGraphic" in2="effect1_dropShadow_7669_37741" result="shape" />
+                              </filter>
+                              <filter id={filter1Id} x="1.279" y="15.738" width="27.568" height="27.697" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                                <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                                <feColorMatrix in="SourceAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+                                <feOffset dy="2" />
+                                <feGaussianBlur stdDeviation="4" />
+                                <feComposite in2="hardAlpha" operator="out" />
+                                <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.15 0" />
+                                <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_7669_37741" />
+                                <feBlend in="SourceGraphic" in2="effect1_dropShadow_7669_37741" result="shape" />
+                              </filter>
+                              <clipPath id={clipId}>
+                                <path fill="#fff" transform="translate(.222 .5)" d="M0 0H48V48H0z" />
+                              </clipPath>
+                            </defs>
+                          </svg>
+                        </span>
+                        <div className="attachment-meta">
+                          <div className="attachment-name">{table.name}</div>
+                          <div className={`attachment-subtle ${table.parseError ? 'attachment-error-text' : ''}`}>
+                            {table.parseError ? table.parseError : `${formatTableKind(table.kind)} · ${formatBytes(table.size)}`}
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          className="attachment-remove"
+                          onClick={() => removeTableAttachment(table.id)}
+                          disabled={loading}
+                        >
+                          删除
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="attachment-remove"
-                        onClick={() => removeTableAttachment(table.id)}
-                        disabled={loading}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
               {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
             </div>
           )}
@@ -10053,7 +10137,7 @@ StepD:
                 )}
                 <div className="composer-textarea-wrap" style={{ 
                   paddingTop: chartShortcutActive && tagRowHeight > 0
-                    ? `${Math.max(0, tagRowHeight + 16)}px`
+                    ? `${Math.max(0, tagRowHeight + 26)}px`
                     : '10px',
                   transition: 'padding-top 0.2s ease-in-out'
                 }}>

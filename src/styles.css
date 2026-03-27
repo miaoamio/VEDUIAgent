@@ -700,6 +700,8 @@ h2 {
 .user-bubble-content {
   position: relative;
   padding: 8px 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .user-bubble-text-wrap {
@@ -778,12 +780,15 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .user-attachment-title {
   font-size: 10px;
   color: #9CA3AF;
   letter-spacing: 0.2px;
+  padding-left: 8px;
 }
 
 .user-attachment-parse-toggle {
@@ -837,9 +842,13 @@ h2 {
 
 .user-attachment-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   width: 100%;
+}
+
+.user-bubble-attachments .user-attachment-card {
+  max-width: 100%;
 }
 
 .user-attachment-card {
@@ -864,6 +873,10 @@ h2 {
   border-radius: 8px;
 }
 
+.user-attachment-card.table {
+  border-radius: 8px;
+}
+
 .user-attachment-thumb {
   width: 32px;
   height: 32px;
@@ -883,9 +896,14 @@ h2 {
   flex-shrink: 0;
 }
 
+div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-thread > div.chat-message:nth-child(1) > div.chat-bubble > div.user-bubble > div.user-bubble-attachments > div.user-attachment-grid > div.user-attachment-card > span.user-attachment-icon {
+  width: 24px;
+}
+
 .user-attachment-meta {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
   gap: 1px;
   line-height: 1.2;
