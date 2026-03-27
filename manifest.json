@@ -1,10 +1,16 @@
 {
   "name": "Figma UI Agent",
-  "id": "figma-ui-agent",
+  "id": "1619201815868805320",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
   "capabilities": [],
   "enableProposedApi": false,
-  "editorType": ["figma", "figjam"]
+  "documentAccess": "dynamic-page",
+  "editorType": ["figma", "figjam"],
+  "networkAccess": {
+    "allowedDomains": [
+      "https://figma-ui-agent-proxy.uhimiao-thu.workers.dev"
+    ]
+  }
 }
