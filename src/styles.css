@@ -874,10 +874,6 @@ h2 {
 }
 
 .user-attachment-card.table {
-  border-radius: 6px;
-}
-
-div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-thread > div.chat-message:nth-child(3) > div.chat-bubble > div.user-bubble > div.user-bubble-attachments > div.user-attachment-grid > div.user-attachment-card.table {
   border-radius: 8px;
 }
 
