@@ -341,13 +341,19 @@ const buildExplicitFormFieldParams = (
 
   const mergedParams: Record<string, any> = { ...props, ...nestedParams, ...topLevelParams };
 
-  const fieldLabel = String(
+  let fieldLabel = String(
     nestedParams.label ??
     itemObj.label ??
     itemObj.title ??
     itemObj.name ??
     `字段${index + 1}`
   );
+
+  // 防御：去掉 label 中的必填星号，若包含星号则默认置为 required: true
+  if (fieldLabel.includes('*')) {
+    fieldLabel = fieldLabel.replace(/\*/g, '').trim();
+    mergedParams.required = true;
+  }
 
   const canonicalToken = canonicalizeLooseFormComponentToken(mergedParams.componentToken ?? mergedParams.token);
   if (canonicalToken) {
@@ -585,17 +591,25 @@ export const buildNormalizedFormComponentFromSource = (
       return toButtonFromItem(itemObj, `操作${index + 1}`, 'secondary');
     }
 
-    const label = String(
+    let label = String(
       props.label ||
       itemObj.label ||
       itemObj.title ||
       itemObj.name ||
       `字段${index + 1}`
     );
+    let required = Boolean(props.required ?? itemObj.required);
+
+    // 防御：去掉 label 中的必填星号，若包含星号则默认置为 required: true
+    if (label.includes('*')) {
+      label = label.replace(/\*/g, '').trim();
+      required = true;
+    }
+
     const fieldBaseParams = {
       ...sharedFieldParams,
       label,
-      required: Boolean(props.required ?? itemObj.required),
+      required,
       helpText: String(props.helpText || itemObj.helpText || ''),
       descriptionText: typeof (props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description) === 'string'
         ? String(props.descriptionText ?? props.description ?? itemObj.descriptionText ?? itemObj.description)
@@ -949,13 +963,9 @@ export const buildNormalizedFormComponentFromSource = (
   }
 
   if (children.length === 0) {
-    const fallbackRow = buildFormRowFromItems([
-      { componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } },
-      { componentId: 'select', label: '状态', props: { value: '全部状态' } },
-      { componentId: 'button', props: { label: '查询', variant: 'primary' } },
-      { componentId: 'button', props: { label: '重置', variant: 'secondary' } }
-    ]);
-    if (fallbackRow) children.push(fallbackRow);
+    // No fallback — return null so the caller can report an error to the LLM
+    // and let it fix the JSON payload.
+    return null;
   }
 
   return {

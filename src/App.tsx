@@ -2129,6 +2129,24 @@ function App() {
   const [thinkingSeconds, setThinkingSeconds] = React.useState<number | null>(null);
   const [thoughtDetailsExpanded, setThoughtDetailsExpanded] = React.useState(true);
   const deferSelectionAutoSwitchRef = React.useRef(false);
+
+  // ── 埋点工具函数 ──
+  const WORKER_URL_BASE = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+  const trackUrl = `${WORKER_URL_BASE}/api/track`;
+  const trackEvent = React.useCallback((eventType: string, data: any) => {
+      // Figma 插件环境下，currentUser可能为空，可以通过主进程传递，这里先给默认值
+      const userId = (globalThis as any).__FIGMA_USER_ID__ || "anonymous";
+      fetch(trackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              userId: userId,
+              eventType,
+              ...data
+          })
+      }).catch(err => console.error("Track error:", err));
+  }, [trackUrl]);
+
   const [planPanelClosed, setPlanPanelClosed] = React.useState(false);
   const [selectedComponent, setSelectedComponent] = React.useState<{ 
     componentId: string; 
@@ -6541,8 +6559,19 @@ StepD:
     }
   };
 
+  // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
+  // 开发环境使用本地 Worker (wrangler dev)，生产环境使用部署后的 Worker URL
+  const WORKER_URL = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+  const url = `${WORKER_URL}/api/chat`;
+
   const onSend = async () => {
     if (!canSend) return;
+
+    // 记录对话发起埋点
+    trackEvent("chat_start", {
+        sessionCount: 1,
+        details: JSON.stringify({ messageLength: userInput.length })
+    });
 
     // Developer commands — bypass AI, run directly
     const trimmedInput = userInput.trim();
@@ -6680,6 +6709,12 @@ StepD:
     const displaySummary = buildUserSummary(turnInput, turnImages, turnTables);
     const currentTurnRichContent = buildRichUserContent(turnInput, turnImages, turnTables);
 
+    // Track AI Generation attempt
+    trackEvent("ai_generation", {
+        genCount: 1,
+        details: JSON.stringify({ promptLength: currentTurnText.length, hasImages: turnImages.length > 0, hasTables: turnTables.length > 0 })
+    });
+
     // After sending, clear composer state for the next round.
     setLastUserMessage(currentTurnText);
     const displayInput = turnInput.trim() ? turnInput : displaySummary;
@@ -6700,7 +6735,7 @@ StepD:
     setAttachmentMenuOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (tableInputRef.current) tableInputRef.current.value = '';
-    
+
     // Initial message history
     let messages = [
       { role: "system", content: generateMasterPrompt() },
@@ -6719,8 +6754,6 @@ StepD:
       : null;
 
     // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
-    // 开发环境使用本地 Worker (wrangler dev)，生产环境使用部署后的 Worker URL
-    const WORKER_URL = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
     const url = `${WORKER_URL}/api/chat`;
 
     // Helper to call LLM with streaming support
@@ -6808,10 +6841,17 @@ StepD:
                         if (line.startsWith('data: ')) {
                             try {
                                 const json = JSON.parse(line.substring(6));
-                                const content = json.choices[0]?.delta?.content || '';
+                                const content = json.choices?.[0]?.delta?.content || '';
                                 if (content) {
                                     fullContent += content;
                                     if (onStream) onStream(content);
+                                }
+                                // Record token usage if present
+                                if (json.usage && json.usage.total_tokens) {
+                                    trackEvent("token_usage", {
+                                        tokenCount: json.usage.total_tokens,
+                                        details: JSON.stringify({ usage: json.usage })
+                                    });
                                 }
                             } catch (e) {
                                 console.error('Error parsing stream:', e);
@@ -7684,12 +7724,13 @@ StepD:
                 const formComponent = buildFormComponentFromPayloadSkill(payload?.form ?? payload);
 
                 if (!formComponent) {
-                    const invalidMsg = `[System]: 表单参数无效。`;
+                    const rawPayload = JSON.stringify(payload?.form ?? payload, null, 2);
+                    const invalidMsg = `[System]: draw_form 失败：解析后没有生成任何表单字段（rows 为空或格式错误）。请检查 payload 结构是否符合 draw_form 要求（rows 必须为二维数组 FieldItem[][]，每个 FieldItem 需要 componentId 和 label）。你的 payload 为：\n${rawPayload}`;
                     accumulatedLog += '\n\n' + invalidMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: invalidMsg });
                     if (runtimePlan && actionTaskId) {
-                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', 'invalid draw_form payload');
+                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', 'invalid draw_form payload - no rows parsed');
                     }
                 } else {
                     try {
@@ -10539,7 +10580,7 @@ StepD:
       ) : (
         renderSelectionPage()
       )}
-      {chartOverlayOpen && (
+      {false && chartOverlayOpen && (
         <div className="chart-overlay">
           <div className="chart-overlay-backdrop" onClick={() => setChartOverlayOpen(false)} />
           <div className="chart-overlay-panel">

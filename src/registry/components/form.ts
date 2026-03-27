@@ -226,7 +226,11 @@ export const formComponents: ComponentRegistry["components"] = {
             "Vertical 纵向"
           ]
         }
-      ]
+      ],
+      "propertyMap": {
+        "Items 数量": { "sourceParam": "optionsText", "transform": "list:length" },
+        "Layout 布局": { "sourceParam": "direction", "transform": "direction:layout" }
+      }
     },
     "colorVariableBindings": {
       "radio-bg": {
@@ -302,7 +306,7 @@ export const formComponents: ComponentRegistry["components"] = {
     "schemaVersion": "2.0.0",
     "prompts": {
       "description": "自定义表单容器，支持横向、纵向布局，也支持对齐方式和标签长度预设",
-      "usage": "## draw_form 使用规则\n\n**创建/新建表单** → `draw_form(payload)`，**修改已有表单** → `apply_scene`（增量改，不要重新生成）\n\n### payload 结构\n```\n{\n  layout?: 'vertical'(默认) | 'horizontal',\n  align?: 'top'(默认) | 'left' | 'right',\n  labelWidthPreset?: 'fill'(默认) | 'default-80' | 'medium-120' | 'large-160',\n  width?: number,          // 0=自动\n  rowSpacing?: number,     // 默认 24\n  rows: FieldItem[][],     // 每行一个子数组；默认每行只放 1 个字段\n  footer?: {               // 按钮区（独立于 rows，不要放进 rows 里）\n    actions: ActionItem[],\n    align?: 'end'(默认) | 'start' | 'center'\n  }\n}\n```\n\n### FieldItem 字段格式\n```\n{ componentId: 'input'|'select'|'checkbox-group'|'radio-group'|'switch'|\n               'datepicker'|'timepicker'|'inputnumber'|'slider'|'textarea'|'upload',\n  label: string, required?: boolean, placeholder?: string,\n  props?: { optionsText?: string, checkedValues?: string, value?: string, ... } }\n```\n\n### 关键规则\n- **默认单列**：每个 rows 子数组只放 1 个字段，除非用户明确要求双列/多列\n- **按钮独立**：提交/重置等操作按钮放 `footer.actions`，不要放进 rows\n- **不要用 form-row 包单字段**：`form-row` 仅在同一行多字段时自动使用\n- 如果用户要\"筛选器/筛选条\"→ 用 `create_node(\"filter-group\")`，不是 draw_form\n- 图片生成场景：必须用 rows[][] 输出所有识别到的字段，不要省略",
+      "usage": "## draw_form 使用规则\n\n**创建/新建表单** → `draw_form(payload)`，**修改已有表单** → `apply_scene`（增量改，不要重新生成）\n\n### payload 结构\n```\n{\n  layout?: 'vertical'(默认) | 'horizontal',\n  align?: 'top'(默认) | 'left' | 'right',\n  labelWidthPreset?: 'fill'(默认) | 'default-80' | 'medium-120' | 'large-160',\n  width?: number,          // 0=自动\n  rowSpacing?: number,     // 默认 24\n  rows: FieldItem[][],     // 每行一个子数组；默认每行只放 1 个字段\n  footer?: {               // 按钮区（独立于 rows，不要放进 rows 里）\n    actions: ActionItem[],\n    align?: 'end'(默认) | 'start' | 'center'\n  }\n}\n```\n\n### FieldItem 字段格式\n```\n{ componentId: 'input'|'select'|'checkbox-group'|'radio-group'|'switch'|\n               'datepicker'|'timepicker'|'inputnumber'|'slider'|'textarea'|'upload',\n  label: string, required?: boolean, placeholder?: string,\n  props?: { optionsText?: string, checkedValues?: string, value?: string, ... } }\n```\n\n### 关键规则\n- **默认单列**：每个 rows 子数组只放 1 个字段，除非用户明确要求双列/多列\n- **按钮独立**：提交/重置等操作按钮放 `footer.actions`，不要放进 rows\n- **不要用 form-row 包单字段**：`form-row` 仅在同一行多字段时自动使用\n- 如果用户要“筛选器/筛选条”→ 用 `create_node(\"filter-group\")`，不是 draw_form\n- 图片生成场景：必须用 rows[][] 输出所有识别到的字段，不要省略\n- **必填项处理**：绝对不要把星号(*)写进 label 字符串里，必须通过 `required: true` 控制\n- **radio-group / checkbox-group 必须通过 props.optionsText 列出所有可选项**（逗号分隔），选项文字会直接显示在组件上，不要省略任何选项",
       "examples": [
         "## 示例1：纵向登录表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\", \"labelWidthPreset\": \"fill\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"用户名\", \"required\": true, \"placeholder\": \"请输入用户名\" }],\n    [{ \"componentId\": \"input\", \"label\": \"密码\", \"required\": true, \"placeholder\": \"请输入密码\" }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"登录\", \"variant\": \"primary\" }], \"align\": \"center\" }\n}```",
         "## 示例2：带下拉/复选的纵向编辑表单\n```json\n{ \"layout\": \"vertical\", \"align\": \"top\",\n  \"rows\": [\n    [{ \"componentId\": \"input\", \"label\": \"姓名\", \"required\": true }],\n    [{ \"componentId\": \"select\", \"label\": \"部门\", \"props\": { \"optionsText\": \"产品,研发,设计,运营\" } }],\n    [{ \"componentId\": \"radio-group\", \"label\": \"性别\", \"props\": { \"optionsText\": \"男,女\", \"checkedValues\": \"男\" } }],\n    [{ \"componentId\": \"datepicker\", \"label\": \"入职日期\" }],\n    [{ \"componentId\": \"textarea\", \"label\": \"备注\", \"placeholder\": \"请输入备注\" }],\n    [{ \"componentId\": \"inputnumber\", \"label\": \"数量\", \"disabled\": true }]\n  ],\n  \"footer\": { \"actions\": [{ \"label\": \"保存\", \"variant\": \"primary\" }, { \"label\": \"取消\" }], \"align\": \"end\" }\n}```",
@@ -323,7 +327,8 @@ export const formComponents: ComponentRegistry["components"] = {
         "按钮(提交/重置)放进了 rows 里 → 应放 footer.actions",
         "单字段行用了 form-row 包裹 → form-row 仅用于同行多字段",
         "rows 里直接放控件实例 → 应通过 form-field 统一承载并传递控件参数",
-        "图片生成时只输出了部分字段 → 必须输出所有识别到的字段"
+        "图片生成时只输出了部分字段 → 必须输出所有识别到的字段",
+        "把必填星号(*)写进了 label 文字里 → label 应纯文本，必填项使用 required: true"
       ],
       "agentHints": [
         "控件类型不确定→input，有选项→select/checkbox-group/radio-group，时间日期→datepicker/timepicker，长文→textarea，数字→inputnumber",
@@ -950,7 +955,11 @@ export const formComponents: ComponentRegistry["components"] = {
             "Horizontal 横向"
           ]
         }
-      ]
+      ],
+      "propertyMap": {
+        "Items 数量": { "sourceParam": "optionsText", "transform": "list:length" },
+        "Layout 布局": { "sourceParam": "direction", "transform": "direction:layout" }
+      }
     }
   },
   "switch": {

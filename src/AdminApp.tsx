@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { COMPONENT_REGISTRY } from './registry';
 import { BASE_COLOR_TOKEN_PACK, SEMANTIC_COLOR_TOKEN_PACK } from './theme/volcengine-design/color-tokens';
 import { BASE_TYPOGRAPHY_TOKEN_PACK } from './theme/volcengine-design/typography';
@@ -1377,6 +1377,182 @@ function ArchDivider({ label }: { label: string }) {
   );
 }
 
+function MetricsView() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchMetrics = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // 在本地开发时，如果没有部署到生产环境，你可以修改这里的 URL 指向你本地的 wrangler (通常是 http://127.0.0.1:8787)
+      const WORKER_URL = 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+      const res = await fetch(`${WORKER_URL}/api/metrics`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const json = await res.json();
+      setData(json);
+    } catch (err: any) {
+      setError(err.message || '获取数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetrics();
+  }, []);
+
+  if (loading) return <div style={{ padding: 24 }}>正在加载埋点数据...</div>;
+  if (error) return <div style={{ padding: 24, color: 'red' }}>错误: {error} <button onClick={fetchMetrics} style={{marginLeft: 8, padding: '4px 8px'}}>重试</button></div>;
+  if (!data) return null;
+
+  return (
+    <div className="section-card" style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '24px', fontWeight: 600, margin: 0, color: '#1d2129' }}>Agent 线上运行数据总览</h2>
+        <button 
+          onClick={fetchMetrics} 
+          style={{ 
+            padding: '8px 16px', 
+            background: '#1664ff', 
+            color: '#fff', 
+            border: 'none', 
+            borderRadius: '6px', 
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 2px 4px rgba(22, 100, 255, 0.2)',
+            transition: 'background 0.2s'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#0e52d6'}
+          onMouseOut={(e) => e.currentTarget.style.background = '#1664ff'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          刷新数据
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '40px' }}>
+        {[
+          { label: '总事件数', value: data.totals.total_events || 0, bg: '#ffffff', border: '1px solid #e5e6eb', color: '#1d2129', icon: 'M4 6h16M4 12h16M4 18h16' },
+          { label: '总发起对话数', value: data.totals.total_sessions || 0, bg: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+          { label: '总 AI 生成次数', value: data.totals.total_generations || 0, bg: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', icon: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+          { label: '总消耗 Token', value: (data.totals.total_tokens || 0).toLocaleString(), bg: '#fffbeb', border: '1px solid #fef3c7', color: '#b45309', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' }
+        ].map((item, i) => (
+          <div key={i} style={{ 
+            flex: 1, 
+            background: item.bg, 
+            padding: '24px', 
+            borderRadius: '12px', 
+            border: item.border,
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4e5969', fontSize: '14px', fontWeight: 500 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={item.icon} />
+              </svg>
+              {item.label}
+            </div>
+            <div style={{ fontSize: '36px', fontWeight: 700, color: item.color, lineHeight: 1 }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1d2129', marginBottom: '16px' }}>近 7 天趋势</h3>
+      <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e5e6eb', overflow: 'hidden', marginBottom: '40px' }}>
+        <table className="props-table" style={{ margin: 0, width: '100%', border: 'none' }}>
+          <thead>
+            <tr>
+              <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>日期</th>
+              <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>对话数</th>
+              <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>生成数</th>
+              <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>消耗 Token</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.daily.map((day: any) => (
+              <tr key={day.date} style={{ borderBottom: '1px solid #f2f3f5' }}>
+                <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.date}</td>
+                <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_sessions}</td>
+                <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_generations}</td>
+                <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_tokens.toLocaleString()}</td>
+              </tr>
+            ))}
+            {data.daily.length === 0 && (
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#86909c' }}>暂无数据</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1d2129', marginBottom: '16px' }}>最新事件流 (Top 50)</h3>
+      <div style={{ maxHeight: '500px', overflowY: 'auto', background: '#fff', border: '1px solid #e5e6eb', borderRadius: '8px' }}>
+        <table className="props-table" style={{ border: 'none', margin: 0, width: '100%' }}>
+          <thead style={{ position: 'sticky', top: 0, background: '#f7f8fa', zIndex: 1 }}>
+            <tr>
+              <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>时间</th>
+              <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>用户</th>
+              <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>事件类型</th>
+              <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>详情 (JSON)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.recent.map((item: any) => (
+              <tr key={item.id} style={{ borderBottom: '1px solid #f2f3f5' }}>
+                <td style={{ whiteSpace: 'nowrap', padding: '12px 16px', color: '#86909c', fontSize: '13px' }}>
+                  {new Date(item.created_at).toLocaleString()}
+                </td>
+                <td style={{ padding: '12px 16px', color: '#1d2129' }}>{item.user_id}</td>
+                <td style={{ padding: '12px 16px' }}>
+                  <span className="tag" style={{ 
+                    background: item.event_type === 'ai_generation' ? '#e8f3ff' : item.event_type === 'chat_start' ? '#e8ffea' : '#f2f3f5',
+                    color: item.event_type === 'ai_generation' ? '#1664ff' : item.event_type === 'chat_start' ? '#00b42a' : '#4e5969',
+                    border: 'none',
+                    padding: '2px 8px',
+                    borderRadius: '4px'
+                  }}>
+                    {item.event_type}
+                  </span>
+                </td>
+                <td style={{ padding: '12px 16px' }}>
+                  <div style={{ 
+                    background: '#f7f8fa', 
+                    padding: '8px 12px', 
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
+                    color: '#4e5969',
+                    maxHeight: '60px',
+                    overflowY: 'auto',
+                    wordBreak: 'break-all'
+                  }} title={item.details}>
+                    {item.details}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {data.recent.length === 0 && (
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: '#86909c' }}>暂无事件记录</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function OverviewView() {
   const allComponents = Object.values(COMPONENT_REGISTRY.components);
   const cats: Record<string, number> = {};
@@ -1835,7 +2011,7 @@ function PromptView() {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 
-type NavPage = 'overview' | 'registry' | 'theme' | 'skills' | 'prompt';
+type NavPage = 'overview' | 'registry' | 'theme' | 'skills' | 'prompt' | 'metrics';
 
 const NAV_ITEMS: { id: NavPage; label: string; dot: string; desc: string }[] = [
   { id: 'overview', label: '总览', dot: '#1d2129', desc: '项目架构概览' },
@@ -1843,6 +2019,7 @@ const NAV_ITEMS: { id: NavPage; label: string; dot: string; desc: string }[] = [
   { id: 'theme', label: 'Layer 2 — 主题包', dot: '#059669', desc: 'theme.*.ts' },
   { id: 'skills', label: 'Layer 3 — 技能包', dot: '#c05621', desc: 'renderNotes & skills' },
   { id: 'prompt', label: 'System Prompt', dot: '#7c3aed', desc: 'generateMasterPrompt()' },
+  { id: 'metrics', label: '埋点数据观测', dot: '#eab308', desc: 'Agent 线上运行数据' },
 ];
 
 export default function AdminApp() {
@@ -1855,6 +2032,7 @@ export default function AdminApp() {
     theme: <ThemeView />,
     skills: <SkillsView />,
     prompt: <PromptView />,
+    metrics: <MetricsView />,
   };
 
   return (

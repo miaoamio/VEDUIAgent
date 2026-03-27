@@ -12,3 +12,9 @@ ALLOWED_ORIGINS = ""
 
 # 每分钟每 IP 最大请求数
 RATE_LIMIT_PER_MINUTE = "30"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "figma-ui-agent-metrics"
+database_id = "3a311876-2a87-436b-b08a-fac6cd168968"
+

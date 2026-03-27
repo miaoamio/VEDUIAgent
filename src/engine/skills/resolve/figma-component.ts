@@ -162,5 +162,52 @@ export async function renderFigmaComponentInstance(
       }
     }
   }
+
+  // Radio-group / Checkbox-group: overwrite option labels from optionsText
+  if (
+    componentToken === "lib-data-input-radio-group" ||
+    componentToken === "lib-data-input-checkbox-group"
+  ) {
+    const optionsRaw = String(params.optionsText ?? "");
+    const options = optionsRaw.split(/[,，\n\r]/).map((s: string) => s.trim()).filter(Boolean);
+    if (options.length > 0) {
+      // Each option is a child instance (Radio 单选框 / Checkbox 复选框) containing a TEXT node.
+      // Collect all direct/nested child instances that contain a text node with option-like text.
+      const optionInstances: InstanceNode[] = [];
+      const collectOptionInstances = (node: SceneNode) => {
+        if (node.type === "INSTANCE") {
+          // Check if this instance looks like a radio/checkbox option (has a text child)
+          const hasText = node.findOne((n) => n.type === "TEXT");
+          if (hasText) {
+            optionInstances.push(node);
+            return; // Don't recurse into option instances
+          }
+        }
+        if ("children" in node) {
+          for (const child of (node as any).children) {
+            collectOptionInstances(child);
+          }
+        }
+      };
+      for (const child of importedInstance.children) {
+        collectOptionInstances(child as SceneNode);
+      }
+
+      // Overwrite text in each option instance, matching by index
+      for (let i = 0; i < Math.min(options.length, optionInstances.length); i++) {
+        const optInst = optionInstances[i];
+        const textNode = optInst.findOne((n) => n.type === "TEXT") as TextNode | null;
+        if (textNode) {
+          try {
+            await figma.loadFontAsync(textNode.fontName as FontName);
+            textNode.characters = options[i];
+          } catch (e) {
+            console.warn(`[Render] Failed to update option text [${i}]`, e);
+          }
+        }
+      }
+    }
+  }
+
   return renderedNode;
 }

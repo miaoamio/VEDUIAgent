@@ -374,7 +374,8 @@ function isFormFieldLayoutAffecting(prev: Record<string, any>, next: Record<stri
          'label',
          'required',
          'showHelpIcon',
-         'showColon'
+         'showColon',
+         'controlType'
      ];
      return keys.some((k) => String(prev[k] || '') !== String(next[k] || ''));
  }
@@ -3730,6 +3731,10 @@ function applyFigmaComponentProps(
             // count comma/newline-separated items
             const items = String(rawValue).split(/[,，\n\r]/).map((s) => s.trim()).filter(Boolean);
             value = String(Math.max(2, items.length));
+        } else if (binding.transform === 'direction:layout') {
+            // "horizontal" → "Horizontal 横向", "vertical" → "Vertical 纵向"
+            const dir = String(rawValue).trim().toLowerCase();
+            value = dir === 'vertical' ? 'Vertical 纵向' : 'Horizontal 横向';
         } else if (binding.transform && binding.transform.startsWith('boolean:')) {
             // e.g. "boolean:Disabled?Default"
             const parts = binding.transform.replace('boolean:', '').split('?');
@@ -5022,6 +5027,13 @@ async function updateFormLayoutParams(
                     childNode.counterAxisSizingMode = 'FIXED';
                 }
             }
+            // 3. Height must always be HUG content. replaceSceneNode may have
+            //    inherited a FIXED height from the old node (especially when
+            //    switching between horizontal/vertical layouts where the axis
+            //    semantics of primaryAxisSizingMode / counterAxisSizingMode swap).
+            if ('layoutMode' in childNode && childNode.layoutMode !== 'NONE') {
+                try { (childNode as any).layoutSizingVertical = 'HUG'; } catch {}
+            }
 
         }
     }
@@ -5655,8 +5667,15 @@ function replaceSceneNode(oldNode: SceneNode, newNode: SceneNode): boolean {
         }
     }
     
-    // 对于表单控件，不从旧节点继承垂直尺寸模式（避免从模板占位符继承 100px 固定高度）
-    const isFormFieldControl = oldName === 'form-field-control' || newNode.name === 'form-field-control' || oldNode.getPluginData('component-id') === 'form-field-control' || newNode.getPluginData('component-id') === 'form-field-control';
+    // 对于表单相关节点，不从旧节点继承垂直尺寸模式。
+    // form-field-control: 避免从模板占位符继承 100px 固定高度
+    // form-field / form-row: 切换横向/纵向布局时，layoutMode 改变导致高度轴与宽度轴互换，
+    //   旧节点的 layoutSizingVertical / heightSizingMode 映射到新节点会把高度从 HUG 改为 FIXED。
+    const formComponentId = oldNode.getPluginData('component-id') || newNode.getPluginData('component-id') || '';
+    const isFormFieldControl = oldName === 'form-field-control' || newNode.name === 'form-field-control'
+        || formComponentId === 'form-field-control'
+        || formComponentId === 'form-field'
+        || formComponentId === 'form-row';
 
     if (!isFormFieldControl && oldLayoutSizingVertical !== undefined && 'layoutSizingVertical' in newNode) {
         try {
@@ -7450,6 +7469,25 @@ async function renderComponent(
 
     if (INPUT_LIKE_CONTROL_TYPES.has(controlType)) {
         applyFormControlWidthModeToNode(controlNode, params);
+    } else {
+        // 对于 switch、checkbox-group 等非输入框组件，强制不拉伸，维持原始宽度
+        if ('layoutAlign' in controlNode) {
+            try { (controlNode as any).layoutAlign = 'INHERIT'; } catch {}
+        }
+        if ('layoutGrow' in controlNode) {
+            try { (controlNode as any).layoutGrow = 0; } catch {}
+        }
+        if ('layoutSizingHorizontal' in controlNode) {
+            try {
+                const current = (controlNode as any).layoutSizingHorizontal;
+                if (current === 'FILL') {
+                    // 优先尝试 HUG（适应内容），如果报错则忽略（保持 FIXED）
+                    (controlNode as any).layoutSizingHorizontal = 'HUG';
+                }
+            } catch {
+                try { (controlNode as any).layoutSizingHorizontal = 'FIXED'; } catch {}
+            }
+        }
     }
 
     // When controlWidthMode is "fill", the form-field frame itself must also
