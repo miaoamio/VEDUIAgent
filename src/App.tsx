@@ -91,6 +91,7 @@ const MAX_CHILD_SUMMARY_ITEMS = 6;
 const MAX_TABLE_PREVIEW_CHARS = 200;
 const MAX_TABLE_CONTEXT_ROWS = 10;
 const MAX_ATTACHMENT_IMAGES_PER_TURN = 4;
+const MAX_ATTACHMENT_TABLES_PER_TURN = 4;
 const STREAM_TABLE_PREFIX = '@@table_stream';
 const TABLE_SPEC_IDS = ['table', 'table-column', 'table-header-cell', 'table-cell'];
 const CHART_SPEC_IDS = ['chart-toplist', 'chart-pie', 'chart-line', 'chart-bar', 'chart-area'];
@@ -2034,6 +2035,8 @@ function App() {
   const [uploadedImages, setUploadedImages] = React.useState<UploadedImageAttachment[]>([]);
   const [uploadedTables, setUploadedTables] = React.useState<UploadedTableAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
+  const [imageLimitNotice, setImageLimitNotice] = React.useState(false);
+  const [tableLimitNotice, setTableLimitNotice] = React.useState(false);
   const [agentPlan, setAgentPlan] = React.useState<AgentPlanState | null>(null);
   const [manualTaskRunner, setManualTaskRunner] = React.useState(false);
   const [planTasksCollapsed, setPlanTasksCollapsed] = React.useState(false);
@@ -2457,11 +2460,20 @@ function App() {
 
   const handleImageFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
+    if (uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN) {
+      setImageLimitNotice(true);
+      return;
+    }
     setAttachmentError(null);
 
+    const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES_PER_TURN - uploadedImages.length);
+    const incomingImageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (incomingImageFiles.length > remainingSlots) {
+      setImageLimitNotice(true);
+    }
+
     const nextImages: UploadedImageAttachment[] = [];
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) continue;
+    for (const file of incomingImageFiles.slice(0, remainingSlots)) {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         nextImages.push({
@@ -2479,14 +2491,24 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, []);
+  }, [uploadedImages.length]);
 
   const handleTableFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
+    if (uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN) {
+      setTableLimitNotice(true);
+      return;
+    }
     setAttachmentError(null);
 
+    const remainingSlots = Math.max(0, MAX_ATTACHMENT_TABLES_PER_TURN - uploadedTables.length);
+    const incomingFiles = Array.from(files);
+    if (incomingFiles.length > remainingSlots) {
+      setTableLimitNotice(true);
+    }
+
     const nextTables: UploadedTableAttachment[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of incomingFiles.slice(0, remainingSlots)) {
       try {
         nextTables.push(await parseUploadedTable(file));
       } catch (e) {
@@ -2507,7 +2529,7 @@ function App() {
     if (nextTables.length > 0) {
       setUploadedTables((prev) => [...prev, ...nextTables]);
     }
-  }, []);
+  }, [uploadedTables.length]);
 
   const handlePaste = React.useCallback(async (event: React.ClipboardEvent<HTMLElement>) => {
     const items = Array.from(event.clipboardData?.items || []);
@@ -2517,12 +2539,21 @@ function App() {
       .filter((file): file is File => Boolean(file));
 
     if (imageFiles.length === 0) return;
+    if (uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN) {
+      setImageLimitNotice(true);
+      return;
+    }
 
     event.preventDefault();
     setAttachmentError(null);
 
+    const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES_PER_TURN - uploadedImages.length);
+    if (imageFiles.length > remainingSlots) {
+      setImageLimitNotice(true);
+    }
+
     const nextImages: UploadedImageAttachment[] = [];
-    for (const file of imageFiles) {
+    for (const file of imageFiles.slice(0, remainingSlots)) {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         nextImages.push({
@@ -2540,7 +2571,19 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, []);
+  }, [uploadedImages.length]);
+
+  React.useEffect(() => {
+    if (uploadedImages.length < MAX_ATTACHMENT_IMAGES_PER_TURN) {
+      setImageLimitNotice(false);
+    }
+  }, [uploadedImages.length]);
+
+  React.useEffect(() => {
+    if (uploadedTables.length < MAX_ATTACHMENT_TABLES_PER_TURN) {
+      setTableLimitNotice(false);
+    }
+  }, [uploadedTables.length]);
 
   const clearChartPrompt = React.useCallback(() => {
     setChartShortcutActive(null);
@@ -7987,19 +8030,19 @@ StepD:
     ],
     '柱状图': [
       { key: 'seriesCount', label: '每组柱数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
+      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠'], defaultValue: '基础/分组柱' }
     ],
     '条形图': [
       { key: 'seriesCount', label: '线数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
+      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠', '特殊'], defaultValue: '基础/分组柱' }
     ],
     '折线图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
+      { key: 'chartType', label: '类型', options: ['默认', '平滑', '大数据'], defaultValue: '默认' }
     ],
     '面积图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
+      { key: 'chartType', label: '类型', options: ['默认', '平滑', '堆叠', '百分比'], defaultValue: '默认' }
     ]
   };
   const buildQuickComponentName = (displayName: string, token: string) => {
@@ -9683,6 +9726,64 @@ StepD:
       {activeTab === 'chat' ? (
         <div className="chat-layout">
           <div className="chat-scroll" ref={chatScrollRef}>
+            {uiMessages.length === 0 && (
+              <div className="chat-empty-guide">
+                <p className="chat-empty-guide-text">请尝试以下例子来生成设计</p>
+                <div className="chat-empty-guide-examples">
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      replaceQuickPrompt('生成一个表格');
+                      setChartPromptMode(false);
+                      setChartShortcutActive(null);
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setAttachmentMenuOpen(false);
+                      setQuickComponentMenuOpen(false);
+                      composerTextareaRef.current?.focus();
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个表格
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      replaceQuickPrompt('生成一个表单');
+                      setChartPromptMode(false);
+                      setChartShortcutActive(null);
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setAttachmentMenuOpen(false);
+                      setQuickComponentMenuOpen(false);
+                      composerTextareaRef.current?.focus();
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个表单
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      setUserInput('');
+                      setChartShortcutActive('折线图');
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setChartOverlayOpen(true);
+                      setAttachmentMenuOpen(false);
+                      setChartMenuOpen(false);
+                      requestAnimationFrame(() => focusComposerInput());
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个折线图
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="chat-thread">
               {uiMessages.map((msg, index) => (
                 <div key={`${msg.role}_${index}`} className={`chat-message ${msg.role}`}>
@@ -10055,6 +10156,24 @@ StepD:
                       </button>
                     </div>
                   ))}
+                  {imageLimitNotice && uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN && (
+                    <div className="attachment-image-limit-hint" role="status">
+                      <span className="attachment-image-limit-icon" aria-hidden="true">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M12 8V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M12 16H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <span className="attachment-image-limit-text">图片最多4张，已自动选取前4张</span>
+                    </div>
+                  )}
                   {uploadedTables.map((table) => {
                     const svgBaseId = `svg_${String(table.id).replace(/[^a-zA-Z0-9]/g, '') || 'file'}`;
                     const clipId = `${svgBaseId}_clip0`;
@@ -10123,6 +10242,18 @@ StepD:
                       </div>
                     );
                   })}
+                  {tableLimitNotice && uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN && (
+                    <div className="attachment-table-limit-hint" role="status">
+                      <span className="attachment-table-limit-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M12 8V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M12 16H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <span className="attachment-table-limit-text">表格文件最多4张，已自动选取前4个文件</span>
+                    </div>
+                  )}
               {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
             </div>
           )}
@@ -10133,7 +10264,9 @@ StepD:
                 <div className="composer-textarea-wrap" style={{ paddingTop: '10px', transition: 'padding-top 0.2s ease-in-out' }}>
                   {chartShortcutActive ? (
                     <div
-                      className="composer-rich-editor"
+                      className={`composer-rich-editor ${
+                        chartMenuOpen || Boolean(activeOptionMenu) ? 'composer-rich-editor-dropdown-open' : ''
+                      }`}
                       onMouseDown={(event) => {
                         event.stopPropagation();
                         if (!(event.target instanceof HTMLElement)) return;
@@ -10347,75 +10480,95 @@ StepD:
                       </button>
                       {attachmentMenuOpen && (
                         <div className="composer-menu">
-                          <button
-                            type="button"
-                            className="composer-menu-item"
-                            onClick={() => {
-                              setAttachmentMenuOpen(false);
-                              imageInputRef.current?.click();
-                            }}
-                            disabled={loading}
+                          <Tooltip
+                            content="图片最多4张"
+                            enabled={uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN}
+                            placement="top-start"
                           >
-                            <span className="composer-menu-icon">
-                              <svg
-                                className="icon-screenshot"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                role="img"
-                                aria-label="截图图标"
-                                focusable="false"
+                            <div className="composer-menu-item-wrap">
+                              <button
+                                type="button"
+                                className="composer-menu-item"
+                                onClick={() => {
+                                  setAttachmentMenuOpen(false);
+                                  imageInputRef.current?.click();
+                                }}
+                                disabled={loading || uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN}
                               >
-                                <title>截图图标</title>
-                                <path
-                                  d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
-                                  fill="#18181B"
-                                />
-                              </svg>
-                            </span>
-                            上传截图
-                          </button>
-                          <button
-                            type="button"
-                            className="composer-menu-item"
-                            onClick={() => {
-                              setAttachmentMenuOpen(false);
-                              tableInputRef.current?.click();
-                            }}
-                            disabled={loading}
+                                <span className="composer-menu-icon">
+                                  <svg
+                                    className="icon-screenshot"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    role="img"
+                                    aria-label="截图图标"
+                                    focusable="false"
+                                  >
+                                    <title>截图图标</title>
+                                    <path
+                                      d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </span>
+                                上传截图
+                              </button>
+                            </div>
+                          </Tooltip>
+                          <Tooltip
+                            content={
+                              uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN
+                                ? '表格文件最多4个'
+                                : '每个表格最多读取前10行用于生成，超出将截断'
+                            }
+                            enabled={!loading}
+                            placement="top-start"
                           >
-                            <span className="composer-menu-icon">
-                              <svg
-                                className="icon-spreadsheet-file"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                role="img"
-                                aria-label="表格文件图标"
-                                focusable="false"
+                            <div className="composer-menu-item-wrap">
+                              <button
+                                type="button"
+                                className="composer-menu-item"
+                                onClick={() => {
+                                  setAttachmentMenuOpen(false);
+                                  tableInputRef.current?.click();
+                                }}
+                                disabled={loading || uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN}
                               >
-                                <title>表格文件图标</title>
-                                <g clipPath="url(#clip0_icon_spreadsheet_file)">
-                                  <path
-                                    fillRule="evenodd"
-                                    clipRule="evenodd"
-                                    d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
-                                    fill="#18181B"
-                                  />
-                                </g>
-                                <defs>
-                                  <clipPath id="clip0_icon_spreadsheet_file">
-                                    <rect width="16" height="16" fill="white" />
-                                  </clipPath>
-                                </defs>
-                              </svg>
-                            </span>
-                            上传表格
-                          </button>
+                                <span className="composer-menu-icon">
+                                  <svg
+                                    className="icon-spreadsheet-file"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    role="img"
+                                    aria-label="表格文件图标"
+                                    focusable="false"
+                                  >
+                                    <title>表格文件图标</title>
+                                    <g clipPath="url(#clip0_icon_spreadsheet_file)">
+                                      <path
+                                        fillRule="evenodd"
+                                        clipRule="evenodd"
+                                        d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
+                                        fill="currentColor"
+                                      />
+                                    </g>
+                                    <defs>
+                                      <clipPath id="clip0_icon_spreadsheet_file">
+                                        <rect width="16" height="16" fill="white" />
+                                      </clipPath>
+                                    </defs>
+                                  </svg>
+                                </span>
+                                上传表格
+                              </button>
+                            </div>
+                          </Tooltip>
                         </div>
                       )}
                     </div>
