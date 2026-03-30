@@ -2458,19 +2458,48 @@ function App() {
     }, '*');
   };
 
+  const isImageUploadAtLimit = uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN;
+  const isTableUploadAtLimit = uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN;
+  const getTableUploadTooltip = React.useCallback(
+    (tableCount: number) =>
+      tableCount >= MAX_ATTACHMENT_TABLES_PER_TURN
+        ? '表格文件最多4个'
+        : '每个表格最多读取前10行用于生成，超出将截断',
+    []
+  );
+
+  const getRemainingAttachmentSlots = React.useCallback(
+    (
+      currentCount: number,
+      maxLimit: number,
+      incomingCount: number,
+      setNotice: React.Dispatch<React.SetStateAction<boolean>>
+    ) => {
+      const remainingSlots = Math.max(0, maxLimit - currentCount);
+      if (remainingSlots === 0) {
+        setNotice(true);
+        return 0;
+      }
+      if (incomingCount > remainingSlots) {
+        setNotice(true);
+      }
+      return remainingSlots;
+    },
+    []
+  );
+
   const handleImageFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
-    if (uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN) {
-      setImageLimitNotice(true);
-      return;
-    }
     setAttachmentError(null);
 
-    const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES_PER_TURN - uploadedImages.length);
     const incomingImageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
-    if (incomingImageFiles.length > remainingSlots) {
-      setImageLimitNotice(true);
-    }
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedImages.length,
+      MAX_ATTACHMENT_IMAGES_PER_TURN,
+      incomingImageFiles.length,
+      setImageLimitNotice
+    );
+    if (remainingSlots === 0) return;
 
     const nextImages: UploadedImageAttachment[] = [];
     for (const file of incomingImageFiles.slice(0, remainingSlots)) {
@@ -2491,21 +2520,20 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, [uploadedImages.length]);
+  }, [getRemainingAttachmentSlots, uploadedImages.length]);
 
   const handleTableFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
-    if (uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN) {
-      setTableLimitNotice(true);
-      return;
-    }
     setAttachmentError(null);
 
-    const remainingSlots = Math.max(0, MAX_ATTACHMENT_TABLES_PER_TURN - uploadedTables.length);
     const incomingFiles = Array.from(files);
-    if (incomingFiles.length > remainingSlots) {
-      setTableLimitNotice(true);
-    }
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedTables.length,
+      MAX_ATTACHMENT_TABLES_PER_TURN,
+      incomingFiles.length,
+      setTableLimitNotice
+    );
+    if (remainingSlots === 0) return;
 
     const nextTables: UploadedTableAttachment[] = [];
     for (const file of incomingFiles.slice(0, remainingSlots)) {
@@ -2529,7 +2557,7 @@ function App() {
     if (nextTables.length > 0) {
       setUploadedTables((prev) => [...prev, ...nextTables]);
     }
-  }, [uploadedTables.length]);
+  }, [getRemainingAttachmentSlots, uploadedTables.length]);
 
   const handlePaste = React.useCallback(async (event: React.ClipboardEvent<HTMLElement>) => {
     const items = Array.from(event.clipboardData?.items || []);
@@ -2539,18 +2567,16 @@ function App() {
       .filter((file): file is File => Boolean(file));
 
     if (imageFiles.length === 0) return;
-    if (uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN) {
-      setImageLimitNotice(true);
-      return;
-    }
-
     event.preventDefault();
     setAttachmentError(null);
 
-    const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES_PER_TURN - uploadedImages.length);
-    if (imageFiles.length > remainingSlots) {
-      setImageLimitNotice(true);
-    }
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedImages.length,
+      MAX_ATTACHMENT_IMAGES_PER_TURN,
+      imageFiles.length,
+      setImageLimitNotice
+    );
+    if (remainingSlots === 0) return;
 
     const nextImages: UploadedImageAttachment[] = [];
     for (const file of imageFiles.slice(0, remainingSlots)) {
@@ -2571,7 +2597,7 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, [uploadedImages.length]);
+  }, [getRemainingAttachmentSlots, uploadedImages.length]);
 
   React.useEffect(() => {
     if (uploadedImages.length < MAX_ATTACHMENT_IMAGES_PER_TURN) {
@@ -10482,7 +10508,7 @@ StepD:
                         <div className="composer-menu">
                           <Tooltip
                             content="图片最多4张"
-                            enabled={uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN}
+                            enabled={isImageUploadAtLimit}
                             placement="top-start"
                           >
                             <div className="composer-menu-item-wrap">
@@ -10493,7 +10519,7 @@ StepD:
                                   setAttachmentMenuOpen(false);
                                   imageInputRef.current?.click();
                                 }}
-                                disabled={loading || uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN}
+                                disabled={loading || isImageUploadAtLimit}
                               >
                                 <span className="composer-menu-icon">
                                   <svg
@@ -10519,11 +10545,7 @@ StepD:
                             </div>
                           </Tooltip>
                           <Tooltip
-                            content={
-                              uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN
-                                ? '表格文件最多4个'
-                                : '每个表格最多读取前10行用于生成，超出将截断'
-                            }
+                            content={getTableUploadTooltip(uploadedTables.length)}
                             enabled={!loading}
                             placement="top-start"
                           >
@@ -10535,7 +10557,7 @@ StepD:
                                   setAttachmentMenuOpen(false);
                                   tableInputRef.current?.click();
                                 }}
-                                disabled={loading || uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN}
+                                disabled={loading || isTableUploadAtLimit}
                               >
                                 <span className="composer-menu-icon">
                                   <svg
