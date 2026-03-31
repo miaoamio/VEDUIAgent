@@ -2601,17 +2601,26 @@ function lockGeneratedContainerNode(node: BaseNode, componentId?: string) {
   }
 }
 
-function unlockGeneratedContainerNodes() {
-  generationLockedNodeIds.forEach((id) => {
-    const node = figma.getNodeById(id);
-    if (!node || !('locked' in node)) return;
-    try {
-      node.locked = false;
-    } catch (e) {
-      console.warn('Failed to unlock generated container node:', e);
-    }
-  });
+async function unlockGeneratedContainerNodes() {
+  const ids = Array.from(generationLockedNodeIds);
   generationLockedNodeIds.clear();
+  await Promise.all(
+    ids.map(async (id) => {
+      let node: BaseNode | null = null;
+      try {
+        node = await figma.getNodeByIdAsync(id);
+      } catch (e) {
+        console.warn('Failed to resolve generated container node:', e);
+        return;
+      }
+      if (!node || !('locked' in node)) return;
+      try {
+        (node as any).locked = false;
+      } catch (e) {
+        console.warn('Failed to unlock generated container node:', e);
+      }
+    })
+  );
 }
 
 function mergeUnique(base: string[] | undefined, incoming: string[] | undefined): string[] | undefined {
@@ -2711,6 +2720,15 @@ type OtherTagType = 'marketing' | 'group';
 const TAG_COMPONENT_TOKEN = 'lib-data-display-tag';
 const OTHER_TAG_COMPONENT_TOKEN = 'lib-data-display-other-tag';
 const STATUS_TAG_COMPONENT_TOKEN = 'lib-data-display-status-tag';
+const STATUS_TAG_THEME_OPTIONS = new Set([
+    'Success 成功',
+    'Warning 告警',
+    'Error 错误',
+    'Stop 停止',
+    'Processing 等待中',
+    'Loading 加载中',
+    'Waiting 待启用'
+]);
 
 function resolveTagComponentFamily(componentToken: unknown): TagComponentFamily {
     const normalized = String(componentToken || '').trim();
@@ -2856,10 +2874,72 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
                             ? 'Processing 等待中'
                             : undefined;
 
+    const resolveStatusThemeFromSemanticText = (value: unknown):
+        | 'Success 成功'
+        | 'Warning 告警'
+        | 'Error 错误'
+        | 'Stop 停止'
+        | 'Processing 等待中'
+        | 'Loading 加载中'
+        | 'Waiting 待启用'
+        | null => {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) return null;
+        if (normalized.includes('critical') || normalized.includes('严重') || normalized.includes('致命') || normalized.includes('高危')) return 'Error 错误';
+        if (normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) return 'Error 错误';
+        if (normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) return 'Warning 告警';
+        if (normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) return 'Stop 停止';
+        if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
+        if (
+            normalized.includes('waiting') ||
+            normalized.includes('待启用') ||
+            normalized.includes('待开始') ||
+            normalized.includes('未开始') ||
+            normalized.includes('not started') ||
+            normalized.includes('todo')
+        ) return 'Waiting 待启用';
+        if (
+            normalized.includes('processing') ||
+            normalized.includes('pending') ||
+            normalized.includes('等待') ||
+            normalized.includes('进行中') ||
+            normalized.includes('填写中') ||
+            normalized.includes('处理中') ||
+            normalized.includes('in progress') ||
+            normalized.includes('notice')
+        ) return 'Processing 等待中';
+        if (
+            normalized.includes('success') ||
+            normalized.includes('成功') ||
+            normalized.includes('启用') ||
+            normalized.includes('已完成') ||
+            normalized.includes('完成') ||
+            normalized.includes('done') ||
+            normalized.includes('completed') ||
+            normalized.includes('resolved') ||
+            normalized.includes('recovered') ||
+            normalized.includes('已恢复') ||
+            normalized.includes('恢复')
+        ) return 'Success 成功';
+        return null;
+    };
+
+    const normalizeStatusThemeInput = (value: unknown): string | undefined => {
+        if (value === undefined || value === null) return undefined;
+        const trimmed = String(value).trim();
+        if (!trimmed) return undefined;
+        if (STATUS_TAG_THEME_OPTIONS.has(trimmed)) return trimmed;
+        const mapped = resolveStatusThemeFromSemanticText(trimmed);
+        return mapped || undefined;
+    };
+
+    const semanticThemeOverride = resolveStatusThemeFromSemanticText(label) || undefined;
+    const normalizedStatusThemeInput = normalizeStatusThemeInput(params.statusTheme ?? params.theme ?? legacyStatusTheme);
+
     const tagParams: Record<string, any> = {
         text: label,
         componentToken: requestedToken,
-        tagType: params.tagType,
+        ...(isTypeTag ? { tagType: params.tagType } : {}),
         size: params.size,
         state: params.state,
         disabled: params.disabled,
@@ -2867,7 +2947,7 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
         showDot: params.showDot,
         showDropdown: params.showDropdown,
         closable: params.closable,
-        statusTheme: params.statusTheme ?? params.theme ?? legacyStatusTheme,
+        statusTheme: semanticThemeOverride || normalizedStatusThemeInput,
         statusType: params.statusType ?? params.statusLevel ?? params.level,
         statusState: params.statusState
     };
@@ -2883,6 +2963,12 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
     }
     if (family === 'status' && !normalizedTagParams.statusTheme) {
         normalizedTagParams.statusTheme = 'Success 成功';
+    }
+    if (family === 'status' && normalizedTagParams.showIcon === undefined) {
+        normalizedTagParams.showIcon = false;
+    }
+    if (family === 'status' && normalizedTagParams.showDropdown === undefined) {
+        normalizedTagParams.showDropdown = false;
     }
 
     return normalizedTagParams;
@@ -2904,7 +2990,7 @@ function resolveStatusTagTypeVariantLabel(value: unknown): 'L1 一级标签' | '
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized.includes('l3') || normalized.includes('三级') || normalized.endsWith('3')) return 'L3 三级标签';
     if (normalized.includes('l2') || normalized.includes('二级') || normalized.endsWith('2')) return 'L2 二级标签';
-    return 'L1 一级标签';
+    return 'L2 二级标签';
 }
 
 function resolveStatusTagThemeVariantLabel(
@@ -2918,12 +3004,19 @@ function resolveStatusTagThemeVariantLabel(
     | 'Loading 加载中'
     | 'Waiting 待启用' {
     const normalized = String(value || '').trim().toLowerCase();
+    if (normalized.includes('critical') || normalized.includes('严重') || normalized.includes('致命') || normalized.includes('高危')) {
+        return 'Error 错误';
+    }
+    if (normalized.includes('resolved') || normalized.includes('recovered') || normalized.includes('已恢复') || normalized.includes('恢复')) {
+        return 'Success 成功';
+    }
     if (normalized.includes('warning') || normalized.includes('告警')) return 'Warning 告警';
     if (normalized.includes('error') || normalized.includes('错误')) return 'Error 错误';
     if (normalized.includes('stop') || normalized.includes('停止')) return 'Stop 停止';
-    if (normalized.includes('processing') || normalized.includes('等待')) return 'Processing 等待中';
+    if (normalized.includes('notice') || normalized.includes('通知')) return 'Processing 等待中';
+    if (normalized.includes('processing') || normalized.includes('等待') || normalized.includes('填写中') || normalized.includes('进行中')) return 'Processing 等待中';
     if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-    if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
+    if (normalized.includes('waiting') || normalized.includes('待启用') || normalized.includes('待开始')) return 'Waiting 待启用';
     return 'Success 成功';
 }
 
@@ -3050,21 +3143,6 @@ function buildTagVariantCriteriaCandidates(
             'Disabled 禁用': toVariantBoolean(hasInputAffix(params.disabled))
         };
 
-        const requestedToggles = Object.fromEntries(
-            Object.entries(exact).filter(([key, value]) => {
-                if (
-                    key === 'Type 类型' ||
-                    key === 'Theme 主题' ||
-                    key === 'Size 尺寸' ||
-                    key === 'State 状态' ||
-                    key === 'Disabled 禁用'
-                ) {
-                    return false;
-                }
-                return value === 'True';
-            })
-        );
-
         return dedupeVariantCriteriaCandidates([
             exact,
             {
@@ -3075,19 +3153,24 @@ function buildTagVariantCriteriaCandidates(
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
                 'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择'],
                 'Disabled 禁用': exact['Disabled 禁用'],
-                ...requestedToggles
             },
             {
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
                 'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择'],
                 'Disabled 禁用': exact['Disabled 禁用']
             },
             {
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
-                'Size 尺寸': exact['Size 尺寸']
+                'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择']
             }
         ]);
     }
@@ -3189,6 +3272,56 @@ function findPreferredTextNode(root: SceneNode, preferredNames: string[]): TextN
     return preferredMatch || allTextNodes[0] || null;
 }
 
+function getTextNodeFontNames(node: TextNode): FontName[] {
+    const unique = new Map<string, FontName>();
+    const add = (font: FontName) => {
+        unique.set(`${font.family}::${font.style}`, font);
+    };
+    if (node.fontName !== figma.mixed) {
+        add(node.fontName as FontName);
+        return Array.from(unique.values());
+    }
+    const len = node.characters.length;
+    if (len <= 0) {
+        add({ family: 'Inter', style: 'Regular' });
+        return Array.from(unique.values());
+    }
+    for (let i = 0; i < len; i += 1) {
+        const font = node.getRangeFontName(i, i + 1);
+        if (font !== figma.mixed) add(font as FontName);
+    }
+    if (unique.size === 0) {
+        add({ family: 'Inter', style: 'Regular' });
+    }
+    return Array.from(unique.values());
+}
+
+function findStatusTagLabelNode(root: SceneNode, preferredLabel: string): TextNode | null {
+    const allTextNodes =
+        'findAll' in root
+            ? (root.findAll((node) => node.type === 'TEXT') as TextNode[])
+            : root.type === 'TEXT'
+                ? [root]
+                : [];
+    if (allTextNodes.length === 0) return null;
+
+    const normalizedPreferred = String(preferredLabel || '').trim();
+    const themes = ['Success', 'Warning', 'Error', 'Stop', 'Processing', 'Loading', 'Waiting'];
+    const themeLabelNode = allTextNodes.find((node) => themes.includes(String(node.characters || '').trim())) ||
+        allTextNodes.find((node) => themes.includes(String(node.name || '').trim()));
+
+    if (normalizedPreferred) {
+        const match = allTextNodes.find((node) => {
+            const nodeName = String(node.name || '').trim();
+            const nodeChars = String(node.characters || '').trim();
+            return nodeName === normalizedPreferred || nodeChars === normalizedPreferred;
+        });
+        if (match) return match;
+    }
+
+    return themeLabelNode || allTextNodes.find((node) => String(node.characters || '').trim().length > 0) || allTextNodes[0] || null;
+}
+
 function resolvePrimaryTagText(params: Record<string, any>): string {
     const raw = String(params.text ?? params.label ?? '').trim();
     return raw || '标签';
@@ -3271,11 +3404,10 @@ async function applyTagTemplateContent(
                 : typeof params.label === 'string' && params.label.trim()
                     ? params.label.trim()
                     : '';
-        if (explicitLabel) {
-            const labelNode = findPreferredTextNode(root, [explicitLabel, 'Success', 'Warning', 'Error']);
-            if (labelNode) {
-                await updateTextNodeCharacters(labelNode, explicitLabel);
-            }
+        const labelNode = findStatusTagLabelNode(root, explicitLabel);
+        const nextLabel = explicitLabel || resolvePrimaryTagText(params);
+        if (labelNode) {
+            await updateTextNodeCharacters(labelNode, nextLabel);
         }
         return;
     }
@@ -3361,6 +3493,13 @@ async function createTagFromFigmaTemplate(
         }
     }
 
+    if (family === 'status') {
+        return createTagFallbackNode({
+            ...params,
+            componentToken: componentToken || STATUS_TAG_COMPONENT_TOKEN
+        });
+    }
+
     try {
         const fallbackKey = buildTagTemplateCacheKey(componentKey);
         const cachedFallback = TAG_TEMPLATE_CACHE.get(fallbackKey);
@@ -3409,14 +3548,78 @@ async function createTagGlyphNode(
     return text;
 }
 
+function resolveStatusTagFallbackPalette(value: unknown): {
+    fill: string;
+    text: string;
+    stroke?: string;
+} {
+    const theme = resolveStatusTagThemeVariantLabel(value);
+    switch (theme) {
+        case 'Warning 告警':
+            return { fill: '#FFF7E8', text: '#FF7D00' };
+        case 'Error 错误':
+            return { fill: '#FFECE8', text: '#F53F3F' };
+        case 'Stop 停止':
+            return { fill: '#F2F3F5', text: '#4E5969' };
+        case 'Processing 等待中':
+            return { fill: '#E8F3FF', text: '#1664FF' };
+        case 'Loading 加载中':
+            return { fill: '#E8F3FF', text: '#1664FF' };
+        case 'Waiting 待启用':
+            return { fill: '#F2F3F5', text: '#4E5969' };
+        default:
+            return { fill: '#E8FFEA', text: '#00B42A' };
+    }
+}
+
+async function createStatusTagFallbackNode(params: Record<string, any>): Promise<FrameNode> {
+    const metrics = resolveTagMetrics(params.size);
+    const label = resolvePrimaryTagText(params);
+    const palette = resolveStatusTagFallbackPalette(params.statusTheme ?? params.theme);
+
+    const frame = figma.createFrame();
+    frame.layoutMode = 'HORIZONTAL';
+    frame.primaryAxisSizingMode = 'AUTO';
+    frame.counterAxisSizingMode = 'AUTO';
+    frame.counterAxisAlignItems = 'CENTER';
+    frame.primaryAxisAlignItems = 'CENTER';
+    frame.itemSpacing = 4;
+    frame.paddingLeft = metrics.paddingX;
+    frame.paddingRight = metrics.paddingX;
+    frame.paddingTop = 0;
+    frame.paddingBottom = 0;
+    frame.cornerRadius = metrics.cornerRadius;
+    frame.minHeight = metrics.height;
+    frame.fills = [{ type: 'SOLID', color: hexToRgb(palette.fill) }];
+    frame.strokes = palette.stroke ? [{ type: 'SOLID', color: hexToRgb(palette.stroke) }] : [];
+    frame.strokeWeight = palette.stroke ? 1 : 0;
+
+    const text = figma.createText();
+    text.characters = label;
+    const appliedTextStyle = await applyTextStyleBinding(text, 'tag-text-style-key', { family: 'Inter', style: 'Regular', size: metrics.fontSize });
+    if (!appliedTextStyle) {
+        text.fontSize = metrics.fontSize;
+        text.lineHeight = { value: metrics.height, unit: 'PIXELS' };
+    }
+    text.textAutoResize = 'WIDTH_AND_HEIGHT';
+    text.fills = [{ type: 'SOLID', color: hexToRgb(palette.text) }];
+    frame.appendChild(text);
+    return frame;
+}
+
 async function createTagFallbackNode(params: Record<string, any>): Promise<FrameNode> {
+    if (resolveTagComponentFamily(params.componentToken) === 'status') {
+        return createStatusTagFallbackNode(params);
+    }
     return createInspectDrivenTagFallbackNode(params);
 }
 
 async function updateTextNodeCharacters(node: TextNode, value: string): Promise<boolean> {
     try {
-        if (node.fontName !== figma.mixed) {
-            await figma.loadFontAsync(node.fontName as FontName);
+        const fonts = getTextNodeFontNames(node);
+        await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+        if (node.fontName === figma.mixed && node.characters.length === 0 && fonts[0]) {
+            node.fontName = fonts[0];
         }
         node.characters = String(value || '');
         return true;
@@ -9390,7 +9593,7 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === 'set-generation-lock') {
     generationLockEnabled = Boolean(msg.enabled);
     if (!generationLockEnabled) {
-      unlockGeneratedContainerNodes();
+      await unlockGeneratedContainerNodes();
     }
   }
 

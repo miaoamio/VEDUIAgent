@@ -206,7 +206,7 @@ export const tableComponents: ComponentRegistry["components"] = {
     "family": "table-cell",
     "prompts": {
       "description": "包含标签(Tag)的表格单元格（支持 StatusTag/TypeTag；状态标签默认使用 L2 二级标签）",
-      "usage": "用于在表格中显示标签，支持两类：1) 状态标签（StatusTag）：默认复用 figma token `lib-data-display-status-tag`，并默认使用 `statusType=L2 二级标签`；建议用 `statusTheme` 区分不同状态颜色。2) 类型/分类标签（TypeTag）：默认使用 `lib-data-display-tag`，用 `tagType` 控制样式（如 Outline）。仅当 Figma 组件不可用时回退本地渲染。",
+      "usage": "用于在表格中显示标签，支持两类：1) 状态标签（StatusTag）：设置 `tagKind=status`（或提供 `statusTheme`），默认使用 figma token `lib-data-display-status-tag`，并默认使用 `statusType=L2 二级标签`；用 `statusTheme` 区分不同状态颜色。注意：状态标签不要传 `tagType`（仅类型标签使用），避免与 StatusTag 产生冲突。2) 类型/分类标签（TypeTag）：设置 `tagKind=type`，默认使用 `lib-data-display-tag`，用 `tagType` 控制样式（如 Outline）。仅当 Figma 组件不可用时回退本地渲染。",
       "examples": [
         "状态标签: { \"componentId\": \"table-cell-tag\", \"params\": { \"tagKind\": \"status\", \"tagText\": \"启用\", \"statusTheme\": \"Success 成功\", \"statusType\": \"L2 二级标签\" } }",
         "类型标签: { \"componentId\": \"table-cell-tag\", \"params\": { \"tagKind\": \"type\", \"tagText\": \"企业\", \"tagType\": \"Outline 线型标签\" } }"
@@ -342,7 +342,7 @@ export const tableComponents: ComponentRegistry["components"] = {
       "tagType": {
         "type": "select",
         "default": "Solid 面型标签",
-        "description": "类型/分类标签样式",
+        "description": "类型/分类标签样式（仅在 tagKind=type 时生效；tagKind=status 时会被忽略）",
         "enumValues": [
           "Default 默认标签",
           "Solid 面型标签",
@@ -402,22 +402,6 @@ export const tableComponents: ComponentRegistry["components"] = {
           "color-border-2",
           "@border-2",
           "@color-border-2"
-        ]
-      },
-      "tag-bg-key": {
-        "enabled": true,
-        "token": "tag.bg.success",
-        "nameCandidates": [
-          "green-1",
-          "success-1"
-        ]
-      },
-      "tag-text-key": {
-        "enabled": true,
-        "token": "tag.text.success",
-        "nameCandidates": [
-          "green-6",
-          "success-6"
         ]
       }
     },

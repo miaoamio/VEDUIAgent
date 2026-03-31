@@ -2173,9 +2173,9 @@ function App() {
   }, [selectedComponent?.params?.controlWidth]);
 
   // Tab state
-  const [activeTab, setActiveTab] = React.useState<'chat' | 'selection'>('chat');
-  const activeTabRef = React.useRef<'chat' | 'selection'>('chat');
-  const setActiveTabWithRef = React.useCallback((tab: 'chat' | 'selection') => {
+  const [activeTab, setActiveTab] = React.useState<'chat' | 'selection' | 'docs'>('chat');
+  const activeTabRef = React.useRef<'chat' | 'selection' | 'docs'>('chat');
+  const setActiveTabWithRef = React.useCallback((tab: 'chat' | 'selection' | 'docs') => {
     activeTabRef.current = tab;
     setActiveTab(tab);
   }, []);
@@ -2243,7 +2243,12 @@ function App() {
           agentPlan
         );
         // 只有当需要切换到不同 tab 时才切换，避免属性修改时的闪烁
-        if (!multiTaskActive && activeTabRef.current !== 'selection' && nextTab !== activeTabRef.current) {
+        if (
+          !multiTaskActive &&
+          activeTabRef.current !== 'selection' &&
+          activeTabRef.current !== 'docs' &&
+          nextTab !== activeTabRef.current
+        ) {
           setActiveTabWithRef(nextTab);
         }
         if (data.componentId) {
@@ -2262,7 +2267,7 @@ function App() {
           loading,
           agentPlan
         );
-        if (!multiTaskActive) {
+        if (!multiTaskActive && activeTabRef.current !== 'docs') {
           setActiveTabWithRef('selection');
         }
         setSelectedComponent(null);
@@ -2272,7 +2277,9 @@ function App() {
       if (type === 'selection-cleared') {
         setSelectionCount(0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTabWithRef('chat');
+        if (activeTabRef.current !== 'docs') {
+          setActiveTabWithRef('chat');
+        }
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
@@ -2289,7 +2296,9 @@ function App() {
     if (loading) return;
     if (selectionCount <= 0) return;
     if (selectedComponent?.componentId?.startsWith('chart')) return;
-    setActiveTabWithRef('selection');
+    if (activeTabRef.current !== 'docs') {
+      setActiveTabWithRef('selection');
+    }
   }, [loading, selectionCount, selectedComponent?.componentId]);
 
   React.useEffect(() => {
@@ -9317,116 +9326,182 @@ StepD:
       return JSON.stringify(snapshot, null, 2);
     };
 
-    return (
-      <div className="docs-container">
-        <h3 style={{ margin: '0 0 12px 0' }}>Figma Key 登记助手</h3>
+    const selectedRawParamsJson = (() => {
+      if (!selectedComponent) return '';
+      try {
+        return JSON.stringify(
+          {
+            componentId: selectedComponent.componentId,
+            nodeName: selectedComponent.nodeName,
+            childComponentId: selectedComponent.childComponentId,
+            params: selectedComponent.params
+          },
+          null,
+          2
+        );
+      } catch {
+        return '';
+      }
+    })();
 
-        <div className="component-card" style={{ marginBottom: '12px' }}>
-          {/* 选中实例信息 + 反查 + snapshot，合为一张卡 */}
-          {figmaInstanceInfo ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '4px', fontSize: '12px' }}>
-                <span style={{ color: '#777' }}>组件集</span>
-                <span>{figmaInstanceInfo.componentSetName || figmaInstanceInfo.componentName || '—'}</span>
+    return (
+      <div className="selection-layout">
+        <div className="selection-header">
+          <div className="selection-header-left">
+            <button
+              className="selection-back"
+              onClick={() => setActiveTabWithRef('chat')}
+            >
+              <span className="selection-back-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M11.1 11.3609C11.4113 11.6721 11.4113 12.1768 11.1 12.4881L10.5364 13.0517C10.2252 13.363 9.72047 13.363 9.4092 13.0517L4.90029 8.54279C4.74381 8.38632 4.666 8.18098 4.66684 7.9759C4.666 7.77082 4.74381 7.56548 4.90029 7.40901L9.4092 2.90009C9.72047 2.58882 10.2252 2.58882 10.5364 2.90009L11.1 3.46371C11.4113 3.77498 11.4113 4.27966 11.1 4.59094L7.71508 7.9759L11.1 11.3609Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span className="selection-back-text">返回对话模式</span>
+            </button>
+          </div>
+          <div className="selection-title">组件反查</div>
+        </div>
+        <div className="selection-scroll">
+          <div className="docs-container">
+            <h3 style={{ margin: '0 0 12px 0' }}>Figma Key 登记助手</h3>
+
+            {selectedRawParamsJson && (
+              <div className="component-card" style={{ marginBottom: '12px' }}>
+                <div className="component-header">
+                  <span className="component-name">当前选中（AI 参数）</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <button
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedRawParamsJson);
+                      const btn = document.activeElement as HTMLButtonElement;
+                      if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                    }}
+                  >
+                    复制 params JSON
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  value={selectedRawParamsJson}
+                  rows={10}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }}
+                />
               </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <code style={{ flex: 1, background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', wordBreak: 'break-all' }}>
-                  {figmaInstanceInfo.componentKey}
-                </code>
-                <button onClick={() => {
-                  navigator.clipboard.writeText(figmaInstanceInfo.componentKey);
-                  const btn = document.activeElement as HTMLButtonElement;
-                  if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
-                }} style={{ flexShrink: 0 }}>复制 Key</button>
-                <button
-                  onClick={async () => {
-                    if (componentInspectionRunning || loading || (!figmaInstanceInfo?.componentKey && !figmaInstanceInfo?.componentNodeId)) return;
-                    setComponentInspectionRunning(true);
-                    setUiMessages((prev) => [
-                      ...prev,
-                      { role: 'user', content: '/inspect' },
-                      { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
-                    ]);
-                    try {
-                      const inspectResult = await inspectFigmaComponentProps({ 
-                        keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
-                        nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
-                        maxCount: 1 
-                      });
-                      const summary = inspectResult?.summary || {};
-                      const success = Number(summary.success || 0);
-                      const failed = Number(summary.failed || 0);
-                      const json = buildInspectPropsJson(inspectResult);
-                      setComponentInspectJson(json);
-                      const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
-                      setUiMessages((prev) => {
-                        const next = [...prev];
-                        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
-                        return next;
-                      });
-                    } catch (e) {
-                      const errLine = `[System]: /inspect 失败: ${String(e)}`;
-                      setUiMessages((prev) => {
-                        const next = [...prev];
-                        next[next.length - 1] = { role: 'ai', content: errLine };
-                        return next;
-                      });
-                    } finally {
-                      setComponentInspectionRunning(false);
-                    }
-                  }}
-                  disabled={componentInspectionRunning || loading}
-                  style={{ flexShrink: 0 }}
-                >{componentInspectionRunning ? '…' : '反查属性'}</button>
-              </div>
-              {componentInspectionSummary && (
-                <div style={{ fontSize: '11px', color: '#777' }}>{componentInspectionSummary}</div>
-              )}
-              {componentInspectJson && (
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={handleCopyInspectJson} style={{ flex: 1 }}>复制反查 JSON</button>
-                  <button onClick={() => {
-                    const snippet = generateSnapshotSnippet();
-                    navigator.clipboard.writeText(snippet);
-                    const btn = document.activeElement as HTMLButtonElement;
-                    if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
-                  }} style={{ flex: 1 }}>复制 snapshot 片段</button>
+            )}
+
+            <div className="component-card" style={{ marginBottom: '12px' }}>
+              {figmaInstanceInfo ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '4px', fontSize: '12px' }}>
+                    <span style={{ color: '#777' }}>组件集</span>
+                    <span>{figmaInstanceInfo.componentSetName || figmaInstanceInfo.componentName || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <code style={{ flex: 1, background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', wordBreak: 'break-all' }}>
+                      {figmaInstanceInfo.componentKey}
+                    </code>
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(figmaInstanceInfo.componentKey);
+                      const btn = document.activeElement as HTMLButtonElement;
+                      if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                    }} style={{ flexShrink: 0 }}>复制 Key</button>
+                    <button
+                      onClick={async () => {
+                        if (componentInspectionRunning || loading || (!figmaInstanceInfo?.componentKey && !figmaInstanceInfo?.componentNodeId)) return;
+                        setComponentInspectionRunning(true);
+                        setUiMessages((prev) => [
+                          ...prev,
+                          { role: 'user', content: '/inspect' },
+                          { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
+                        ]);
+                        try {
+                          const inspectResult = await inspectFigmaComponentProps({
+                            keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
+                            nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
+                            maxCount: 1
+                          });
+                          const summary = inspectResult?.summary || {};
+                          const success = Number(summary.success || 0);
+                          const failed = Number(summary.failed || 0);
+                          const json = buildInspectPropsJson(inspectResult);
+                          setComponentInspectJson(json);
+                          const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
+                          setUiMessages((prev) => {
+                            const next = [...prev];
+                            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+                            return next;
+                          });
+                        } catch (e) {
+                          const errLine = `[System]: /inspect 失败: ${String(e)}`;
+                          setUiMessages((prev) => {
+                            const next = [...prev];
+                            next[next.length - 1] = { role: 'ai', content: errLine };
+                            return next;
+                          });
+                        } finally {
+                          setComponentInspectionRunning(false);
+                        }
+                      }}
+                      disabled={componentInspectionRunning || loading}
+                      style={{ flexShrink: 0 }}
+                    >{componentInspectionRunning ? '…' : '反查属性'}</button>
+                  </div>
+                  {componentInspectionSummary && (
+                    <div style={{ fontSize: '11px', color: '#777' }}>{componentInspectionSummary}</div>
+                  )}
+                  {componentInspectJson && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={handleCopyInspectJson} style={{ flex: 1 }}>复制反查 JSON</button>
+                      <button onClick={() => {
+                        const snippet = generateSnapshotSnippet();
+                        navigator.clipboard.writeText(snippet);
+                        const btn = document.activeElement as HTMLButtonElement;
+                        if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                      }} style={{ flex: 1 }}>复制 snapshot 片段</button>
+                    </div>
+                  )}
+                  {componentInspectJson && (
+                    <textarea readOnly value={componentInspectJson} rows={8}
+                      style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box' }} />
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
+                  在 Figma 画布中选中任意组件实例，自动读取 componentKey 并支持一键反查属性。
                 </div>
               )}
-              {componentInspectJson && (
-                <textarea readOnly value={componentInspectJson} rows={8}
-                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box' }} />
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
-              在 Figma 画布中选中任意组件实例，自动读取 componentKey 并支持一键反查属性。
-            </div>
-          )}
 
-          {/* 手动 token 输入（次要） */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
-            <input
-              type="text"
-              value={componentInspectTokenInput}
-              onChange={(e) => setComponentInspectTokenInput(e.target.value)}
-              placeholder="或输入 token 名反查"
-              style={{ flex: 1 }}
-            />
-            <button onClick={handleInspectStructureByTokenInput} disabled={componentInspectionRunning || loading}>反查</button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
+                <input
+                  type="text"
+                  value={componentInspectTokenInput}
+                  onChange={(e) => setComponentInspectTokenInput(e.target.value)}
+                  placeholder="或输入 token 名反查"
+                  style={{ flex: 1 }}
+                />
+                <button onClick={handleInspectStructureByTokenInput} disabled={componentInspectionRunning || loading}>反查</button>
+              </div>
+            </div>
+
+            {figmaInstanceInfo?.componentKey && componentInspectJson && (
+              <div className="component-card">
+                <div className="component-header">
+                  <span className="component-name">figmaPropertySnapshot 片段</span>
+                </div>
+                <textarea readOnly value={generateSnapshotSnippet()} rows={10}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }} />
+              </div>
+            )}
           </div>
         </div>
-
-        {/* snapshot 预览（有 key 且有反查结果时） */}
-        {figmaInstanceInfo?.componentKey && componentInspectJson && (
-          <div className="component-card">
-            <div className="component-header">
-              <span className="component-name">figmaPropertySnapshot 片段</span>
-            </div>
-            <textarea readOnly value={generateSnapshotSnippet()} rows={10}
-              style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }} />
-          </div>
-        )}
       </div>
     );
   };
@@ -9745,7 +9820,7 @@ StepD:
 
   return (
     <div
-      className={`container ${activeTab === 'selection' ? 'container-selection' : ''} ${
+      className={`container ${activeTab === 'selection' || activeTab === 'docs' ? 'container-selection' : ''} ${
         activeTab === 'chat' ? 'container-chat' : ''
       }`}
     >
@@ -10149,6 +10224,14 @@ StepD:
                 return (
                   <Tooltip content={tooltipText} enabled={manualAdjustDisabled} placement="top-end">
                 <div className="chat-selection-action-wrap">
+                  <button
+                    type="button"
+                    className="chat-selection-action"
+                    onClick={() => setActiveTabWithRef('docs')}
+                    disabled={loading}
+                  >
+                    组件反查
+                  </button>
                   <button
                     type="button"
                     className="chat-selection-action"
@@ -10849,6 +10932,8 @@ StepD:
             </div>
           </div>
         </div>
+      ) : activeTab === 'docs' ? (
+        renderDocs()
       ) : (
         renderSelectionPage()
       )}

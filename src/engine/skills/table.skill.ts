@@ -108,13 +108,41 @@ export const resolveTagColumnKind = (columnType: unknown, headerText: string): T
 const resolveStatusThemeFromColor = (value: unknown): string | null => {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized.includes('green') || normalized.includes('success') || normalized.includes('成功') || normalized.includes('启用')) return 'Success 成功';
+  if (normalized.includes('critical') || normalized.includes('严重') || normalized.includes('致命') || normalized.includes('高危')) return 'Error 错误';
+  if (
+    normalized.includes('green') ||
+    normalized.includes('success') ||
+    normalized.includes('成功') ||
+    normalized.includes('启用') ||
+    normalized.includes('已完成') ||
+    normalized.includes('完成') ||
+    normalized.includes('done') ||
+    normalized.includes('completed')
+  ) return 'Success 成功';
+  if (normalized.includes('已恢复') || normalized.includes('恢复') || normalized.includes('resolved') || normalized.includes('recovered')) return 'Success 成功';
   if (normalized.includes('orange') || normalized.includes('yellow') || normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) return 'Warning 告警';
   if (normalized.includes('red') || normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) return 'Error 错误';
   if (normalized.includes('gray') || normalized.includes('grey') || normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) return 'Stop 停止';
   if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-  if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
-  if (normalized.includes('processing') || normalized.includes('pending') || normalized.includes('等待') || normalized.includes('进行中') || normalized.includes('blue')) return 'Processing 等待中';
+  if (
+    normalized.includes('waiting') ||
+    normalized.includes('待启用') ||
+    normalized.includes('待开始') ||
+    normalized.includes('未开始') ||
+    normalized.includes('not started') ||
+    normalized.includes('todo')
+  ) return 'Waiting 待启用';
+  if (normalized.includes('notice') || normalized.includes('通知')) return 'Processing 等待中';
+  if (
+    normalized.includes('processing') ||
+    normalized.includes('pending') ||
+    normalized.includes('等待') ||
+    normalized.includes('进行中') ||
+    normalized.includes('填写中') ||
+    normalized.includes('处理中') ||
+    normalized.includes('in progress') ||
+    normalized.includes('blue')
+  ) return 'Processing 等待中';
   return null;
 };
 
@@ -132,15 +160,19 @@ export const extractTagCellPayload = (
   tagColor?: string;
 } => {
   if (!isObject(value)) {
+    const text = extractCellText(value);
+    const statusTheme = fallbackKind === 'status' ? resolveStatusThemeFromColor(text) || undefined : undefined;
     return {
-      text: extractCellText(value),
+      text,
       kind: fallbackKind,
-      tagColor: fallbackKind === 'status' ? 'green' : undefined
+      ...(statusTheme ? { statusTheme } : {})
     };
   }
 
   const obj = value as any;
-  const text = extractCellText(obj);
+  const text =
+    extractCellText(obj) ||
+    extractCellText(obj.tagText ?? obj.statusText ?? obj.label ?? obj.value ?? obj.name);
 
   const rawKind =
     obj.tagKind ??
@@ -168,7 +200,7 @@ export const extractTagCellPayload = (
   const statusTheme =
     typeof statusThemeRaw === 'string' && statusThemeRaw.trim()
       ? statusThemeRaw.trim()
-      : resolveStatusThemeFromColor(tagColorRaw) || undefined;
+      : resolveStatusThemeFromColor(tagColorRaw) || resolveStatusThemeFromColor(text) || undefined;
 
   const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
   const statusType =
@@ -397,11 +429,20 @@ export const buildTableComponentFromPayload = (
           baseParams.statusType = tagPayload.statusType || 'L2 二级标签';
           baseParams.statusTheme = tagPayload.statusTheme || 'Success 成功';
           if (tagPayload.statusState) baseParams.statusState = tagPayload.statusState;
+          // 规则：状态标签不携带 tagType，避免被误判为默认 Tag
+          delete baseParams.tagType;
         } else {
           baseParams.tagType = tagPayload.tagType || 'Outline 线型标签';
         }
 
-        columnChildren.push({ componentId: 'table-cell-tag', params: baseParams });
+        columnChildren.push({
+          componentId: 'table-cell-tag',
+          params: {
+            ...baseParams,
+            // Ensure status family is preferred for status kind
+            ...(isStatus ? { componentToken: 'lib-data-display-status-tag' } : {})
+          }
+        });
         return;
       }
       if (cellComponentId === 'table-cell-avatar') {
