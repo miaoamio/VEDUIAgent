@@ -9390,6 +9390,7 @@ StepB:\n`;
     const currentCellType = isColumn
       ? (selectedComponent.childComponentId || 'table-cell')
       : selectedComponent.componentId;
+    const supportsTextDisplay = currentCellType === 'table-cell';
     const headerTypeValue = params.headerType || 'None';
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
@@ -9481,15 +9482,19 @@ StepB:\n`;
           </div>
         </div>
 
-        <div className="section-title">文本显示</div>
-        <div className="row">
-          <div className="col">
-            <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
-              <option value="ellipsis">单行省略</option>
-              <option value="lineBreak">支持换行</option>
-            </SelectControl>
-          </div>
-        </div>
+        {supportsTextDisplay && (
+          <>
+            <div className="section-title">文本显示</div>
+            <div className="row">
+              <div className="col">
+                <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
+                  <option value="ellipsis">单行省略</option>
+                  <option value="lineBreak">支持换行</option>
+                </SelectControl>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="section-title">列宽</div>
         <div className="row">
