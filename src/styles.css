@@ -3195,3 +3195,89 @@ button:disabled {
   background-color: #ebebeb;
   border-top: 1px solid #e0e0e0;
 }
+
+/* Action JSON collapsible */
+.ai-action-json-collapse {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.ai-action-json-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  background: #F4F4F5;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: #A1A1AA;
+  transition: color 0.15s, background 0.15s;
+  align-self: flex-start;
+}
+
+.ai-action-json-toggle:hover {
+  color: #71717A;
+}
+
+.ai-action-json-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.ai-action-json-icon-inner {
+  width: 14px;
+  height: 14px;
+}
+
+.ai-action-json-label {
+  font-size: 12px;
+  color: inherit;
+  user-select: none;
+}
+
+.ai-action-json-panel {
+  border: 1px solid #F4F4F5;
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-height: 400px;
+  overflow: auto;
+  background: #FAFAFA;
+}
+
+.ai-action-json-entry + .ai-action-json-entry {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #F0F0F0;
+}
+
+.ai-action-json-type {
+  font-size: 11px;
+  font-weight: 600;
+  color: #3B82F6;
+  margin-bottom: 4px;
+  font-family: monospace;
+}
+
+.ai-action-json-pre {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #52525B;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.ai-stream-panel {
+  max-height: 300px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}

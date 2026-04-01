@@ -1487,7 +1487,7 @@ function MetricsView() {
         </div>
       </div>
 
-      <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1d2129', marginBottom: '16px' }}>近 7 天趋势</h3>
+      <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1d2129', marginBottom: '16px' }}>近 30 天趋势</h3>
       <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e5e6eb', overflow: 'hidden', marginBottom: '40px' }}>
         <table className="props-table" style={{ margin: 0, width: '100%', border: 'none' }}>
           <thead>

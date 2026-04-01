@@ -209,6 +209,7 @@ function toSeriesSpecText(raw: string, redo = false): string {
 
 type AiDisplayItem = {
   kind: 'thought' | 'spec_hint' | 'action_json' | 'system' | 'streaming' | 'raw' | 'text' | 'code_block';
+  llmRawText?: string;
   text: string;
   actionType?: string;
   payloadText?: string;
@@ -917,6 +918,15 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       });
       continue;
     }
+    if (trimmedStart.startsWith('[LLMRaw]:')) {
+      const rawText = trimmedStart.replace('[LLMRaw]:', '').trimStart();
+      // Attach to the previous action_json item if any
+      const prevItem = items.length > 0 ? items[items.length - 1] : null;
+      if (prevItem && prevItem.kind === 'action_json') {
+        prevItem.llmRawText = rawText;
+      }
+      continue;
+    }
     if (trimmedStart.startsWith('[Raw]:')) {
       const rawText = trimmedStart.replace('[Raw]:', '').trimStart();
       items.push({ kind: 'raw', text: rawText });
@@ -1293,6 +1303,38 @@ function DrawIcon({ className }: { className?: string }) {
           <rect width="16" height="16" fill="white" />
         </clipPath>
       </defs>
+    </svg>
+  );
+}
+
+function CodeBracesIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M7 4a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M17 4a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
     </svg>
   );
 }
@@ -2054,6 +2096,7 @@ function App() {
   const [actionStreamPulse, setActionStreamPulse] = React.useState(0);
   const lastResponseRef = React.useRef<string>('');
   const [aiAttachmentParseExpanded, setAiAttachmentParseExpanded] = React.useState<Record<number, boolean>>({});
+  const [aiActionJsonExpanded, setAiActionJsonExpanded] = React.useState<Record<number, boolean>>({});
   const [aiAttachmentParseHover, setAiAttachmentParseHover] = React.useState<Record<number, boolean>>({});
   const [quickComponentActiveCategory, setQuickComponentActiveCategory] = React.useState<string | null>(null);
   const [quickComponentSubmenuStyle, setQuickComponentSubmenuStyle] = React.useState<React.CSSProperties>({});
@@ -2831,143 +2874,7 @@ function App() {
    - 禁止臆造 componentKey；只有 token 不可用时再回退 componentKey。必须严格使用 registry figmaPropertySnapshot 中的 token 和 componentKey。
    - 对于 boolean 参数，不要显式输出默认值；仅当用户强行指定时才写入 true/false，未指定则使用默认值。
    - 对于 figma-component，不要输出 width/height，除非用户明确要求尺寸。
-3. **表格创建优先走 draw_table(payload)**（不要输出冗长 table 子树）。
-   - 当目标是创建新表格时，**直接调用 draw_table**，**无需读取 table 系列 spec**。
-   - 如果是“新建表格”，禁止输出 apply_scene(table-root)。
-   - draw_table 与 draw_tabl 等价；为兼容旧接口，优先使用 draw_tabl。
-   - draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。
-   - **支持直接定义表格工具栏与分页**：
-     - 若需标签页，请在 payload 中添加 "tabs": ["全部", "进行中"] 或 "hasTabs": true。
-     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或字符串。
-     - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
-     - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
-     - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
-   - payload 使用紧凑结构即可，例如：
-     {
-       "headers": ["姓名", "年龄", "城市"],
-       "rows": [
-         ["张三", "28", "北京"],
-         ["李四", "32", "上海"]
-       ],
-       "columnTypes": ["Text", "Text", "Text"],
-       "tabs": ["全部", "进行中"],
-       "filters": ["状态", "城市", "关键词"],
-       "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" },
-       "pagination": true,
-       "rowHeight": { "header": 40, "body": 40 }
-    }
-   - 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 "rowAction": "multiple"。
-   - 单选列请使用 "rowAction": "single"。
-   - 不要把勾选列写进 headers/rows/columnTypes。
-   - 标签列（Tag）请显式区分两类：
-     - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：
-       { "text": "启用", "statusTheme": "Success 成功" } 或 { "statusText": "禁用", "statusColor": "red" }
-     - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：
-       { "text": "企业", "tagType": "Outline 线型标签" }
-     - 兼容：旧的 columnTypes "Tag" 视为 "StatusTag"。
-   - 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 "ActionText" 或 "ActionIcon"。
-   - 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：
-    @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
-     @@table_stream {"event":"table_row","row":["李四",32]}
-     @@table_stream {"event":"table_done"}
-   - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。
-4. **标准表单/筛选表单创建优先走 draw_form(payload)**。
-  - 当目标是创建查询表单、筛选区或编辑表单时，**直接调用 draw_form**，**无需读取 spec**。
-  - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
-  - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
-  - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
-  - **当根据图片生成表单时，必须输出图片中所有字段**：不要只给一个代表性字段；若识别到多个标签/控件，一律完整列出并逐行放入 rows。
-  - **图片场景禁止只输出 fields**：必须输出 rows[][] 以保证多行字段被逐行渲染；除非用户明确要求多列，否则每行只放一个字段。
-  - **字段类型不确定时优先用 input**，有明确选项/状态时再用 select / checkbox-group / radio-group / switch。
-  - draw_form payload 使用紧凑结构，例如：
-     {
-       "align": "top",
-       "labelWidthPreset": "fill",
-       "rows": [
-         [
-           { "componentId": "checkbox-group", "label": "偏好", "props": { "options": ["选项一", "选项二"], "checkedValues": "选项一" } }
-         ],
-         [
-           { "componentId": "radio-group", "label": "类型", "props": { "options": ["选项一", "选项二"], "value": "选项一" } }
-         ],
-         [
-           { "componentId": "input", "label": "姓名", "props": { "placeholder": "请输入姓名" } }
-         ],
-         [
-           { "componentId": "select", "label": "城市", "props": { "value": "请选择" } }
-         ]
-       ]
-     }
-   - 若参考图里出现标准复选框/单选框/开关/勾选列表，不要手工画 vector/svg/path/text 勾号。
-   - 多选项优先使用 checkbox-group；若是零散多选项行，也可以直接组合多个 checkbox。
-   - 这类视觉敏感控件优先复用真实 Figma component（checkbox / checkbox-group / radio-group / figma-component + lib-data-input-checkbox*）。
-5. 当需要复刻设计系统组件内部结构时，先调用 inspect_component_structure / discover_component_structure 获取内部层级、文本、颜色/变量绑定和嵌套控件。
-6. 对于非表格复杂结构或增量编辑，优先调用 apply_scene(payload)。
-   - payload 建议是 Scene Envelope：
-     {
-       "version": "1.0",
-       "intent": "create" | "edit",
-       "scene"?: { "root": SceneNode },
-       "patch"?: { "operations": SceneOperation[] }
-     }
-7. 当你只需要创建一个简单节点时，也可以调用 create_node(componentId, params, parentId?, children?)。
-8. 只有当必须依赖父节点 ID 且无法一次性构建时，才分步执行。
-9. 当任务包含多区块下钻（如：页面 + 表格区 + 图表区 + 表单区），必须先建立外部计划队列：
-   - set_plan(payload): 初始化任务清单（pending/in_progress/done/failed）。
-   - plan_next(payload): 让系统返回下一个可执行任务（考虑 dependsOn）。
-   - update_plan(payload): 更新任务状态，可追加新下钻任务。
-     - 状态更新：payload.updates=[{taskId,status,notes?}] 或 payload.{taskId,status,notes?}
-     - 追加任务：payload.addTasks=[...]（兼容 appendTasks / tasks）
-   - 执行中的动作尽量带 taskId（action.taskId 或 action.payload.taskId），便于系统自动回写状态。
-10. 不要依赖你自己的记忆来追踪待办，下钻待办以系统计划队列为准。
-11. 系统在复杂请求时可能自动初始化计划队列（auto plan）。你应基于最新 PlanState 执行，而不是重新创建冲突计划。
-12. 对于已知任务类型，优先调用 execute_task(payload)（或 run_task）让系统按 task.type 执行，减少自由 JSON 拼装错误。
-    - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
-    - 禁止使用未实现类型（如 expand_header_block / expand_actions_block），否则会直接失败。
-    - 若任务已完成，系统会默认跳过；如需重跑请传 payload.force=true。
-    - **表格+筛选器/分页器请求（单区块）不要 set_plan**，直接 draw_tabl 并带上 filters/pagination 参数。
-    - 建议统一 payload 形态：payload.block.container/header/body/footer（旧字段继续兼容）。
-    - expand_table_block 支持 header.tabs/actions + body.filters.items + body.table + footer.pagination。
-    - expand_chart_block 支持 header.tabs/actions + body.charts[] + footer.notes。
-      body.charts[] 每个 item 结构：{ "componentId": "chart-pie", "props": { "类型 Type": "环形图 DonutChart", "分类数量 Item": "5", "数值标注 Data Annotation": "On" } }
-      componentId 必须是注册的 chart 组件 ID（chart-toplist / chart-pie / chart-line / chart-bar / chart-area），props 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）。
-      示例（折线图）：{ "componentId": "chart-line", "props": { "线数量": "3", "类型 Type": "默认 default", "Show Legend": true } }
-      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 #of lines": "3", "类型 type": "基础/分组柱 default" } }
-      ⚠️ 注意：body.charts[].props 中的属性名必须从 registry params 或 figmaPropertySnapshot 中取，不要自造属性名。
-    - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
-    - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
-13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
-   - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
-   - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
-   - 若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。
-   - 对图片表单，必须覆盖图片中全部字段与按钮；若字段数量较多，仍需逐行输出完整 rows。
-
-回复格式 (Response Format):
-只回复一个 JSON 对象，包含 "thought" 和 "action"。
-- "thought" 必须极短，优先 4-12 个汉字或等价短语。
-- 不要复述用户需求，不要写“首先/现在/已获取/成功/需要”等空话。
-- 用动作短语即可，例如：读input spec / 建基础input / 结束。
-- 优先输出紧凑 JSON；不要使用 Markdown code block，不要输出 JSON 之外的解释。
-
-示例 (Example):
-{"thought":"读button spec","action":{"type":"read_specs","payload":{"ids":["button"]}}}
-
-表格专用示例（固定链路）:
-Step1:
-{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
-Step2:
-{"thought":"结束","action":{"type":"finish"}}
-
-图表专用示例（固定链路）:
-Step1（单图表，直接 create_node，params 中的属性名必须与 Figma variant propertyName 完全一致）:
-{"thought":"画环形图","action":{"type":"create_node","payload":{"componentId":"chart-pie","params":{"类型 Type":"环形图 DonutChart","分类数量 Item":"5","数值标注 Data Annotation":"On","总数值 Sum":"On","height":220}}}}
-Step2:
-{"thought":"结束","action":{"type":"finish"}}
-
-Figma组件属性探测示例:
-StepA:
-{"thought":"探测Header属性","action":{"type":"discover_component_props","payload":{"tokens":["lib-navigation-header"],"maxCount":1}}}
-StepB:
+   - 表格详细规则见 table specs；表单详细规则见 form specs（仅在需要时自动加载）。
 {"thought":"先摆组件本体","action":{"type":"create_node","payload":{"componentId":"figma-component","params":{"componentToken":"lib-navigation-header","width":1440}}}}
 
 计划队列示例:
@@ -3065,7 +2972,49 @@ StepD:
           specsInfo += `ActionHint: Do not output width/height for figma-component unless user explicitly requests size.\n`;
         }
         if (id === 'table' || id.startsWith('table-')) {
-          specsInfo += `ActionHint: New table creation must use draw_table payload { headers, rows, columnTypes?, columnWidths? }. Avoid apply_scene table subtree.\n`;
+          specsInfo += `\n--- draw_table Workflow ---\n3. **表格创建优先走 draw_table(payload)**（不要输出冗长 table 子树）。
+   - 当目标是创建新表格时，**直接调用 draw_table**，**无需读取 table 系列 spec**。
+   - 如果是“新建表格”，禁止输出 apply_scene(table-root)。
+   - draw_table 与 draw_tabl 等价；为兼容旧接口，优先使用 draw_tabl。
+   - draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。
+   - **支持直接定义表格工具栏与分页**：
+     - 若需标签页，请在 payload 中添加 "tabs": ["全部", "进行中"] 或 "hasTabs": true。
+     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或字符串。
+     - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
+     - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
+     - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
+   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行有代表性的样本数据，插件会自动随机复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。
+   - payload 使用紧凑结构即可，例如：
+     {
+       "headers": ["姓名", "年龄", "城市"],
+       "rowCount": 10,
+       "rows": [
+         ["张三", "28", "北京"],
+         ["李四", "32", "上海"],
+         ["王五", "25", "深圳"]
+       ],
+       "columnTypes": ["Text", "Text", "Text"],
+       "tabs": ["全部", "进行中"],
+       "filters": ["状态", "城市", "关键词"],
+       "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" },
+       "pagination": true,
+       "rowHeight": { "header": 40, "body": 40 }
+    }
+   - 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 "rowAction": "multiple"。
+   - 单选列请使用 "rowAction": "single"。
+   - 不要把勾选列写进 headers/rows/columnTypes。
+   - 标签列（Tag）请显式区分两类：
+     - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：
+       { "text": "启用", "statusTheme": "Success 成功" } 或 { "statusText": "禁用", "statusColor": "red" }
+     - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：
+       { "text": "企业", "tagType": "Outline 线型标签" }
+     - 兼容：旧的 columnTypes "Tag" 视为 "StatusTag"。
+   - 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 "ActionText" 或 "ActionIcon"。
+   - 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：
+    @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
+     @@table_stream {"event":"table_row","row":["李四",32]}
+     @@table_stream {"event":"table_done"}
+   - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。\n`;
         }
         if (id === 'form' || id.startsWith('form-')) {
           specsInfo += `ActionHint: New form creation can use draw_form payload { rows?: any[][], fields?: any[], sections?: { title?: string; rows?: any[][]; fields?: any[]; groups?: any[] }[], groups?: any[], groupLabelMode?: "all"|"first", layout?: "horizontal"|"vertical", align?: "top"|"left"|"right", labelWidthPreset?: "fill"|"default-80"|"medium-120"|"large-160"|"custom", footer?: { actions?: any[] } }. Default: prefer one field per row unless user requests multi-column/compact layout.\n`;
@@ -3580,7 +3529,8 @@ StepD:
 
   const normalizeRowsByHeaders = (
     rawRows: unknown,
-    headers: string[]
+    headers: string[],
+    columnKeys?: string[]
   ): unknown[][] => {
     if (!Array.isArray(rawRows)) return [];
 
@@ -3589,7 +3539,15 @@ StepD:
         return headers.map((_, i) => row[i]);
       }
       if (isObject(row)) {
-        return headers.map((key) => row[key]);
+        // Try column keys first (e.g. dataIndex/key from columns definition),
+        // then fall back to header titles.
+        return headers.map((headerTitle, i) => {
+          if (columnKeys && columnKeys[i]) {
+            const val = row[columnKeys[i]];
+            if (val !== undefined) return val;
+          }
+          return row[headerTitle];
+        });
       }
       return headers.map(() => row);
     });
@@ -3614,7 +3572,11 @@ StepD:
 
     let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
 
-    let rows = normalizeRowsByHeaders(source.rows ?? source.data ?? [], headers);
+    // Extract column keys (key/dataIndex) for object-row lookup
+    const columnKeys: string[] = rawColumns
+      ? rawColumns.map((c: any) => String(c?.dataIndex || c?.key || ''))
+      : [];
+    let rows = normalizeRowsByHeaders(source.rows ?? source.data ?? [], headers, columnKeys);
 
     if ((!headers || headers.length === 0) && rows.length > 0) {
       const first = rows[0];
@@ -3624,17 +3586,24 @@ StepD:
     }
 
     if (!headers || headers.length === 0) return null;
+    // Support explicit rowCount from payload (LLM can output fewer rows + rowCount to save tokens).
+    const explicitRowCount = getPositiveNumber(source.rowCount);
     const minRowCount = typeof options?.minRowCount === 'number' ? options.minRowCount : 10;
-    const targetRowCount = minRowCount > 0 ? Math.max(rows.length, minRowCount) : rows.length;
+    const targetRowCount = explicitRowCount
+      ? Math.max(explicitRowCount, rows.length)
+      : (minRowCount > 0 ? Math.max(rows.length, minRowCount) : rows.length);
     if (rows.length < targetRowCount) {
       if (rows.length === 0) {
         rows = Array.from({ length: targetRowCount }).map(() => headers.map(() => ''));
       } else {
-        rows = Array.from({ length: targetRowCount }).map((_, index) =>
-          Array.isArray(rows[index % rows.length])
-            ? [...(rows[index % rows.length] as any[])]
-            : headers.map(() => '')
-        );
+        // Keep original rows intact, fill remaining slots by randomly picking from originals.
+        const originalRows = rows.slice();
+        const filled: any[][] = [...originalRows];
+        for (let i = originalRows.length; i < targetRowCount; i += 1) {
+          const src = originalRows[Math.floor(Math.random() * originalRows.length)];
+          filled.push(Array.isArray(src) ? [...src] : headers.map(() => ''));
+        }
+        rows = filled;
       }
     }
 
@@ -6968,8 +6937,14 @@ StepD:
         const hasTablePrompt = TABLE_PROMPT_REGEX.test(trimmedTurnInput);
         const hasChartPrompt = CHART_PROMPT_REGEX.test(trimmedTurnInput);
         const hasTableAttachment = turnTables.some((table) => !table.parseError && table.headers.length > 0);
-        const shouldPrefetchTableSpecs = hasTablePrompt || hasTableAttachment;
+        // When user uploads images (likely UI screenshots), preload table+form specs
+        // since the image may contain tables/forms that the LLM needs to reproduce.
+        const hasImageOnly = turnImages.length > 0 && trimmedTurnInput.length === 0;
+        const hasImageWithText = turnImages.length > 0 && trimmedTurnInput.length > 0;
+        const shouldPrefetchTableSpecs = hasTablePrompt || hasTableAttachment || hasImageOnly;
         const shouldPrefetchChartSpecs = hasChartPrompt;
+        const hasFormPrompt = /表单|form|筛选|filter|draw_form/i.test(currentTurnText);
+        const shouldPrefetchFormSpecs = hasFormPrompt || hasImageOnly;
 
         const inspectActionCache = new Map<string, any>();
         const inspectStructureCache = new Map<string, any>();
@@ -6989,6 +6964,110 @@ StepD:
             combinedSpecsInfo += (combinedSpecsInfo ? '\n\n' : '') + chartSpecs.specsInfo;
             combinedIds.push(...chartSpecs.uniqueIds);
             combinedIdsToLoad.push(...chartSpecs.idsToLoad);
+        }
+        if (shouldPrefetchFormSpecs) {
+            const formSpecs = buildSpecsInfo(FORM_SPEC_IDS, readSpecsCacheRef.current, true);
+            // Inject draw_form workflow rules into form specs
+            formSpecs.specsInfo += `\n--- draw_form Workflow ---\n4. **标准表单/筛选表单创建优先走 draw_form(payload)**。
+  - 当目标是创建查询表单、筛选区或编辑表单时，**直接调用 draw_form**，**无需读取 spec**。
+  - 注意：如果用户明确要“筛选器组(filter-group)”或“筛选条”，优先使用 create_node 创建 "filter-group"（它是独立组件，不要用 draw_form 代替）。
+  - rows 内 componentId 可使用 input / select / checkbox-group / radio-group / button，也可继续挂 figma-component。
+  - **默认优先每行一个字段（单列）**：除非用户明确要求“双列/多列/紧凑排布”，否则 rows 的每个子数组只放 1 个字段/控件，不要把多个字段并排放在同一行。
+  - **当根据图片生成表单时，必须输出图片中所有字段**：不要只给一个代表性字段；若识别到多个标签/控件，一律完整列出并逐行放入 rows。
+  - **图片场景禁止只输出 fields**：必须输出 rows[][] 以保证多行字段被逐行渲染；除非用户明确要求多列，否则每行只放一个字段。
+  - **字段类型不确定时优先用 input**，有明确选项/状态时再用 select / checkbox-group / radio-group / switch。
+  - draw_form payload 使用紧凑结构，例如：
+     {
+       "align": "top",
+       "labelWidthPreset": "fill",
+       "rows": [
+         [
+           { "componentId": "checkbox-group", "label": "偏好", "props": { "options": ["选项一", "选项二"], "checkedValues": "选项一" } }
+         ],
+         [
+           { "componentId": "radio-group", "label": "类型", "props": { "options": ["选项一", "选项二"], "value": "选项一" } }
+         ],
+         [
+           { "componentId": "input", "label": "姓名", "props": { "placeholder": "请输入姓名" } }
+         ],
+         [
+           { "componentId": "select", "label": "城市", "props": { "value": "请选择" } }
+         ]
+       ]
+     }
+   - 若参考图里出现标准复选框/单选框/开关/勾选列表，不要手工画 vector/svg/path/text 勾号。
+   - 多选项优先使用 checkbox-group；若是零散多选项行，也可以直接组合多个 checkbox。
+   - 这类视觉敏感控件优先复用真实 Figma component（checkbox / checkbox-group / radio-group / figma-component + lib-data-input-checkbox*）。
+5. 当需要复刻设计系统组件内部结构时，先调用 inspect_component_structure / discover_component_structure 获取内部层级、文本、颜色/变量绑定和嵌套控件。
+6. 对于非表格复杂结构或增量编辑，优先调用 apply_scene(payload)。
+   - payload 建议是 Scene Envelope：
+     {
+       "version": "1.0",
+       "intent": "create" | "edit",
+       "scene"?: { "root": SceneNode },
+       "patch"?: { "operations": SceneOperation[] }
+     }
+7. 当你只需要创建一个简单节点时，也可以调用 create_node(componentId, params, parentId?, children?)。
+8. 只有当必须依赖父节点 ID 且无法一次性构建时，才分步执行。
+9. 当任务包含多区块下钻（如：页面 + 表格区 + 图表区 + 表单区），必须先建立外部计划队列：
+   - set_plan(payload): 初始化任务清单（pending/in_progress/done/failed）。
+   - plan_next(payload): 让系统返回下一个可执行任务（考虑 dependsOn）。
+   - update_plan(payload): 更新任务状态，可追加新下钻任务。
+     - 状态更新：payload.updates=[{taskId,status,notes?}] 或 payload.{taskId,status,notes?}
+     - 追加任务：payload.addTasks=[...]（兼容 appendTasks / tasks）
+   - 执行中的动作尽量带 taskId（action.taskId 或 action.payload.taskId），便于系统自动回写状态。
+10. 不要依赖你自己的记忆来追踪待办，下钻待办以系统计划队列为准。
+11. 系统在复杂请求时可能自动初始化计划队列（auto plan）。你应基于最新 PlanState 执行，而不是重新创建冲突计划。
+12. 对于已知任务类型，优先调用 execute_task(payload)（或 run_task）让系统按 task.type 执行，减少自由 JSON 拼装错误。
+    - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
+    - 禁止使用未实现类型（如 expand_header_block / expand_actions_block），否则会直接失败。
+    - 若任务已完成，系统会默认跳过；如需重跑请传 payload.force=true。
+    - **表格+筛选器/分页器请求（单区块）不要 set_plan**，直接 draw_tabl 并带上 filters/pagination 参数。
+    - 建议统一 payload 形态：payload.block.container/header/body/footer（旧字段继续兼容）。
+    - expand_table_block 支持 header.tabs/actions + body.filters.items + body.table + footer.pagination。
+    - expand_chart_block 支持 header.tabs/actions + body.charts[] + footer.notes。
+      body.charts[] 每个 item 结构：{ "componentId": "chart-pie", "props": { "类型 Type": "环形图 DonutChart", "分类数量 Item": "5", "数值标注 Data Annotation": "On" } }
+      componentId 必须是注册的 chart 组件 ID（chart-toplist / chart-pie / chart-line / chart-bar / chart-area），props 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）。
+      示例（折线图）：{ "componentId": "chart-line", "props": { "线数量": "3", "类型 Type": "默认 default", "Show Legend": true } }
+      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 #of lines": "3", "类型 type": "基础/分组柱 default" } }
+      ⚠️ 注意：body.charts[].props 中的属性名必须从 registry params 或 figmaPropertySnapshot 中取，不要自造属性名。
+    - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
+    - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
+13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
+   - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
+   - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
+   - 若用户目标是“根据上传图片/表格生成”，直接 draw_tabl / draw_form / create_node 落地（表格/表单无需读取 spec）。
+   - 对图片表单，必须覆盖图片中全部字段与按钮；若字段数量较多，仍需逐行输出完整 rows。
+
+回复格式 (Response Format):
+只回复一个 JSON 对象，包含 "thought" 和 "action"。
+- "thought" 必须极短，优先 4-12 个汉字或等价短语。
+- 不要复述用户需求，不要写“首先/现在/已获取/成功/需要”等空话。
+- 用动作短语即可，例如：读input spec / 建基础input / 结束。
+- 优先输出紧凑 JSON；不要使用 Markdown code block，不要输出 JSON 之外的解释。
+
+示例 (Example):
+{"thought":"读button spec","action":{"type":"read_specs","payload":{"ids":["button"]}}}
+
+表格专用示例（固定链路）:
+Step1:
+{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
+Step2:
+{"thought":"结束","action":{"type":"finish"}}
+
+图表专用示例（固定链路）:
+Step1（单图表，直接 create_node，params 中的属性名必须与 Figma variant propertyName 完全一致）:
+{"thought":"画环形图","action":{"type":"create_node","payload":{"componentId":"chart-pie","params":{"类型 Type":"环形图 DonutChart","分类数量 Item":"5","数值标注 Data Annotation":"On","总数值 Sum":"On","height":220}}}}
+Step2:
+{"thought":"结束","action":{"type":"finish"}}
+
+Figma组件属性探测示例:
+StepA:
+{"thought":"探测Header属性","action":{"type":"discover_component_props","payload":{"tokens":["lib-navigation-header"],"maxCount":1}}}
+StepB:\n`;
+            combinedSpecsInfo += (combinedSpecsInfo ? '\n\n' : '') + formSpecs.specsInfo;
+            combinedIds.push(...formSpecs.uniqueIds);
+            combinedIdsToLoad.push(...formSpecs.idsToLoad);
         }
 
         if (combinedIds.length > 0) {
@@ -7033,7 +7112,11 @@ StepD:
                 }
                 if (displayDelta) {
                     currentStreamedResponse += displayDelta;
-                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${currentStreamedResponse}`);
+                }
+                // Always show the latest streamed content (including incomplete lines in buffer)
+                const liveText = currentStreamedResponse + streamLineBuffer;
+                if (liveText) {
+                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${liveText}`);
                 }
             });
             if (streamLineBuffer.trim()) {
@@ -7062,6 +7145,12 @@ StepD:
                 }
                 const compactActionJson = JSON.stringify(actionData);
                 turnLog += (turnLog ? '\n' : '') + `[JSON]: ${compactActionJson}`;
+                // Preserve the raw LLM output as a streaming line so the UI keeps it visible
+                const sanitizedForLog = stripStreamTableLines(content).trim();
+                if (sanitizedForLog) {
+                    turnLog += '\n' + `[LLMRaw]: ${sanitizedForLog}`;
+                }
+
 
                 // Store a compact form in history to reduce future prompt tokens.
                 messages.push({ role: "assistant", content: compactActionJson });
@@ -9843,7 +9932,57 @@ StepD:
                                   );
                                 }
                                 if (item.kind === 'action_json') {
-                                  return null;
+                                  if (itemIndex > 0 && items[itemIndex - 1]?.kind === 'action_json') {
+                                    return null;
+                                  }
+                                  const jsonGroup: typeof items = [item];
+                                  for (let j = itemIndex + 1; j < items.length && items[j]?.kind === 'action_json'; j += 1) {
+                                    jsonGroup.push(items[j]);
+                                  }
+                                  const jsonStateKey = index * 10000 + itemIndex;
+                                  const isJsonExpanded = Boolean(aiActionJsonExpanded[jsonStateKey]);
+                                  const toggleJsonExpanded = () =>
+                                    setAiActionJsonExpanded((prev) => ({
+                                      ...prev,
+                                      [jsonStateKey]: !prev[jsonStateKey]
+                                    }));
+                                  const actionLabel = jsonGroup.length === 1
+                                    ? (jsonGroup[0].actionType ? 'Action: ' + jsonGroup[0].actionType : 'LLM JSON')
+                                    : 'LLM JSON (' + jsonGroup.length + ')';
+                                  return (
+                                    <div key={`aj_${index}_${itemIndex}`} className="ai-action-json-collapse">
+                                      <IconTextRow
+                                        as="button"
+                                        className={`ai-action-json-toggle ${isJsonExpanded ? 'expanded' : ''}`}
+                                        textClassName="ai-action-json-label"
+                                        icon={
+                                          <span className="ai-action-json-icon" aria-hidden="true">
+                                            {isJsonExpanded ? (
+                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
+                                            ) : (
+                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
+                                            )}
+                                          </span>
+                                        }
+                                        onClick={toggleJsonExpanded}
+                                        aria-expanded={isJsonExpanded}
+                                      >
+                                        {actionLabel}
+                                      </IconTextRow>
+                                      {isJsonExpanded && (
+                                        <div className="ai-action-json-panel">
+                                          {jsonGroup.map((jsonItem, gi) => (
+                                            <div key={gi} className="ai-action-json-entry">
+                                              {jsonItem.actionType && (
+                                                <div className="ai-action-json-type">{jsonItem.actionType}</div>
+                                              )}
+                                              <pre className="ai-action-json-pre"><code>{jsonItem.llmRawText || jsonItem.payloadText || jsonItem.text}</code></pre>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
                                 }
                                 if (item.kind === 'system') {
                                   const tone = resolveSystemTone(item.text);
@@ -9869,12 +10008,39 @@ StepD:
                                   );
                                 }
                                 if (item.kind === 'streaming') {
+                                  const streamStateKey = index * 10000 + 9999;
+                                  const isStreamExpanded = Boolean(aiActionJsonExpanded[streamStateKey]);
+                                  const toggleStreamExpanded = () =>
+                                    setAiActionJsonExpanded((prev) => ({
+                                      ...prev,
+                                      [streamStateKey]: !prev[streamStateKey]
+                                    }));
                                   return (
-                                    <div key={`stream_${itemIndex}`} className="ai-stream-line">
-                                      <span className="ai-stream-text">{item.text}</span>
-                                      <span className="ai-stream-cursor" aria-hidden="true">
-                                        _
-                                      </span>
+                                    <div key={`stream_${itemIndex}`} className="ai-action-json-collapse">
+                                      <IconTextRow
+                                        as="button"
+                                        className={`ai-action-json-toggle ${isStreamExpanded ? 'expanded' : ''}`}
+                                        textClassName="ai-action-json-label"
+                                        icon={
+                                          <span className="ai-action-json-icon" aria-hidden="true">
+                                            {isStreamExpanded ? (
+                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
+                                            ) : (
+                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
+                                            )}
+                                          </span>
+                                        }
+                                        onClick={toggleStreamExpanded}
+                                        aria-expanded={isStreamExpanded}
+                                      >
+                                        LLM 输出中
+                                        <span className="ai-stream-cursor" aria-hidden="true">_</span>
+                                      </IconTextRow>
+                                      {isStreamExpanded && (
+                                        <div className="ai-action-json-panel ai-stream-panel" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
+                                          <pre className="ai-action-json-pre">{item.text}</pre>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 }
