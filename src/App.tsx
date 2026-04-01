@@ -3638,6 +3638,29 @@ StepD:
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
+  const buildDefaultTablePayload = () => ({
+    headers: ['姓名', '状态', '时间'],
+    rows: [
+      ['张三', '进行中', '2024-05-20 10:00'],
+      ['李四', '待开始', '2024-05-21 14:30'],
+      ['王五', '已完成', '2024-05-22 09:15']
+    ],
+    columnTypes: ['Text', 'StatusTag', 'Text']
+  });
+
+  const buildDefaultFormPayload = () => ({
+    layout: 'vertical',
+    align: 'top',
+    labelWidthPreset: 'fill',
+    rows: [
+      [{ componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } }],
+      [{ componentId: 'select', label: '状态', props: { value: '全部状态' } }],
+      [{ componentId: 'datepicker', label: '创建时间' }],
+      [{ componentId: 'button', props: { label: '查询', variant: 'primary' } }],
+      [{ componentId: 'button', props: { label: '重置', variant: 'secondary' } }]
+    ]
+  });
+
   const buildTableComponentFromPayload = (
     payload: any,
     options?: { minRowCount?: number }
@@ -8022,7 +8045,10 @@ StepB:\n`;
                   actionTaskId,
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
-                const tableComponent = buildTableComponentFromPayload(payload?.table ?? payload, { minRowCount: 10 });
+                const tablePayload = payload?.table ?? payload;
+                const tableComponent =
+                    buildTableComponentFromPayload(tablePayload, { minRowCount: 10 }) ||
+                    buildTableComponentFromPayload(buildDefaultTablePayload(), { minRowCount: 10 });
 
                 if (!tableComponent) {
                     const invalidMsg = `[System]: 表格参数无效。`;
@@ -8084,7 +8110,10 @@ StepB:\n`;
                   actionTaskId,
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
-                const formComponent = buildFormComponentFromPayloadSkill(payload?.form ?? payload);
+                const formPayload = payload?.form ?? payload;
+                const formComponent =
+                    buildFormComponentFromPayloadSkill(formPayload) ||
+                    buildNormalizedFormComponentFromSource(buildDefaultFormPayload(), { defaultWidth: 720 });
 
                 if (!formComponent) {
                     const rawPayload = JSON.stringify(payload?.form ?? payload, null, 2);
@@ -9390,6 +9419,7 @@ StepB:\n`;
     const currentCellType = isColumn
       ? (selectedComponent.childComponentId || 'table-cell')
       : selectedComponent.componentId;
+    const supportsTextDisplay = currentCellType === 'table-cell';
     const headerTypeValue = params.headerType || 'None';
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
@@ -9481,15 +9511,19 @@ StepB:\n`;
           </div>
         </div>
 
-        <div className="section-title">文本显示</div>
-        <div className="row">
-          <div className="col">
-            <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
-              <option value="ellipsis">单行省略</option>
-              <option value="lineBreak">支持换行</option>
-            </SelectControl>
-          </div>
-        </div>
+        {supportsTextDisplay && (
+          <>
+            <div className="section-title">文本显示</div>
+            <div className="row">
+              <div className="col">
+                <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
+                  <option value="ellipsis">单行省略</option>
+                  <option value="lineBreak">支持换行</option>
+                </SelectControl>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="section-title">列宽</div>
         <div className="row">
@@ -10304,57 +10338,7 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'action_json') {
-                                  if (itemIndex > 0 && items[itemIndex - 1]?.kind === 'action_json') {
-                                    return null;
-                                  }
-                                  const jsonGroup: typeof items = [item];
-                                  for (let j = itemIndex + 1; j < items.length && items[j]?.kind === 'action_json'; j += 1) {
-                                    jsonGroup.push(items[j]);
-                                  }
-                                  const jsonStateKey = index * 10000 + itemIndex;
-                                  const isJsonExpanded = Boolean(aiActionJsonExpanded[jsonStateKey]);
-                                  const toggleJsonExpanded = () =>
-                                    setAiActionJsonExpanded((prev) => ({
-                                      ...prev,
-                                      [jsonStateKey]: !prev[jsonStateKey]
-                                    }));
-                                  const actionLabel = jsonGroup.length === 1
-                                    ? (jsonGroup[0].actionType ? 'Action: ' + jsonGroup[0].actionType : 'LLM JSON')
-                                    : 'LLM JSON (' + jsonGroup.length + ')';
-                                  return (
-                                    <div key={`aj_${index}_${itemIndex}`} className="ai-action-json-collapse">
-                                      <IconTextRow
-                                        as="button"
-                                        className={`ai-action-json-toggle ${isJsonExpanded ? 'expanded' : ''}`}
-                                        textClassName="ai-action-json-label"
-                                        icon={
-                                          <span className="ai-action-json-icon" aria-hidden="true">
-                                            {isJsonExpanded ? (
-                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
-                                            ) : (
-                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
-                                            )}
-                                          </span>
-                                        }
-                                        onClick={toggleJsonExpanded}
-                                        aria-expanded={isJsonExpanded}
-                                      >
-                                        {actionLabel}
-                                      </IconTextRow>
-                                      {isJsonExpanded && (
-                                        <div className="ai-action-json-panel">
-                                          {jsonGroup.map((jsonItem, gi) => (
-                                            <div key={gi} className="ai-action-json-entry">
-                                              {jsonItem.actionType && (
-                                                <div className="ai-action-json-type">{jsonItem.actionType}</div>
-                                              )}
-                                              <pre className="ai-action-json-pre"><code>{jsonItem.llmRawText || jsonItem.payloadText || jsonItem.text}</code></pre>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
+                                  return null;
                                 }
                                 if (item.kind === 'system') {
                                   const tone = resolveSystemTone(item.text);
@@ -10380,94 +10364,13 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'streaming') {
-                                  const streamStateKey = index * 10000 + 9999;
-                                  const isStreamExpanded = Boolean(aiActionJsonExpanded[streamStateKey]);
-                                  const toggleStreamExpanded = () =>
-                                    setAiActionJsonExpanded((prev) => ({
-                                      ...prev,
-                                      [streamStateKey]: !prev[streamStateKey]
-                                    }));
-                                  return (
-                                    <div key={`stream_${itemIndex}`} className="ai-action-json-collapse">
-                                      <IconTextRow
-                                        as="button"
-                                        className={`ai-action-json-toggle ${isStreamExpanded ? 'expanded' : ''}`}
-                                        textClassName="ai-action-json-label"
-                                        icon={
-                                          <span className="ai-action-json-icon" aria-hidden="true">
-                                            {isStreamExpanded ? (
-                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
-                                            ) : (
-                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
-                                            )}
-                                          </span>
-                                        }
-                                        onClick={toggleStreamExpanded}
-                                        aria-expanded={isStreamExpanded}
-                                      >
-                                        LLM 输出中
-                                        <span className="ai-stream-cursor" aria-hidden="true">_</span>
-                                      </IconTextRow>
-                                      {isStreamExpanded && (
-                                        <div className="ai-action-json-panel ai-stream-panel" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
-                                          <pre className="ai-action-json-pre">{item.text}</pre>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
+                                  return null;
                                 }
                                 if (item.kind === 'code_block') {
-                                  return (
-                                    <div key={`code_${itemIndex}`} className="ai-code-block">
-                                      <div className="ai-code-block-header">
-                                        <span className="ai-code-block-lang">{item.language || 'json'}</span>
-                                      </div>
-                                      <pre className="ai-code-block-pre">
-                                        <code>{item.text}</code>
-                                      </pre>
-                                      <div className="ai-code-block-footer">
-                                        <button 
-                                          className="ai-code-block-copy" 
-                                          onClick={async (e) => {
-                                            try {
-                                              // navigator.clipboard is sometimes not fully available or needs specific context in Figma iframe
-                                              // Using the custom copyTextToClipboard helper or a fallback text area
-                                              let success = false;
-                                              if (navigator.clipboard && navigator.clipboard.writeText) {
-                                                await navigator.clipboard.writeText(item.text);
-                                                success = true;
-                                              } else {
-                                                const textArea = document.createElement("textarea");
-                                                textArea.value = item.text;
-                                                document.body.appendChild(textArea);
-                                                textArea.select();
-                                                success = document.execCommand("copy");
-                                                document.body.removeChild(textArea);
-                                              }
-                                              
-                                              if (success) {
-                                                const btn = e.currentTarget;
-                                                const t = btn.innerText;
-                                                btn.innerText = '已复制';
-                                                setTimeout(() => { btn.innerText = t; }, 1500);
-                                              }
-                                            } catch (err) {
-                                              console.error("Copy failed", err);
-                                            }
-                                          }}
-                                        >
-                                          复制
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
+                                  return null;
                                 }
                                 if (item.kind === 'raw') {
-                                  return (
-                                    <div key={`raw_${itemIndex}`} className="ai-raw-line">
-                                      {item.text}
-                                    </div>
-                                  );
+                                  return null;
                                 }
                                 return (
                                   <div key={`text_${itemIndex}`} className="ai-text-line">
