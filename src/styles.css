@@ -503,9 +503,7 @@ button.chat-empty-guide-tag:disabled {
 }
 
 .composer-chart-dropdown {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
+  position: fixed;
   display: none;
   flex-direction: column;
   align-items: stretch;
@@ -580,7 +578,6 @@ button.chat-empty-guide-tag:disabled {
   padding: 2px 6px;
   width: 100%;
 }
-
 
 .composer-component-group-title {
   width: 100%;
@@ -1417,7 +1414,6 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
   gap: 6px;
   min-width: 0;
 }
-
 
 .selection-current-label {
   flex-shrink: 0;
@@ -2347,7 +2343,6 @@ button:disabled {
 .selection-layout .field-row .select-control:focus-within select {
   border-color: transparent;
 }
-
 
 .selection-panel select:focus,
 .selection-panel input[type="number"]:focus,
