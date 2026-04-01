@@ -10380,7 +10380,6 @@ StepB:\n`;
                                 }
                                 if (item.kind === 'action_json') {
                                   if (!UI_SHOW_ACTION_JSON) return null;
-                                  return null;
                                 }
                                 if (item.kind === 'system') {
                                   const tone = resolveSystemTone(item.text);
