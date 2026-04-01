@@ -9482,16 +9482,18 @@ StepB:\n`;
           </div>
         </div>
 
-        {supportsTextDisplay && <div className="section-title">文本显示</div>}
         {supportsTextDisplay && (
-          <div className="row">
-            <div className="col">
-              <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
-                <option value="ellipsis">单行省略</option>
-                <option value="lineBreak">支持换行</option>
-              </SelectControl>
+          <>
+            <div className="section-title">文本显示</div>
+            <div className="row">
+              <div className="col">
+                <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
+                  <option value="ellipsis">单行省略</option>
+                  <option value="lineBreak">支持换行</option>
+                </SelectControl>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         <div className="section-title">列宽</div>
