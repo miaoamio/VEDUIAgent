@@ -9,6 +9,7 @@
  */
 
 import { isObject } from './block.helpers';
+import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from '../../statusTagSemantic';
 
 // ─── Utils：table 专属工具函数 ────────────────────────────────────────────────
 
@@ -105,19 +106,6 @@ export const resolveTagColumnKind = (columnType: unknown, headerText: string): T
   return 'status';
 };
 
-const resolveStatusThemeFromColor = (value: unknown): string | null => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.includes('green') || normalized.includes('success') || normalized.includes('成功') || normalized.includes('启用')) return 'Success 成功';
-  if (normalized.includes('orange') || normalized.includes('yellow') || normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) return 'Warning 告警';
-  if (normalized.includes('red') || normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) return 'Error 错误';
-  if (normalized.includes('gray') || normalized.includes('grey') || normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) return 'Stop 停止';
-  if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-  if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
-  if (normalized.includes('processing') || normalized.includes('pending') || normalized.includes('等待') || normalized.includes('进行中') || normalized.includes('blue')) return 'Processing 等待中';
-  return null;
-};
-
 export const extractTagCellPayload = (
   value: unknown,
   fallbackKind: TagColumnKind
@@ -132,15 +120,19 @@ export const extractTagCellPayload = (
   tagColor?: string;
 } => {
   if (!isObject(value)) {
+    const text = extractCellText(value);
+    const statusTheme = fallbackKind === 'status' ? resolveStatusTagThemeFromSemantic(text) || undefined : undefined;
     return {
-      text: extractCellText(value),
+      text,
       kind: fallbackKind,
-      tagColor: fallbackKind === 'status' ? 'green' : undefined
+      ...(statusTheme ? { statusTheme } : {})
     };
   }
 
   const obj = value as any;
-  const text = extractCellText(obj);
+  const text =
+    extractCellText(obj) ||
+    extractCellText(obj.tagText ?? obj.statusText ?? obj.label ?? obj.value ?? obj.name);
 
   const rawKind =
     obj.tagKind ??
@@ -165,10 +157,15 @@ export const extractTagCellPayload = (
   const tagColor = typeof tagColorRaw === 'string' && tagColorRaw.trim() ? tagColorRaw.trim() : undefined;
 
   const statusThemeRaw = obj.statusTheme ?? obj.theme ?? obj.tagTheme;
+  const semanticKeyRaw = obj.statusSemantic ?? obj.statusIntent ?? obj.semantic ?? obj.intent;
+  const semanticTheme = resolveStatusTagThemeFromSemantic(semanticKeyRaw) || undefined;
+  const textTheme = resolveStatusTagThemeFromSemantic(text) || undefined;
   const statusTheme =
-    typeof statusThemeRaw === 'string' && statusThemeRaw.trim()
-      ? statusThemeRaw.trim()
-      : resolveStatusThemeFromColor(tagColorRaw) || undefined;
+    semanticTheme ||
+    textTheme ||
+    normalizeStatusTagThemeInput(statusThemeRaw) ||
+    resolveStatusTagThemeFromSemantic(tagColorRaw) ||
+    undefined;
 
   const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
   const statusType =
@@ -397,11 +394,20 @@ export const buildTableComponentFromPayload = (
           baseParams.statusType = tagPayload.statusType || 'L2 二级标签';
           baseParams.statusTheme = tagPayload.statusTheme || 'Success 成功';
           if (tagPayload.statusState) baseParams.statusState = tagPayload.statusState;
+          // 规则：状态标签不携带 tagType，避免被误判为默认 Tag
+          delete baseParams.tagType;
         } else {
           baseParams.tagType = tagPayload.tagType || 'Outline 线型标签';
         }
 
-        columnChildren.push({ componentId: 'table-cell-tag', params: baseParams });
+        columnChildren.push({
+          componentId: 'table-cell-tag',
+          params: {
+            ...baseParams,
+            // Ensure status family is preferred for status kind
+            ...(isStatus ? { componentToken: 'lib-data-display-status-tag' } : {})
+          }
+        });
         return;
       }
       if (cellComponentId === 'table-cell-avatar') {

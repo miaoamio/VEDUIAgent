@@ -31,6 +31,7 @@ import {
   resolveFormLayoutParamsUpdate
 } from './engine/skills/form.skill';
 import { getChartToken, buildChartBlockComponentFromPayload } from './engine/skills/chart.skill';
+import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from './statusTagSemantic';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 const isEnabledComponent = (def: ComponentDefinition) => (
@@ -91,6 +92,7 @@ const MAX_CHILD_SUMMARY_ITEMS = 6;
 const MAX_TABLE_PREVIEW_CHARS = 200;
 const MAX_TABLE_CONTEXT_ROWS = 10;
 const MAX_ATTACHMENT_IMAGES_PER_TURN = 4;
+const MAX_ATTACHMENT_TABLES_PER_TURN = 4;
 const STREAM_TABLE_PREFIX = '@@table_stream';
 const TABLE_SPEC_IDS = ['table', 'table-column', 'table-header-cell', 'table-cell'];
 const CHART_SPEC_IDS = ['chart-toplist', 'chart-pie', 'chart-line', 'chart-bar', 'chart-area'];
@@ -2034,6 +2036,26 @@ function compactStructureResult(item: any): any {
 
 function App() {
   const [userInput, setUserInput] = React.useState('');
+  const debugSessionIdRef = React.useRef(`ui-hang-${Date.now()}`);
+  const debugTraceIdRef = React.useRef('');
+  const emitDebugEvent = React.useCallback((hypothesisId: string, location: string, msg: string, data?: Record<string, unknown>) => {
+    const event = {
+      sessionId: debugSessionIdRef.current,
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data: data || {},
+      traceId: debugTraceIdRef.current || undefined,
+      ts: Date.now()
+    };
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    }).catch(() => {});
+    parent.postMessage({ pluginMessage: { type: 'debug-event', event } }, '*');
+  }, []);
   const composerTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const composerRichInputRef = React.useRef<HTMLSpanElement | null>(null);
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
@@ -2076,6 +2098,8 @@ function App() {
   const [uploadedImages, setUploadedImages] = React.useState<UploadedImageAttachment[]>([]);
   const [uploadedTables, setUploadedTables] = React.useState<UploadedTableAttachment[]>([]);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
+  const [imageLimitNotice, setImageLimitNotice] = React.useState(false);
+  const [tableLimitNotice, setTableLimitNotice] = React.useState(false);
   const [agentPlan, setAgentPlan] = React.useState<AgentPlanState | null>(null);
   const [manualTaskRunner, setManualTaskRunner] = React.useState(false);
   const [planTasksCollapsed, setPlanTasksCollapsed] = React.useState(false);
@@ -2213,9 +2237,9 @@ function App() {
   }, [selectedComponent?.params?.controlWidth]);
 
   // Tab state
-  const [activeTab, setActiveTab] = React.useState<'chat' | 'selection'>('chat');
-  const activeTabRef = React.useRef<'chat' | 'selection'>('chat');
-  const setActiveTabWithRef = React.useCallback((tab: 'chat' | 'selection') => {
+  const [activeTab, setActiveTab] = React.useState<'chat' | 'selection' | 'docs'>('chat');
+  const activeTabRef = React.useRef<'chat' | 'selection' | 'docs'>('chat');
+  const setActiveTabWithRef = React.useCallback((tab: 'chat' | 'selection' | 'docs') => {
     activeTabRef.current = tab;
     setActiveTab(tab);
   }, []);
@@ -2283,7 +2307,12 @@ function App() {
           agentPlan
         );
         // 只有当需要切换到不同 tab 时才切换，避免属性修改时的闪烁
-        if (!multiTaskActive && activeTabRef.current !== 'selection' && nextTab !== activeTabRef.current) {
+        if (
+          !multiTaskActive &&
+          activeTabRef.current !== 'selection' &&
+          activeTabRef.current !== 'docs' &&
+          nextTab !== activeTabRef.current
+        ) {
           setActiveTabWithRef(nextTab);
         }
         if (data.componentId) {
@@ -2302,7 +2331,7 @@ function App() {
           loading,
           agentPlan
         );
-        if (!multiTaskActive) {
+        if (!multiTaskActive && activeTabRef.current !== 'docs') {
           setActiveTabWithRef('selection');
         }
         setSelectedComponent(null);
@@ -2312,7 +2341,9 @@ function App() {
       if (type === 'selection-cleared') {
         setSelectionCount(0);
         setCanvasHint(data?.canvasHint ?? 'mixed');
-        setActiveTabWithRef('chat');
+        if (activeTabRef.current !== 'docs') {
+          setActiveTabWithRef('chat');
+        }
         setSelectedComponent(null);
         setChartOverlayOpen(false);
       }
@@ -2329,7 +2360,9 @@ function App() {
     if (loading) return;
     if (selectionCount <= 0) return;
     if (selectedComponent?.componentId?.startsWith('chart')) return;
-    setActiveTabWithRef('selection');
+    if (activeTabRef.current !== 'docs') {
+      setActiveTabWithRef('selection');
+    }
   }, [loading, selectionCount, selectedComponent?.componentId]);
 
   React.useEffect(() => {
@@ -2498,13 +2531,51 @@ function App() {
     }, '*');
   };
 
+  const isImageUploadAtLimit = uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN;
+  const isTableUploadAtLimit = uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN;
+  const getTableUploadTooltip = React.useCallback(
+    (tableCount: number) =>
+      tableCount >= MAX_ATTACHMENT_TABLES_PER_TURN
+        ? '表格文件最多4个'
+        : '每个表格最多读取前10行用于生成，超出将截断',
+    []
+  );
+
+  const getRemainingAttachmentSlots = React.useCallback(
+    (
+      currentCount: number,
+      maxLimit: number,
+      incomingCount: number,
+      setNotice: React.Dispatch<React.SetStateAction<boolean>>
+    ) => {
+      const remainingSlots = Math.max(0, maxLimit - currentCount);
+      if (remainingSlots === 0) {
+        setNotice(true);
+        return 0;
+      }
+      if (incomingCount > remainingSlots) {
+        setNotice(true);
+      }
+      return remainingSlots;
+    },
+    []
+  );
+
   const handleImageFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
     setAttachmentError(null);
 
+    const incomingImageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedImages.length,
+      MAX_ATTACHMENT_IMAGES_PER_TURN,
+      incomingImageFiles.length,
+      setImageLimitNotice
+    );
+    if (remainingSlots === 0) return;
+
     const nextImages: UploadedImageAttachment[] = [];
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) continue;
+    for (const file of incomingImageFiles.slice(0, remainingSlots)) {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         nextImages.push({
@@ -2522,14 +2593,23 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, []);
+  }, [getRemainingAttachmentSlots, uploadedImages.length]);
 
   const handleTableFiles = React.useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
     setAttachmentError(null);
 
+    const incomingFiles = Array.from(files);
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedTables.length,
+      MAX_ATTACHMENT_TABLES_PER_TURN,
+      incomingFiles.length,
+      setTableLimitNotice
+    );
+    if (remainingSlots === 0) return;
+
     const nextTables: UploadedTableAttachment[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of incomingFiles.slice(0, remainingSlots)) {
       try {
         nextTables.push(await parseUploadedTable(file));
       } catch (e) {
@@ -2550,7 +2630,7 @@ function App() {
     if (nextTables.length > 0) {
       setUploadedTables((prev) => [...prev, ...nextTables]);
     }
-  }, []);
+  }, [getRemainingAttachmentSlots, uploadedTables.length]);
 
   const handlePaste = React.useCallback(async (event: React.ClipboardEvent<HTMLElement>) => {
     const items = Array.from(event.clipboardData?.items || []);
@@ -2560,12 +2640,19 @@ function App() {
       .filter((file): file is File => Boolean(file));
 
     if (imageFiles.length === 0) return;
-
     event.preventDefault();
     setAttachmentError(null);
 
+    const remainingSlots = getRemainingAttachmentSlots(
+      uploadedImages.length,
+      MAX_ATTACHMENT_IMAGES_PER_TURN,
+      imageFiles.length,
+      setImageLimitNotice
+    );
+    if (remainingSlots === 0) return;
+
     const nextImages: UploadedImageAttachment[] = [];
-    for (const file of imageFiles) {
+    for (const file of imageFiles.slice(0, remainingSlots)) {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         nextImages.push({
@@ -2583,7 +2670,19 @@ function App() {
     if (nextImages.length > 0) {
       setUploadedImages((prev) => [...prev, ...nextImages]);
     }
-  }, []);
+  }, [getRemainingAttachmentSlots, uploadedImages.length]);
+
+  React.useEffect(() => {
+    if (uploadedImages.length < MAX_ATTACHMENT_IMAGES_PER_TURN) {
+      setImageLimitNotice(false);
+    }
+  }, [uploadedImages.length]);
+
+  React.useEffect(() => {
+    if (uploadedTables.length < MAX_ATTACHMENT_TABLES_PER_TURN) {
+      setTableLimitNotice(false);
+    }
+  }, [uploadedTables.length]);
 
   const clearChartPrompt = React.useCallback(() => {
     setChartShortcutActive(null);
@@ -3282,29 +3381,6 @@ StepD:
     return 'status';
   };
 
-  const resolveStatusThemeFromColor = (value: unknown): string | null => {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) return null;
-    if (normalized.includes('green') || normalized.includes('success') || normalized.includes('成功') || normalized.includes('启用')) {
-      return 'Success 成功';
-    }
-    if (normalized.includes('orange') || normalized.includes('yellow') || normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) {
-      return 'Warning 告警';
-    }
-    if (normalized.includes('red') || normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) {
-      return 'Error 错误';
-    }
-    if (normalized.includes('gray') || normalized.includes('grey') || normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) {
-      return 'Stop 停止';
-    }
-    if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-    if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
-    if (normalized.includes('processing') || normalized.includes('pending') || normalized.includes('等待') || normalized.includes('进行中') || normalized.includes('blue')) {
-      return 'Processing 等待中';
-    }
-    return null;
-  };
-
   const extractTagCellPayload = (
     value: unknown,
     fallbackKind: TagColumnKind
@@ -3319,10 +3395,12 @@ StepD:
     tagColor?: string;
   } => {
     if (!isObject(value)) {
+      const text = extractCellText(value);
+      const statusTheme = fallbackKind === 'status' ? resolveStatusTagThemeFromSemantic(text) || undefined : undefined;
       return {
-        text: extractCellText(value),
+        text,
         kind: fallbackKind,
-        tagColor: fallbackKind === 'status' ? 'green' : undefined
+        ...(statusTheme ? { statusTheme } : {})
       };
     }
 
@@ -3352,10 +3430,12 @@ StepD:
     const tagColor = typeof tagColorRaw === 'string' && tagColorRaw.trim() ? tagColorRaw.trim() : undefined;
 
     const statusThemeRaw = obj.statusTheme ?? obj.theme ?? obj.tagTheme;
+    const textTheme = resolveStatusTagThemeFromSemantic(text) || undefined;
     const statusTheme =
-      typeof statusThemeRaw === 'string' && statusThemeRaw.trim()
-        ? statusThemeRaw.trim()
-        : resolveStatusThemeFromColor(tagColorRaw) || undefined;
+      textTheme ||
+      normalizeStatusTagThemeInput(statusThemeRaw) ||
+      resolveStatusTagThemeFromSemantic(tagColorRaw) ||
+      undefined;
 
     const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
     const statusType =
@@ -6589,6 +6669,23 @@ StepD:
   // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
   // 开发环境使用本地 Worker (wrangler dev)，生产环境使用部署后的 Worker URL
   const WORKER_URL = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+  const readTimeoutConfig = (runtimeKey: string, envKey: string, fallback: number): number => {
+    const runtimeValue = (globalThis as any)[runtimeKey];
+    const envValue = (import.meta as any)?.env?.[envKey];
+    const raw = runtimeValue ?? envValue;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
+    '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
+    'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
+    15000
+  );
+  const LLM_STREAM_CHUNK_TIMEOUT_MS = readTimeoutConfig(
+    '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
+    'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
+    20000
+  );
   const url = `${WORKER_URL}/api/chat`;
 
   const onSend = async () => {
@@ -6735,6 +6832,15 @@ StepD:
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
     const displaySummary = buildUserSummary(turnInput, turnImages, turnTables);
     const currentTurnRichContent = buildRichUserContent(turnInput, turnImages, turnTables);
+    debugTraceIdRef.current = `trace-${Date.now()}`;
+    // #region debug-point A:send-start
+    emitDebugEvent('A', 'App.tsx:6844', 'request-start', {
+      turnInput,
+      chartTokenOverride,
+      imageCount: turnImages.length,
+      tableCount: turnTables.length
+    });
+    // #endregion
 
     // Track AI Generation attempt
     trackEvent("ai_generation", {
@@ -6780,9 +6886,6 @@ StepD:
         }
       : null;
 
-    // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
-    const url = `${WORKER_URL}/api/chat`;
-
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
         const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -6794,7 +6897,17 @@ StepD:
                 if (abortController.signal.aborted) {
                     throw new DOMException('Aborted', 'AbortError');
                 }
-                const res = await fetch(url, {
+                const attemptController = new AbortController();
+                const forwardAbort = () => attemptController.abort();
+                abortController.signal.addEventListener('abort', forwardAbort, { once: true });
+                let fetchTimedOut = false;
+                const fetchTimeoutId = window.setTimeout(() => {
+                    fetchTimedOut = true;
+                    attemptController.abort();
+                }, LLM_FETCH_TIMEOUT_MS);
+                let res: Response;
+                try {
+                    res = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -6803,8 +6916,20 @@ StepD:
                             stream: true,
                             stream_options: { include_usage: true }
                         }),
-                        signal: abortController.signal
+                        signal: attemptController.signal
                     });
+                } catch (error) {
+                    if (abortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
+                    if (fetchTimedOut) {
+                        throw new Error(`LLM 请求超时：${Math.ceil(LLM_FETCH_TIMEOUT_MS / 1000)} 秒内未连通代理服务`);
+                    }
+                    throw error;
+                } finally {
+                    window.clearTimeout(fetchTimeoutId);
+                    abortController.signal.removeEventListener('abort', forwardAbort);
+                }
 
                 if (res.status === 429) {
                     // Try to parse error body for more info
@@ -6853,45 +6978,62 @@ StepD:
                     if (abortController.signal.aborted) {
                         throw new DOMException('Aborted', 'AbortError');
                     }
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const chunk = decoder.decode(value, { stream: true });
-                    buffer += chunk;
-                    const lines = buffer.split('\n');
-                    
-                    // The last element might be incomplete, keep it in buffer
-                    buffer = lines.pop() || '';
-                    
-                    for (const line of lines) {
-                        if (line.trim() === '') continue;
-                        if (line.trim() === 'data: [DONE]') continue;
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const json = JSON.parse(line.substring(6));
-                                const content = json.choices?.[0]?.delta?.content || '';
-                                if (content) {
-                                    fullContent += content;
-                                    if (onStream) onStream(content);
-                                }
-                                // In streaming SSE, usage is typically sent in a final chunk where choices may be empty or delta is empty
-                                const usage = json.usage || json.x_groq?.usage || json.usage_info || json.usage_metadata;
-                                if (usage && usage.total_tokens) {
-                                    console.log("Found token usage in stream:", usage);
-                                    trackEvent("token_usage", {
-                                        tokenCount: usage.total_tokens,
-                                        promptTokens: usage.prompt_tokens || 0,
-                                        completionTokens: usage.completion_tokens || 0,
-                                        details: JSON.stringify({ usage })
-                                    });
-                                }
-                            } catch (e) {
-                                // Ignore "[DONE]" message parse error
-                                if (line.trim() !== 'data: [DONE]') {
-                                    console.error('Error parsing stream:', e);
+                    let readTimeoutId = 0;
+                    try {
+                        const { done, value } = await Promise.race([
+                            reader.read(),
+                            new Promise<never>((_, reject) => {
+                                readTimeoutId = window.setTimeout(() => {
+                                    reject(new Error(`LLM 响应超时：${Math.ceil(LLM_STREAM_CHUNK_TIMEOUT_MS / 1000)} 秒内未收到新的流式数据`));
+                                }, LLM_STREAM_CHUNK_TIMEOUT_MS);
+                            })
+                        ]);
+                        if (readTimeoutId) window.clearTimeout(readTimeoutId);
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        buffer += chunk;
+                        const lines = buffer.split('\n');
+                        
+                        // The last element might be incomplete, keep it in buffer
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            if (line.trim() === '') continue;
+                            if (line.trim() === 'data: [DONE]') continue;
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const json = JSON.parse(line.substring(6));
+                                    const content = json.choices?.[0]?.delta?.content || '';
+                                    if (content) {
+                                        fullContent += content;
+                                        if (onStream) onStream(content);
+                                    }
+                                    // In streaming SSE, usage is typically sent in a final chunk where choices may be empty or delta is empty
+                                    const usage = json.usage || json.x_groq?.usage || json.usage_info || json.usage_metadata;
+                                    if (usage && usage.total_tokens) {
+                                        console.log("Found token usage in stream:", usage);
+                                        trackEvent("token_usage", {
+                                            tokenCount: usage.total_tokens,
+                                            promptTokens: usage.prompt_tokens || 0,
+                                            completionTokens: usage.completion_tokens || 0,
+                                            details: JSON.stringify({ usage })
+                                        });
+                                    }
+                                } catch (e) {
+                                    // Ignore "[DONE]" message parse error
+                                    if (line.trim() !== 'data: [DONE]') {
+                                        console.error('Error parsing stream:', e);
+                                    }
                                 }
                             }
                         }
+                    } catch (error) {
+                        if (readTimeoutId) window.clearTimeout(readTimeoutId);
+                        try {
+                            await reader.cancel();
+                        } catch {}
+                        throw error;
                     }
                 }
                 return fullContent;
@@ -6899,6 +7041,17 @@ StepD:
             } catch (error) {
                 if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
                     throw error;
+                }
+                if (
+                    error instanceof Error &&
+                    (
+                        error.message.includes('LLM 请求超时') ||
+                        error.message.includes('LLM 响应超时') ||
+                        error.message.includes('Failed to fetch') ||
+                        error.message.includes('NetworkError')
+                    )
+                ) {
+                    throw new Error(`模型请求失败：${error.message}。请检查代理服务或网络连通性。`);
                 }
                 if (attempt === maxRetries - 1) throw error;
                 attempt++;
@@ -7084,10 +7237,19 @@ StepB:\n`;
         while (loopCount < MAX_LOOPS) {
             if (stopRequestedRef.current || abortController.signal.aborted) break;
             loopCount++;
+            // #region debug-point A:loop
+            emitDebugEvent('A', 'App.tsx:7083', 'agent-loop-enter', {
+              loopCount,
+              hasRuntimePlan: Boolean(runtimePlan),
+              shouldPrefetchTableSpecs,
+              shouldPrefetchChartSpecs
+            });
+            // #endregion
             
             // 1. Get LLM response with streaming
             let currentStreamedResponse = '';
             let streamLineBuffer = '';
+            let firstStreamChunkSeen = false;
             const streamPlanSnapshot = runtimePlan;
             streamTableStateRef.current = null;
             const baseMessages = replaceLastUserMessageContent(messages, currentTurnRichContent);
@@ -7101,6 +7263,9 @@ StepB:\n`;
                 streamLineBuffer = lines.pop() || '';
                 let displayDelta = '';
                 for (const line of lines) {
+                    if (!firstStreamChunkSeen && line.trim()) {
+                        firstStreamChunkSeen = true;
+                    }
                     if (line.trimStart().startsWith(STREAM_TABLE_PREFIX)) {
                         const events = extractStreamTableEvents(line);
                         events.forEach((event) => {
@@ -7120,6 +7285,9 @@ StepB:\n`;
                 }
             });
             if (streamLineBuffer.trim()) {
+                if (!firstStreamChunkSeen) {
+                    firstStreamChunkSeen = true;
+                }
                 if (streamLineBuffer.trimStart().startsWith(STREAM_TABLE_PREFIX)) {
                     const events = extractStreamTableEvents(streamLineBuffer);
                     events.forEach((event) => {
@@ -7158,6 +7326,13 @@ StepB:\n`;
                 // Commit to accumulated log
                 accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
                 setResponse(accumulatedLog);
+                // #region debug-point B:action-parsed
+                emitDebugEvent('B', 'App.tsx:7133', 'action-parsed', {
+                  loopCount,
+                  actionType: actionData?.action?.type,
+                  thought: actionData?.thought || ''
+                });
+                // #endregion
                 
             } catch (e) {
                 // If it's the last chunk and still not valid JSON, show raw
@@ -7434,6 +7609,12 @@ StepB:\n`;
             if (action.type === 'read_specs') {
                 const payload = action.payload;
                 const ids = normalizeSpecIdsFromPayload(payload);
+                // #region debug-point C:read-specs
+                emitDebugEvent('C', 'App.tsx:7423', 'read-specs', {
+                  loopCount,
+                  ids
+                });
+                // #endregion
                 if (ids.length === 0) {
                     console.warn("Invalid payload for read_specs", payload);
                 }
@@ -7829,6 +8010,13 @@ StepB:\n`;
 
             else if (action.type === 'draw_table' || action.type === 'draw_tabl') {
                 const payload = action.payload;
+                // #region debug-point D:draw-table
+                emitDebugEvent('D', 'App.tsx:7819', 'draw-table-start', {
+                  loopCount,
+                  hasPayload: Boolean(payload),
+                  actionType: action.type
+                });
+                // #endregion
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7847,6 +8035,14 @@ StepB:\n`;
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
+                        // #region debug-point D:draw-table-success
+                        emitDebugEvent('D', 'App.tsx:7838', 'draw-table-success', {
+                          loopCount,
+                          rootNodeId,
+                          columnCount: tableComponent.params.columnCount,
+                          rowCount: tableComponent.params.rowCount
+                        });
+                        // #endregion
                         const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
@@ -7858,6 +8054,12 @@ StepB:\n`;
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
+                        // #region debug-point D:draw-table-error
+                        emitDebugEvent('D', 'App.tsx:7849', 'draw-table-error', {
+                          loopCount,
+                          error: String(e)
+                        });
+                        // #endregion
                         const errorMsg = `[System]: 表格创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -7871,6 +8073,12 @@ StepB:\n`;
 
             else if (action.type === 'draw_form') {
                 const payload = action.payload;
+                // #region debug-point D:draw-form
+                emitDebugEvent('D', 'App.tsx:7861', 'draw-form-start', {
+                  loopCount,
+                  hasPayload: Boolean(payload)
+                });
+                // #endregion
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7890,6 +8098,13 @@ StepB:\n`;
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
+                        // #region debug-point D:draw-form-success
+                        emitDebugEvent('D', 'App.tsx:7881', 'draw-form-success', {
+                          loopCount,
+                          rootNodeId,
+                          rowCount: Array.isArray(formComponent.children) ? formComponent.children.length : 0
+                        });
+                        // #endregion
                         const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
                         const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
@@ -7902,6 +8117,12 @@ StepB:\n`;
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
+                        // #region debug-point D:draw-form-error
+                        emitDebugEvent('D', 'App.tsx:7893', 'draw-form-error', {
+                          loopCount,
+                          error: String(e)
+                        });
+                        // #endregion
                         const errorMsg = `[System]: 表单创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -7915,6 +8136,12 @@ StepB:\n`;
 
             else if (action.type === 'create_node') {
                 const { componentId, params, children, parentId } = action.payload;
+                // #region debug-point D:create-node
+                emitDebugEvent('D', 'App.tsx:7905', 'create-node-start', {
+                  loopCount,
+                  componentId
+                });
+                // #endregion
                 const resolvedParentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7968,6 +8195,13 @@ StepB:\n`;
                       { componentId: nextComponentId, params: nextParams, children },
                       resolvedParentId
                     );
+                    // #region debug-point D:create-node-success
+                    emitDebugEvent('D', 'App.tsx:7956', 'create-node-success', {
+                      loopCount,
+                      componentId: nextComponentId,
+                      rootNodeId
+                    });
+                    // #endregion
 
                     accumulatedLog += '\n\n' + `[System]: 组件创建成功。`;
                     setResponse(accumulatedLog);
@@ -7982,6 +8216,13 @@ StepB:\n`;
                     }
 
                 } catch (e) {
+                    // #region debug-point D:create-node-error
+                    emitDebugEvent('D', 'App.tsx:7973', 'create-node-error', {
+                      loopCount,
+                      componentId,
+                      error: String(e)
+                    });
+                    // #endregion
                     const errorMsg = `[System]: 组件创建失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
@@ -7992,6 +8233,12 @@ StepB:\n`;
                 }
             }
             else {
+                // #region debug-point E:unknown-action
+                emitDebugEvent('E', 'App.tsx:7983', 'unknown-action', {
+                  loopCount,
+                  actionType: String(action.type)
+                });
+                // #endregion
                 const unknownMsg = `[System]: 未知动作类型：${String(action.type)}。`;
                 accumulatedLog += '\n\n' + unknownMsg;
                 setResponse(accumulatedLog);
@@ -8022,7 +8269,8 @@ StepB:\n`;
         setResponse((prev) => (prev ? `${prev}\n\n[System]: 已停止。` : `[System]: 已停止。`));
       } else {
         console.error('Agent Loop Error:', error);
-        setResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        setResponse((prev) => (prev ? `${prev}\n\n[System]: ${message}` : `[System]: ${message}`));
       }
     } finally {
       setAgentPlan(runtimePlan);
@@ -8076,19 +8324,19 @@ StepB:\n`;
     ],
     '柱状图': [
       { key: 'seriesCount', label: '每组柱数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
+      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠'], defaultValue: '基础/分组柱' }
     ],
     '条形图': [
       { key: 'seriesCount', label: '线数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
+      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠', '特殊'], defaultValue: '基础/分组柱' }
     ],
     '折线图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
+      { key: 'chartType', label: '类型', options: ['默认', '平滑', '大数据'], defaultValue: '默认' }
     ],
     '面积图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
+      { key: 'chartType', label: '类型', options: ['默认', '平滑', '堆叠', '百分比'], defaultValue: '默认' }
     ]
   };
   const buildQuickComponentName = (displayName: string, token: string) => {
@@ -9337,116 +9585,182 @@ StepB:\n`;
       return JSON.stringify(snapshot, null, 2);
     };
 
-    return (
-      <div className="docs-container">
-        <h3 style={{ margin: '0 0 12px 0' }}>Figma Key 登记助手</h3>
+    const selectedRawParamsJson = (() => {
+      if (!selectedComponent) return '';
+      try {
+        return JSON.stringify(
+          {
+            componentId: selectedComponent.componentId,
+            nodeName: selectedComponent.nodeName,
+            childComponentId: selectedComponent.childComponentId,
+            params: selectedComponent.params
+          },
+          null,
+          2
+        );
+      } catch {
+        return '';
+      }
+    })();
 
-        <div className="component-card" style={{ marginBottom: '12px' }}>
-          {/* 选中实例信息 + 反查 + snapshot，合为一张卡 */}
-          {figmaInstanceInfo ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '4px', fontSize: '12px' }}>
-                <span style={{ color: '#777' }}>组件集</span>
-                <span>{figmaInstanceInfo.componentSetName || figmaInstanceInfo.componentName || '—'}</span>
+    return (
+      <div className="selection-layout">
+        <div className="selection-header">
+          <div className="selection-header-left">
+            <button
+              className="selection-back"
+              onClick={() => setActiveTabWithRef('chat')}
+            >
+              <span className="selection-back-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M11.1 11.3609C11.4113 11.6721 11.4113 12.1768 11.1 12.4881L10.5364 13.0517C10.2252 13.363 9.72047 13.363 9.4092 13.0517L4.90029 8.54279C4.74381 8.38632 4.666 8.18098 4.66684 7.9759C4.666 7.77082 4.74381 7.56548 4.90029 7.40901L9.4092 2.90009C9.72047 2.58882 10.2252 2.58882 10.5364 2.90009L11.1 3.46371C11.4113 3.77498 11.4113 4.27966 11.1 4.59094L7.71508 7.9759L11.1 11.3609Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span className="selection-back-text">返回对话模式</span>
+            </button>
+          </div>
+          <div className="selection-title">组件反查</div>
+        </div>
+        <div className="selection-scroll">
+          <div className="docs-container">
+            <h3 style={{ margin: '0 0 12px 0' }}>Figma Key 登记助手</h3>
+
+            {selectedRawParamsJson && (
+              <div className="component-card" style={{ marginBottom: '12px' }}>
+                <div className="component-header">
+                  <span className="component-name">当前选中（AI 参数）</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <button
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedRawParamsJson);
+                      const btn = document.activeElement as HTMLButtonElement;
+                      if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                    }}
+                  >
+                    复制 params JSON
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  value={selectedRawParamsJson}
+                  rows={10}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }}
+                />
               </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <code style={{ flex: 1, background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', wordBreak: 'break-all' }}>
-                  {figmaInstanceInfo.componentKey}
-                </code>
-                <button onClick={() => {
-                  navigator.clipboard.writeText(figmaInstanceInfo.componentKey);
-                  const btn = document.activeElement as HTMLButtonElement;
-                  if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
-                }} style={{ flexShrink: 0 }}>复制 Key</button>
-                <button
-                  onClick={async () => {
-                    if (componentInspectionRunning || loading || (!figmaInstanceInfo?.componentKey && !figmaInstanceInfo?.componentNodeId)) return;
-                    setComponentInspectionRunning(true);
-                    setUiMessages((prev) => [
-                      ...prev,
-                      { role: 'user', content: '/inspect' },
-                      { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
-                    ]);
-                    try {
-                      const inspectResult = await inspectFigmaComponentProps({ 
-                        keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
-                        nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
-                        maxCount: 1 
-                      });
-                      const summary = inspectResult?.summary || {};
-                      const success = Number(summary.success || 0);
-                      const failed = Number(summary.failed || 0);
-                      const json = buildInspectPropsJson(inspectResult);
-                      setComponentInspectJson(json);
-                      const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
-                      setUiMessages((prev) => {
-                        const next = [...prev];
-                        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
-                        return next;
-                      });
-                    } catch (e) {
-                      const errLine = `[System]: /inspect 失败: ${String(e)}`;
-                      setUiMessages((prev) => {
-                        const next = [...prev];
-                        next[next.length - 1] = { role: 'ai', content: errLine };
-                        return next;
-                      });
-                    } finally {
-                      setComponentInspectionRunning(false);
-                    }
-                  }}
-                  disabled={componentInspectionRunning || loading}
-                  style={{ flexShrink: 0 }}
-                >{componentInspectionRunning ? '…' : '反查属性'}</button>
-              </div>
-              {componentInspectionSummary && (
-                <div style={{ fontSize: '11px', color: '#777' }}>{componentInspectionSummary}</div>
-              )}
-              {componentInspectJson && (
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={handleCopyInspectJson} style={{ flex: 1 }}>复制反查 JSON</button>
-                  <button onClick={() => {
-                    const snippet = generateSnapshotSnippet();
-                    navigator.clipboard.writeText(snippet);
-                    const btn = document.activeElement as HTMLButtonElement;
-                    if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
-                  }} style={{ flex: 1 }}>复制 snapshot 片段</button>
+            )}
+
+            <div className="component-card" style={{ marginBottom: '12px' }}>
+              {figmaInstanceInfo ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '4px', fontSize: '12px' }}>
+                    <span style={{ color: '#777' }}>组件集</span>
+                    <span>{figmaInstanceInfo.componentSetName || figmaInstanceInfo.componentName || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <code style={{ flex: 1, background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px', wordBreak: 'break-all' }}>
+                      {figmaInstanceInfo.componentKey}
+                    </code>
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(figmaInstanceInfo.componentKey);
+                      const btn = document.activeElement as HTMLButtonElement;
+                      if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                    }} style={{ flexShrink: 0 }}>复制 Key</button>
+                    <button
+                      onClick={async () => {
+                        if (componentInspectionRunning || loading || (!figmaInstanceInfo?.componentKey && !figmaInstanceInfo?.componentNodeId)) return;
+                        setComponentInspectionRunning(true);
+                        setUiMessages((prev) => [
+                          ...prev,
+                          { role: 'user', content: '/inspect' },
+                          { role: 'ai', content: '[System]: 正在反查当前选中元素…' }
+                        ]);
+                        try {
+                          const inspectResult = await inspectFigmaComponentProps({
+                            keys: figmaInstanceInfo.componentKey ? [figmaInstanceInfo.componentKey] : undefined,
+                            nodeIds: figmaInstanceInfo.componentNodeId ? [figmaInstanceInfo.componentNodeId] : undefined,
+                            maxCount: 1
+                          });
+                          const summary = inspectResult?.summary || {};
+                          const success = Number(summary.success || 0);
+                          const failed = Number(summary.failed || 0);
+                          const json = buildInspectPropsJson(inspectResult);
+                          setComponentInspectJson(json);
+                          const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
+                          setUiMessages((prev) => {
+                            const next = [...prev];
+                            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+                            return next;
+                          });
+                        } catch (e) {
+                          const errLine = `[System]: /inspect 失败: ${String(e)}`;
+                          setUiMessages((prev) => {
+                            const next = [...prev];
+                            next[next.length - 1] = { role: 'ai', content: errLine };
+                            return next;
+                          });
+                        } finally {
+                          setComponentInspectionRunning(false);
+                        }
+                      }}
+                      disabled={componentInspectionRunning || loading}
+                      style={{ flexShrink: 0 }}
+                    >{componentInspectionRunning ? '…' : '反查属性'}</button>
+                  </div>
+                  {componentInspectionSummary && (
+                    <div style={{ fontSize: '11px', color: '#777' }}>{componentInspectionSummary}</div>
+                  )}
+                  {componentInspectJson && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={handleCopyInspectJson} style={{ flex: 1 }}>复制反查 JSON</button>
+                      <button onClick={() => {
+                        const snippet = generateSnapshotSnippet();
+                        navigator.clipboard.writeText(snippet);
+                        const btn = document.activeElement as HTMLButtonElement;
+                        if (btn) { const t = btn.innerText; btn.innerText = '✓'; setTimeout(() => { btn.innerText = t; }, 1500); }
+                      }} style={{ flex: 1 }}>复制 snapshot 片段</button>
+                    </div>
+                  )}
+                  {componentInspectJson && (
+                    <textarea readOnly value={componentInspectJson} rows={8}
+                      style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box' }} />
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
+                  在 Figma 画布中选中任意组件实例，自动读取 componentKey 并支持一键反查属性。
                 </div>
               )}
-              {componentInspectJson && (
-                <textarea readOnly value={componentInspectJson} rows={8}
-                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box' }} />
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
-              在 Figma 画布中选中任意组件实例，自动读取 componentKey 并支持一键反查属性。
-            </div>
-          )}
 
-          {/* 手动 token 输入（次要） */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
-            <input
-              type="text"
-              value={componentInspectTokenInput}
-              onChange={(e) => setComponentInspectTokenInput(e.target.value)}
-              placeholder="或输入 token 名反查"
-              style={{ flex: 1 }}
-            />
-            <button onClick={handleInspectStructureByTokenInput} disabled={componentInspectionRunning || loading}>反查</button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0' }}>
+                <input
+                  type="text"
+                  value={componentInspectTokenInput}
+                  onChange={(e) => setComponentInspectTokenInput(e.target.value)}
+                  placeholder="或输入 token 名反查"
+                  style={{ flex: 1 }}
+                />
+                <button onClick={handleInspectStructureByTokenInput} disabled={componentInspectionRunning || loading}>反查</button>
+              </div>
+            </div>
+
+            {figmaInstanceInfo?.componentKey && componentInspectJson && (
+              <div className="component-card">
+                <div className="component-header">
+                  <span className="component-name">figmaPropertySnapshot 片段</span>
+                </div>
+                <textarea readOnly value={generateSnapshotSnippet()} rows={10}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }} />
+              </div>
+            )}
           </div>
         </div>
-
-        {/* snapshot 预览（有 key 且有反查结果时） */}
-        {figmaInstanceInfo?.componentKey && componentInspectJson && (
-          <div className="component-card">
-            <div className="component-header">
-              <span className="component-name">figmaPropertySnapshot 片段</span>
-            </div>
-            <textarea readOnly value={generateSnapshotSnippet()} rows={10}
-              style={{ width: '100%', fontFamily: 'monospace', fontSize: '11px', boxSizing: 'border-box', marginTop: '8px' }} />
-          </div>
-        )}
       </div>
     );
   };
@@ -9765,13 +10079,71 @@ StepB:\n`;
 
   return (
     <div
-      className={`container ${activeTab === 'selection' ? 'container-selection' : ''} ${
+      className={`container ${activeTab === 'selection' || activeTab === 'docs' ? 'container-selection' : ''} ${
         activeTab === 'chat' ? 'container-chat' : ''
       }`}
     >
       {activeTab === 'chat' ? (
         <div className="chat-layout">
           <div className="chat-scroll" ref={chatScrollRef}>
+            {uiMessages.length === 0 && (
+              <div className="chat-empty-guide">
+                <p className="chat-empty-guide-text">请尝试以下例子来生成设计</p>
+                <div className="chat-empty-guide-examples">
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      replaceQuickPrompt('生成一个表格');
+                      setChartPromptMode(false);
+                      setChartShortcutActive(null);
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setAttachmentMenuOpen(false);
+                      setQuickComponentMenuOpen(false);
+                      composerTextareaRef.current?.focus();
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个表格
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      replaceQuickPrompt('生成一个表单');
+                      setChartPromptMode(false);
+                      setChartShortcutActive(null);
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setAttachmentMenuOpen(false);
+                      setQuickComponentMenuOpen(false);
+                      composerTextareaRef.current?.focus();
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个表单
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-empty-guide-tag"
+                    onClick={() => {
+                      setUserInput('');
+                      setChartShortcutActive('折线图');
+                      setChartExtraOptions({});
+                      setActiveOptionMenu(null);
+                      setChartOverlayOpen(true);
+                      setAttachmentMenuOpen(false);
+                      setChartMenuOpen(false);
+                      requestAnimationFrame(() => focusComposerInput());
+                    }}
+                    disabled={loading}
+                  >
+                    绘制一个折线图
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="chat-thread">
               {uiMessages.map((msg, index) => (
                 <div key={`${msg.role}_${index}`} className={`chat-message ${msg.role}`}>
@@ -10191,6 +10563,14 @@ StepB:\n`;
                   <button
                     type="button"
                     className="chat-selection-action"
+                    onClick={() => setActiveTabWithRef('docs')}
+                    disabled={loading}
+                  >
+                    组件反查
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-selection-action"
                     onClick={() => setActiveTabWithRef('selection')}
                     disabled={manualAdjustDisabled}
                   >
@@ -10221,6 +10601,24 @@ StepB:\n`;
                       </button>
                     </div>
                   ))}
+                  {imageLimitNotice && uploadedImages.length >= MAX_ATTACHMENT_IMAGES_PER_TURN && (
+                    <div className="attachment-image-limit-hint" role="status">
+                      <span className="attachment-image-limit-icon" aria-hidden="true">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M12 8V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M12 16H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <span className="attachment-image-limit-text">图片最多4张，已自动选取前4张</span>
+                    </div>
+                  )}
                   {uploadedTables.map((table) => {
                     const svgBaseId = `svg_${String(table.id).replace(/[^a-zA-Z0-9]/g, '') || 'file'}`;
                     const clipId = `${svgBaseId}_clip0`;
@@ -10289,6 +10687,18 @@ StepB:\n`;
                       </div>
                     );
                   })}
+                  {tableLimitNotice && uploadedTables.length >= MAX_ATTACHMENT_TABLES_PER_TURN && (
+                    <div className="attachment-table-limit-hint" role="status">
+                      <span className="attachment-table-limit-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M12 8V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M12 16H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <span className="attachment-table-limit-text">表格文件最多4张，已自动选取前4个文件</span>
+                    </div>
+                  )}
               {attachmentError && <div className="attachment-error-banner">{attachmentError}</div>}
             </div>
           )}
@@ -10299,7 +10709,9 @@ StepB:\n`;
                 <div className="composer-textarea-wrap" style={{ paddingTop: '10px', transition: 'padding-top 0.2s ease-in-out' }}>
                   {chartShortcutActive ? (
                     <div
-                      className="composer-rich-editor"
+                      className={`composer-rich-editor ${
+                        chartMenuOpen || Boolean(activeOptionMenu) ? 'composer-rich-editor-dropdown-open' : ''
+                      }`}
                       onMouseDown={(event) => {
                         event.stopPropagation();
                         if (!(event.target instanceof HTMLElement)) return;
@@ -10513,75 +10925,91 @@ StepB:\n`;
                       </button>
                       {attachmentMenuOpen && (
                         <div className="composer-menu">
-                          <button
-                            type="button"
-                            className="composer-menu-item"
-                            onClick={() => {
-                              setAttachmentMenuOpen(false);
-                              imageInputRef.current?.click();
-                            }}
-                            disabled={loading}
+                          <Tooltip
+                            content="图片最多4张"
+                            enabled={isImageUploadAtLimit}
+                            placement="top-start"
                           >
-                            <span className="composer-menu-icon">
-                              <svg
-                                className="icon-screenshot"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                role="img"
-                                aria-label="截图图标"
-                                focusable="false"
+                            <div className="composer-menu-item-wrap">
+                              <button
+                                type="button"
+                                className="composer-menu-item"
+                                onClick={() => {
+                                  setAttachmentMenuOpen(false);
+                                  imageInputRef.current?.click();
+                                }}
+                                disabled={loading || isImageUploadAtLimit}
                               >
-                                <title>截图图标</title>
-                                <path
-                                  d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
-                                  fill="#18181B"
-                                />
-                              </svg>
-                            </span>
-                            上传截图
-                          </button>
-                          <button
-                            type="button"
-                            className="composer-menu-item"
-                            onClick={() => {
-                              setAttachmentMenuOpen(false);
-                              tableInputRef.current?.click();
-                            }}
-                            disabled={loading}
+                                <span className="composer-menu-icon">
+                                  <svg
+                                    className="icon-screenshot"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    role="img"
+                                    aria-label="截图图标"
+                                    focusable="false"
+                                  >
+                                    <title>截图图标</title>
+                                    <path
+                                      d="M2.75 15C2.3375 15 1.98438 14.8531 1.69063 14.5594C1.39687 14.2656 1.25 13.9125 1.25 13.5V3C1.25 2.5875 1.39687 2.23437 1.69063 1.94062C1.98438 1.64687 2.3375 1.5 2.75 1.5H8.75C8.75 1.7125 8.75 1.94375 8.75 2.19375C8.75 2.44375 8.75 2.7125 8.75 3H2.75V13.5H13.25V7.5C13.5375 7.5 13.8063 7.5 14.0563 7.5C14.3063 7.5 14.5375 7.5 14.75 7.5V13.5C14.75 13.9125 14.6031 14.2656 14.3094 14.5594C14.0156 14.8531 13.6625 15 13.25 15H2.75ZM3.5 12H12.5L9.6875 8.25L7.4375 11.25L5.75 9L3.5 12ZM11.75 6V4.5H10.25V3H11.75V1.5H13.25V3H14.75V4.5H13.25V6H11.75Z"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </span>
+                                上传截图
+                              </button>
+                            </div>
+                          </Tooltip>
+                          <Tooltip
+                            content={getTableUploadTooltip(uploadedTables.length)}
+                            enabled={!loading}
+                            placement="top-start"
                           >
-                            <span className="composer-menu-icon">
-                              <svg
-                                className="icon-spreadsheet-file"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                role="img"
-                                aria-label="表格文件图标"
-                                focusable="false"
+                            <div className="composer-menu-item-wrap">
+                              <button
+                                type="button"
+                                className="composer-menu-item"
+                                onClick={() => {
+                                  setAttachmentMenuOpen(false);
+                                  tableInputRef.current?.click();
+                                }}
+                                disabled={loading || isTableUploadAtLimit}
                               >
-                                <title>表格文件图标</title>
-                                <g clipPath="url(#clip0_icon_spreadsheet_file)">
-                                  <path
-                                    fillRule="evenodd"
-                                    clipRule="evenodd"
-                                    d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
-                                    fill="#18181B"
-                                  />
-                                </g>
-                                <defs>
-                                  <clipPath id="clip0_icon_spreadsheet_file">
-                                    <rect width="16" height="16" fill="white" />
-                                  </clipPath>
-                                </defs>
-                              </svg>
-                            </span>
-                            上传表格
-                          </button>
+                                <span className="composer-menu-icon">
+                                  <svg
+                                    className="icon-spreadsheet-file"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    role="img"
+                                    aria-label="表格文件图标"
+                                    focusable="false"
+                                  >
+                                    <title>表格文件图标</title>
+                                    <g clipPath="url(#clip0_icon_spreadsheet_file)">
+                                      <path
+                                        fillRule="evenodd"
+                                        clipRule="evenodd"
+                                        d="M11.3904 0.666687C11.5673 0.666687 11.7369 0.736964 11.8619 0.86205L13.8048 2.80578C13.9298 2.93079 14 3.10032 14 3.27708V14.6667C14 15.0349 13.7015 15.3334 13.3333 15.3334H2.66667C2.29848 15.3334 2 15.0349 2 14.6667V1.33335C2 0.965164 2.29848 0.666687 2.66667 0.666687H11.3904ZM10.6663 2.00002L3.33333 2.00002V14H12.6667V4.01269L11 4.01301C10.8159 4.01301 10.6667 3.86377 10.6667 3.67968L10.6663 2.00002ZM11 5.33335C11.3682 5.33335 11.6667 5.63183 11.6667 6.00002V11.6667C11.6667 12.0349 11.3682 12.3334 11 12.3334H5C4.63181 12.3334 4.33333 12.0349 4.33333 11.6667V6.00002C4.33333 5.63183 4.63181 5.33335 5 5.33335H11ZM6.838 8.66669H5.53333V11.1334H6.838V8.66669ZM10.4663 8.66669H7.838V11.1334H10.4667L10.4663 8.66669ZM6.838 6.53302L5.53333 6.53335V7.66669H6.838V6.53302ZM10.4667 6.53335L7.838 6.53302V7.66669H10.4663L10.4667 6.53335Z"
+                                        fill="currentColor"
+                                      />
+                                    </g>
+                                    <defs>
+                                      <clipPath id="clip0_icon_spreadsheet_file">
+                                        <rect width="16" height="16" fill="white" />
+                                      </clipPath>
+                                    </defs>
+                                  </svg>
+                                </span>
+                                上传表格
+                              </button>
+                            </div>
+                          </Tooltip>
                         </div>
                       )}
                     </div>
@@ -10840,6 +11268,8 @@ StepB:\n`;
             </div>
           </div>
         </div>
+      ) : activeTab === 'docs' ? (
+        renderDocs()
       ) : (
         renderSelectionPage()
       )}

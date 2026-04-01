@@ -24,6 +24,10 @@ import {
 } from './theme/volcengine-design/component-tokens';
 import { createInspectDrivenTagFallbackNode } from './theme/volcengine-design/tag-fallback';
 import {
+  normalizeStatusTagThemeInput,
+  resolveStatusTagThemeFromSemantic
+} from './statusTagSemantic';
+import {
   applyColorVariable,
   applyEffectColorVariable,
   applyStrokeColorVariable,
@@ -50,6 +54,7 @@ const TEMPLATE_CACHE_FRAME_KEY = 'uia-template-cache-frame';
 const TEMPLATE_CACHE_NODE_KEY = 'uia-template-cache-node';
 const TEMPLATE_CACHE_NODE_CACHE_KEY = 'uia-template-cache-key';
 const TEMPLATE_CACHE_NODE_KIND = 'uia-template-cache-kind';
+const STATUS_TAG_LABEL_NODE_KEY = 'uia-status-tag-label-node';
 type TemplateCacheKind = 'component-instance' | 'tag-template';
 const TABLE_CELL_PREWARM_STATE = {
   scheduled: false,
@@ -190,6 +195,28 @@ function registerTemplateNode(cacheKey: string, kind: TemplateCacheKind, node: S
   }
   node.x = 0;
   node.y = 0;
+}
+
+function clearTemplateNodeMarker(node: SceneNode): void {
+  try {
+    node.setPluginData(TEMPLATE_CACHE_NODE_KEY, '');
+    node.setPluginData(TEMPLATE_CACHE_NODE_CACHE_KEY, '');
+    node.setPluginData(TEMPLATE_CACHE_NODE_KIND, '');
+  } catch {}
+}
+
+function markStatusTagLabelNode(root: SceneNode, target: TextNode | null): void {
+    const allTextNodes =
+        'findAll' in root
+            ? (root.findAll((node) => node.type === 'TEXT') as TextNode[])
+            : root.type === 'TEXT'
+                ? [root]
+                : [];
+    allTextNodes.forEach((node) => {
+        try {
+            node.setPluginData(STATUS_TAG_LABEL_NODE_KEY, node === target ? 'true' : '');
+        } catch {}
+    });
 }
 
 async function cleanupLegacyPrewarmTemplates(): Promise<void> {
@@ -2603,7 +2630,7 @@ function lockGeneratedContainerNode(node: BaseNode, componentId?: string) {
   }
 }
 
-function unlockGeneratedContainerNodes() {
+async function unlockGeneratedContainerNodes() {
   // Helper: recursively unlock a node and all its descendants.
   let deepUnlockCount = 0;
   const deepUnlock = (node: BaseNode) => {
@@ -2617,13 +2644,24 @@ function unlockGeneratedContainerNodes() {
     }
   };
 
-  // 1. Unlock tracked nodes by ID (deep — unlock children too).
-  generationLockedNodeIds.forEach((id) => {
-    const node = figma.getNodeById(id);
-    if (!node) return;
-    deepUnlock(node);
-  });
+  const ids = Array.from(generationLockedNodeIds);
   generationLockedNodeIds.clear();
+
+  // 1. Unlock tracked nodes by ID (deep — unlock children too).
+  await Promise.all(
+    ids.map(async (id) => {
+      let node: BaseNode | null = null;
+      try {
+        node = await figma.getNodeByIdAsync(id);
+      } catch (e) {
+        console.warn('Failed to resolve generated container node:', e);
+        return;
+      }
+      if (!node) return;
+      deepUnlock(node);
+    })
+  );
+  
   console.log('[gen-lock] deep unlocked', deepUnlockCount, 'nodes');
 
   // 2. Fallback: scan current page for any AI-component nodes that are still locked.
@@ -2882,10 +2920,17 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
                             ? 'Processing 等待中'
                             : undefined;
 
+    const semanticKeyRaw = params.statusSemantic ?? params.statusIntent ?? params.semantic ?? params.intent;
+    const semanticThemeOverride =
+        resolveStatusTagThemeFromSemantic(semanticKeyRaw) ||
+        resolveStatusTagThemeFromSemantic(label) ||
+        undefined;
+    const normalizedStatusThemeInput = normalizeStatusTagThemeInput(params.statusTheme ?? params.theme ?? legacyStatusTheme);
+
     const tagParams: Record<string, any> = {
         text: label,
         componentToken: requestedToken,
-        tagType: params.tagType,
+        ...(isTypeTag ? { tagType: params.tagType } : {}),
         size: params.size,
         state: params.state,
         disabled: params.disabled,
@@ -2893,7 +2938,7 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
         showDot: params.showDot,
         showDropdown: params.showDropdown,
         closable: params.closable,
-        statusTheme: params.statusTheme ?? params.theme ?? legacyStatusTheme,
+        statusTheme: semanticThemeOverride || normalizedStatusThemeInput,
         statusType: params.statusType ?? params.statusLevel ?? params.level,
         statusState: params.statusState
     };
@@ -2909,6 +2954,12 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
     }
     if (family === 'status' && !normalizedTagParams.statusTheme) {
         normalizedTagParams.statusTheme = 'Success 成功';
+    }
+    if (family === 'status' && normalizedTagParams.showIcon === undefined) {
+        normalizedTagParams.showIcon = false;
+    }
+    if (family === 'status' && normalizedTagParams.showDropdown === undefined) {
+        normalizedTagParams.showDropdown = false;
     }
 
     return normalizedTagParams;
@@ -2930,7 +2981,7 @@ function resolveStatusTagTypeVariantLabel(value: unknown): 'L1 一级标签' | '
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized.includes('l3') || normalized.includes('三级') || normalized.endsWith('3')) return 'L3 三级标签';
     if (normalized.includes('l2') || normalized.includes('二级') || normalized.endsWith('2')) return 'L2 二级标签';
-    return 'L1 一级标签';
+    return 'L2 二级标签';
 }
 
 function resolveStatusTagThemeVariantLabel(
@@ -2943,14 +2994,7 @@ function resolveStatusTagThemeVariantLabel(
     | 'Processing 等待中'
     | 'Loading 加载中'
     | 'Waiting 待启用' {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized.includes('warning') || normalized.includes('告警')) return 'Warning 告警';
-    if (normalized.includes('error') || normalized.includes('错误')) return 'Error 错误';
-    if (normalized.includes('stop') || normalized.includes('停止')) return 'Stop 停止';
-    if (normalized.includes('processing') || normalized.includes('等待')) return 'Processing 等待中';
-    if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-    if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
-    return 'Success 成功';
+    return resolveStatusTagThemeFromSemantic(value) || 'Waiting 待启用';
 }
 
 function resolveStatusTagStateVariantLabel(value: unknown): 'Default 默认' | 'Hover 悬浮' | 'Active 点击' {
@@ -3076,21 +3120,6 @@ function buildTagVariantCriteriaCandidates(
             'Disabled 禁用': toVariantBoolean(hasInputAffix(params.disabled))
         };
 
-        const requestedToggles = Object.fromEntries(
-            Object.entries(exact).filter(([key, value]) => {
-                if (
-                    key === 'Type 类型' ||
-                    key === 'Theme 主题' ||
-                    key === 'Size 尺寸' ||
-                    key === 'State 状态' ||
-                    key === 'Disabled 禁用'
-                ) {
-                    return false;
-                }
-                return value === 'True';
-            })
-        );
-
         return dedupeVariantCriteriaCandidates([
             exact,
             {
@@ -3101,19 +3130,24 @@ function buildTagVariantCriteriaCandidates(
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
                 'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择'],
                 'Disabled 禁用': exact['Disabled 禁用'],
-                ...requestedToggles
             },
             {
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
                 'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择'],
                 'Disabled 禁用': exact['Disabled 禁用']
             },
             {
                 'Type 类型': exact['Type 类型'],
                 'Theme 主题': exact['Theme 主题'],
-                'Size 尺寸': exact['Size 尺寸']
+                'Size 尺寸': exact['Size 尺寸'],
+                'Icon 图标': exact['Icon 图标'],
+                'Dropdown 下拉选择': exact['Dropdown 下拉选择']
             }
         ]);
     }
@@ -3215,6 +3249,99 @@ function findPreferredTextNode(root: SceneNode, preferredNames: string[]): TextN
     return preferredMatch || allTextNodes[0] || null;
 }
 
+function getTextNodeFontNames(node: TextNode): FontName[] {
+    const unique = new Map<string, FontName>();
+    const add = (font: FontName) => {
+        unique.set(`${font.family}::${font.style}`, font);
+    };
+    if (node.fontName !== figma.mixed) {
+        add(node.fontName as FontName);
+        return Array.from(unique.values());
+    }
+    const len = node.characters.length;
+    if (len <= 0) {
+        add({ family: 'Inter', style: 'Regular' });
+        return Array.from(unique.values());
+    }
+    for (let i = 0; i < len; i += 1) {
+        const font = node.getRangeFontName(i, i + 1);
+        if (font !== figma.mixed) add(font as FontName);
+    }
+    if (unique.size === 0) {
+        add({ family: 'Inter', style: 'Regular' });
+    }
+    return Array.from(unique.values());
+}
+
+function findStatusTagLabelNode(root: SceneNode, preferredLabel: string): TextNode | null {
+    const allTextNodes =
+        'findAll' in root
+            ? (root.findAll((node) => node.type === 'TEXT') as TextNode[])
+            : root.type === 'TEXT'
+                ? [root]
+                : [];
+    if (allTextNodes.length === 0) return null;
+
+    const normalizedPreferred = String(preferredLabel || '').trim();
+    const markedNode = allTextNodes.find((node) => {
+        try {
+            return node.getPluginData(STATUS_TAG_LABEL_NODE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    });
+    if (markedNode) return markedNode;
+
+    const reservedTokens = new Set([
+        'success', 'warning', 'error', 'stop', 'processing', 'loading', 'waiting',
+        'default', 'hover', 'active', 'true', 'false',
+        'l1', 'l2', 'l3',
+        'success 成功', 'warning 告警', 'error 错误', 'stop 停止',
+        'processing 等待中', 'loading 加载中', 'waiting 待启用',
+        'default 默认', 'hover 悬浮', 'active 点击',
+        'l1 一级标签', 'l2 二级标签', 'l3 三级标签'
+    ]);
+    const normalizeToken = (value: unknown) => String(value || '').trim().toLowerCase();
+
+    if (normalizedPreferred) {
+        const match = allTextNodes.find((node) => {
+            const nodeName = String(node.name || '').trim();
+            const nodeChars = String(node.characters || '').trim();
+            return nodeName === normalizedPreferred || nodeChars === normalizedPreferred;
+        });
+        if (match) return match;
+    }
+
+    let bestNode: TextNode | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const node of allTextNodes) {
+        const nodeName = String(node.name || '').trim();
+        const nodeChars = String(node.characters || '').trim();
+        const normalizedName = normalizeToken(nodeName);
+        const normalizedChars = normalizeToken(nodeChars);
+        let score = 0;
+        if (normalizedPreferred) {
+            const normalizedPreferredToken = normalizeToken(normalizedPreferred);
+            if (normalizedChars === normalizedPreferredToken) score += 1000;
+            if (normalizedName === normalizedPreferredToken) score += 900;
+            if (normalizedName.includes(normalizedPreferredToken)) score += 120;
+            if (normalizedChars.includes(normalizedPreferredToken)) score += 80;
+        }
+        if (normalizedName.includes('label') || normalizedName.includes('text') || normalizedName.includes('content')) score += 80;
+        if (nodeChars.length > 0) score += Math.min(nodeChars.length, 24);
+        if (nodeChars.length > 1) score += 24;
+        if (reservedTokens.has(normalizedChars)) score -= 400;
+        if (reservedTokens.has(normalizedName)) score -= 300;
+        if (nodeChars.length === 1) score -= 40;
+        if (score > bestScore) {
+            bestScore = score;
+            bestNode = node;
+        }
+    }
+
+    return bestNode || allTextNodes[0] || null;
+}
+
 function resolvePrimaryTagText(params: Record<string, any>): string {
     const raw = String(params.text ?? params.label ?? '').trim();
     return raw || '标签';
@@ -3297,11 +3424,11 @@ async function applyTagTemplateContent(
                 : typeof params.label === 'string' && params.label.trim()
                     ? params.label.trim()
                     : '';
-        if (explicitLabel) {
-            const labelNode = findPreferredTextNode(root, [explicitLabel, 'Success', 'Warning', 'Error']);
-            if (labelNode) {
-                await updateTextNodeCharacters(labelNode, explicitLabel);
-            }
+        const labelNode = findStatusTagLabelNode(root, explicitLabel);
+        const nextLabel = explicitLabel || resolvePrimaryTagText(params);
+        if (labelNode) {
+            await updateTextNodeCharacters(labelNode, nextLabel);
+            markStatusTagLabelNode(root, labelNode);
         }
         return;
     }
@@ -3331,6 +3458,24 @@ async function createTagFromFigmaTemplate(
     if (!componentKey) return null;
 
     const family = resolveTagComponentFamily(componentToken || def.figmaPropertySnapshot?.token);
+    const statusThemeLabel = family === 'status'
+        ? (
+            resolveStatusTagThemeFromSemantic(
+                params.statusSemantic ??
+                params.statusIntent ??
+                params.semantic ??
+                params.intent
+            ) ||
+            resolveStatusTagThemeFromSemantic(resolvePrimaryTagText(params)) ||
+            resolveStatusTagThemeVariantLabel(params.statusTheme ?? params.theme)
+        )
+        : null;
+    if (family === 'status' && statusThemeLabel === 'Waiting 待启用') {
+        return createTagFallbackNode({
+            ...params,
+            componentToken: componentToken || STATUS_TAG_COMPONENT_TOKEN
+        });
+    }
     const criteriaCandidates = buildTagVariantCriteriaCandidates(params, family);
 
     for (let index = 0; index < criteriaCandidates.length; index += 1) {
@@ -3343,6 +3488,7 @@ async function createTagFromFigmaTemplate(
                 cloned.visible = true;
                 await applyTagTemplateContent(cloned, params, family);
                 cloned.name = def.name;
+                clearTemplateNodeMarker(cloned as SceneNode);
                 return cloned;
             } catch (e) {
                 console.warn('[TagTemplate] failed to clone cached template', e);
@@ -3364,6 +3510,7 @@ async function createTagFromFigmaTemplate(
             }
 
             const detached = importedInstance.detachInstance();
+            await applyTagTemplateContent(detached, params, family);
             try {
                 const template = detached.clone();
                 registerTemplateNode(cacheKey, 'tag-template', template);
@@ -3371,9 +3518,9 @@ async function createTagFromFigmaTemplate(
             } catch (e) {
                 console.warn('[TagTemplate] failed to cache template', e);
             }
-            await applyTagTemplateContent(detached, params, family);
             detached.name = def.name;
             detached.visible = true;
+            clearTemplateNodeMarker(detached as SceneNode);
             return detached;
         } catch (e) {
             if (importedInstance) {
@@ -3387,6 +3534,13 @@ async function createTagFromFigmaTemplate(
         }
     }
 
+    if (family === 'status') {
+        return createTagFallbackNode({
+            ...params,
+            componentToken: componentToken || STATUS_TAG_COMPONENT_TOKEN
+        });
+    }
+
     try {
         const fallbackKey = buildTagTemplateCacheKey(componentKey);
         const cachedFallback = TAG_TEMPLATE_CACHE.get(fallbackKey);
@@ -3395,6 +3549,7 @@ async function createTagFromFigmaTemplate(
             cloned.visible = true;
             await applyTagTemplateContent(cloned, params, family);
             cloned.name = def.name;
+            clearTemplateNodeMarker(cloned as SceneNode);
             return cloned;
         }
         const fallbackInstance = await createFigmaComponentInstanceFromRef({
@@ -3403,6 +3558,7 @@ async function createTagFromFigmaTemplate(
             visible: false
         });
         const detached = fallbackInstance.detachInstance();
+        await applyTagTemplateContent(detached, params, family);
         try {
             const template = detached.clone();
             registerTemplateNode(fallbackKey, 'tag-template', template);
@@ -3410,9 +3566,9 @@ async function createTagFromFigmaTemplate(
         } catch (e) {
             console.warn('[TagTemplate] failed to cache fallback template', e);
         }
-        await applyTagTemplateContent(detached, params, family);
         detached.name = def.name;
         detached.visible = true;
+        clearTemplateNodeMarker(detached as SceneNode);
         return detached;
     } catch (e) {
         console.warn('[TagTemplate] failed to create fallback tag instance without criteria', e);
@@ -3435,14 +3591,95 @@ async function createTagGlyphNode(
     return text;
 }
 
+function resolveStatusTagFallbackPalette(value: unknown): {
+    fill: string;
+    text: string;
+    stroke?: string;
+} {
+    const theme = resolveStatusTagThemeVariantLabel(value);
+    switch (theme) {
+        case 'Warning 告警':
+            return { fill: '#FFF7E8', text: '#FF7D00' };
+        case 'Error 错误':
+            return { fill: '#FFECE8', text: '#F53F3F' };
+        case 'Stop 停止':
+            return { fill: '#F2F3F5', text: '#4E5969' };
+        case 'Processing 等待中':
+            return { fill: '#E8F3FF', text: '#1664FF' };
+        case 'Loading 加载中':
+            return { fill: '#E8F3FF', text: '#1664FF' };
+        case 'Waiting 待启用':
+            return { fill: '#F2F3F5', text: '#4E5969' };
+        default:
+            return { fill: '#E8FFEA', text: '#00B42A' };
+    }
+}
+
+async function createStatusTagFallbackNode(params: Record<string, any>): Promise<FrameNode> {
+    const metrics = resolveTagMetrics(params.size);
+    const label = resolvePrimaryTagText(params);
+    const theme =
+        resolveStatusTagThemeFromSemantic(
+            params.statusSemantic ??
+            params.statusIntent ??
+            params.semantic ??
+            params.intent
+        ) ||
+        resolveStatusTagThemeFromSemantic(label) ||
+        resolveStatusTagThemeVariantLabel(params.statusTheme ?? params.theme);
+    const palette = resolveStatusTagFallbackPalette(theme);
+
+    const frame = figma.createFrame();
+    frame.layoutMode = 'HORIZONTAL';
+    frame.primaryAxisSizingMode = 'AUTO';
+    frame.counterAxisSizingMode = 'AUTO';
+    frame.counterAxisAlignItems = 'CENTER';
+    frame.primaryAxisAlignItems = 'CENTER';
+    frame.itemSpacing = 4;
+    frame.paddingLeft = metrics.paddingX;
+    frame.paddingRight = metrics.paddingX;
+    frame.paddingTop = 0;
+    frame.paddingBottom = 0;
+    frame.cornerRadius = metrics.cornerRadius;
+    frame.minHeight = metrics.height;
+    frame.fills = [{ type: 'SOLID', color: hexToRgb(palette.fill) }];
+    frame.strokes = palette.stroke ? [{ type: 'SOLID', color: hexToRgb(palette.stroke) }] : [];
+    frame.strokeWeight = palette.stroke ? 1 : 0;
+
+    const text = figma.createText();
+    text.characters = label;
+    let appliedTextStyle = false;
+    if (theme !== 'Waiting 待启用') {
+        appliedTextStyle = await applyTextStyleBinding(text, 'status-tag-text-medium-style-key', { family: 'Inter', style: 'Medium', size: metrics.fontSize });
+    }
+    if (!appliedTextStyle) {
+        const fallbackFont: FontName = theme === 'Waiting 待启用'
+            ? { family: 'PingFang SC', style: 'Medium' }
+            : { family: 'Inter', style: 'Medium' };
+        await figma.loadFontAsync(fallbackFont);
+        text.fontName = fallbackFont;
+        text.fontSize = metrics.fontSize;
+        text.lineHeight = { value: metrics.height, unit: 'PIXELS' };
+    }
+    text.textAutoResize = 'WIDTH_AND_HEIGHT';
+    text.fills = [{ type: 'SOLID', color: hexToRgb(palette.text) }];
+    frame.appendChild(text);
+    return frame;
+}
+
 async function createTagFallbackNode(params: Record<string, any>): Promise<FrameNode> {
+    if (resolveTagComponentFamily(params.componentToken) === 'status') {
+        return createStatusTagFallbackNode(params);
+    }
     return createInspectDrivenTagFallbackNode(params);
 }
 
 async function updateTextNodeCharacters(node: TextNode, value: string): Promise<boolean> {
     try {
-        if (node.fontName !== figma.mixed) {
-            await figma.loadFontAsync(node.fontName as FontName);
+        const fonts = getTextNodeFontNames(node);
+        await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+        if (node.fontName === figma.mixed && node.characters.length === 0 && fonts[0]) {
+            node.fontName = fonts[0];
         }
         node.characters = String(value || '');
         return true;
@@ -9365,8 +9602,24 @@ function centerNodeInViewport(node: SceneNode): void {
 // Calls to "parent.postMessage" from within the HTML page will trigger this
 // callback. The callback will be passed the "pluginMessage" property of the
 // posted message.
+async function reportDebugEventToServer(event: any): Promise<void> {
+  try {
+    await fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    });
+  } catch {}
+}
+
 figma.ui.onmessage = async (msg) => {
   // #endregion
+  if (msg.type === 'debug-event') {
+    // #region debug-point A:debug-forward
+    await reportDebugEventToServer(msg.event);
+    // #endregion
+  }
+
   if (msg.type === 'cancel') {
     figma.closePlugin();
   }
@@ -9417,7 +9670,7 @@ figma.ui.onmessage = async (msg) => {
     generationLockEnabled = Boolean(msg.enabled);
     console.log('[gen-lock]', generationLockEnabled ? 'LOCKED' : 'UNLOCKED', 'tracked:', generationLockedNodeIds.size);
     if (!generationLockEnabled) {
-      unlockGeneratedContainerNodes();
+      await unlockGeneratedContainerNodes();
     }
   }
 

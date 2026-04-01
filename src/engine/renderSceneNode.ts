@@ -391,17 +391,28 @@ function findFirstTextNode(root: SceneNode): TextNode | null {
   return textNodes[0] || null;
 }
 
+function resolveTagLabel(props: Record<string, unknown>): string {
+  const candidates = [
+    props.text,
+    (props as any).tagText,
+    (props as any).statusText,
+    props.label,
+    (props as any).name,
+    (props as any).value,
+    (props as any).title,
+    (props as any).status,
+    (props as any).content
+  ];
+  for (const candidate of candidates) {
+    const text = typeof candidate === "string" ? candidate.trim() : "";
+    if (text) return text;
+  }
+  return "标签";
+}
+
 async function applyTagTexts(root: SceneNode, props: Record<string, unknown>, family: TagComponentFamily): Promise<void> {
   if (family === "status") {
-    const explicitLabel =
-      typeof props.text === "string" && props.text.trim()
-        ? props.text
-        : typeof props.label === "string" && props.label.trim()
-          ? props.label
-          : "";
-    if (explicitLabel) {
-      await updateFirstTextNode(root, explicitLabel);
-    }
+    await updateFirstTextNode(root, resolveTagLabel(props));
     return;
   }
   if (
@@ -439,11 +450,7 @@ async function applyTagTexts(root: SceneNode, props: Record<string, unknown>, fa
   }
 
   const label =
-    typeof props.text === "string" && props.text.trim()
-      ? props.text
-      : typeof props.label === "string" && props.label.trim()
-        ? props.label
-        : "标签";
+    resolveTagLabel(props);
   await updateFirstTextNode(root, label);
 }
 
@@ -757,6 +764,31 @@ async function createFigmaNode(
   sceneNode: ProtocolSceneNode,
   ctx: ApplyContext
 ): Promise<SceneNode> {
+  if (sceneNode.componentId === "table-cell-tag") {
+    const frame = createFallbackFrameNode(sceneNode, "HORIZONTAL");
+    const tagDefinition = resolveComponentDefinition(ctx.registry, "tag");
+    if (tagDefinition) {
+      const props = (sceneNode.props || {}) as Record<string, any>;
+      const tagText = resolveTagLabel(props);
+      const tagNode = await createFigmaNode(
+        tagDefinition,
+        {
+          componentId: "tag",
+          nodeId: `${sceneNode.nodeId}__tag`,
+          props: {
+            ...props,
+            text: tagText,
+            componentToken: props.componentToken || "lib-data-display-status-tag"
+          }
+        } as ProtocolSceneNode,
+        ctx
+      );
+      frame.appendChild(tagNode);
+    }
+    frame.name = `${sceneNode.componentId}:${sceneNode.nodeId}`;
+    return frame;
+  }
+
   if (sceneNode.componentId === "tag") {
     const normalizedProps = normalizeUnifiedTagProps(sceneNode.props);
     const componentTokenFromProps =

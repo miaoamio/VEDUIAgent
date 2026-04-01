@@ -81,6 +81,7 @@ h2 {
   overflow-x: hidden;
   min-height: 0;
   padding-bottom: 8px;
+  position: relative;
 }
 
 .chat-scroll:hover {
@@ -91,6 +92,65 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.chat-empty-guide {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(0, -50%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 156px;
+  height: 112px;
+  row-gap: 8px;
+}
+
+.chat-empty-guide-text {
+  flex-shrink: 0;
+  line-height: 16px;
+  letter-spacing: 0;
+  color: var(--color-text-placeholder, #A1A1AA);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  margin: 0;
+}
+
+.chat-empty-guide-examples {
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-start;
+  row-gap: 8px;
+}
+
+button.chat-empty-guide-tag {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: flex-start;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-tag-neutral-bg, #F4F4F5);
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 22px;
+  letter-spacing: 0.04px;
+  color: var(--color-text-primary, #18181B);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+button.chat-empty-guide-tag:hover {
+  background: #ECEEF1;
+}
+
+button.chat-empty-guide-tag:disabled {
+  cursor: not-allowed;
+  color: var(--ved-text-disabled, #A1A1AA);
+  background: var(--color-tag-neutral-bg, #F4F4F5);
 }
 
 .prompt-preview {
@@ -369,6 +429,10 @@ h2 {
   min-height: 0;
 }
 
+.composer-rich-editor.composer-rich-editor-dropdown-open {
+  overflow: visible;
+}
+
 .composer-rich-input {
   flex: 1 1 96px;
   min-width: 96px;
@@ -451,7 +515,7 @@ h2 {
   box-shadow: 0px 15px 35px -2px #0000000d, 0px 5px 15px 0px #0000000d;
   background: #FFFFFF;
   padding: 5px;
-  z-index: 5;
+  z-index: 2000;
   width: max-content;
   min-width: 86px;
 }
@@ -1643,6 +1707,10 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   text-align: left;
 }
 
+.composer-menu-item-wrap {
+  display: flex;
+}
+
 .composer-menu-item:hover {
   background: #F4F4F5;
 }
@@ -1652,6 +1720,10 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   opacity: 1;
   color: var(--ved-text-disabled, #A1A1AA);
   background: #FFFFFF;
+}
+
+.composer-menu-item:disabled .composer-menu-icon {
+  color: var(--ved-icon-disabled, var(--ved-text-disabled, #A1A1AA));
 }
 
 .composer-menu-icon {
@@ -1849,6 +1921,56 @@ button:disabled {
 .attachment-error-banner {
   font-size: 12px;
   white-space: pre-wrap;
+}
+
+.attachment-image-limit-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ved-text-secondary, #6B7280);
+}
+
+.attachment-table-limit-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ved-text-secondary, #6B7280);
+}
+
+.attachment-image-limit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ved-icon-secondary, var(--ved-text-secondary, #6B7280));
+  flex-shrink: 0;
+}
+
+.attachment-table-limit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ved-icon-secondary, var(--ved-text-secondary, #6B7280));
+  flex-shrink: 0;
+}
+
+.attachment-image-limit-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-table-limit-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .property-editor {
