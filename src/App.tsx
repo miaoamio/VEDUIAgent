@@ -6700,6 +6700,23 @@ StepD:
   // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
   // 开发环境使用本地 Worker (wrangler dev)，生产环境使用部署后的 Worker URL
   const WORKER_URL = (globalThis as any).__FIGMA_AGENT_WORKER_URL__ || 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
+  const readTimeoutConfig = (runtimeKey: string, envKey: string, fallback: number): number => {
+    const runtimeValue = (globalThis as any)[runtimeKey];
+    const envValue = (import.meta as any)?.env?.[envKey];
+    const raw = runtimeValue ?? envValue;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
+    '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
+    'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
+    15000
+  );
+  const LLM_STREAM_CHUNK_TIMEOUT_MS = readTimeoutConfig(
+    '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
+    'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
+    20000
+  );
   const url = `${WORKER_URL}/api/chat`;
 
   const onSend = async () => {
@@ -6902,8 +6919,6 @@ StepD:
 
     // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
     const url = `${WORKER_URL}/api/chat`;
-    const LLM_FETCH_TIMEOUT_MS = 15000;
-    const LLM_STREAM_CHUNK_TIMEOUT_MS = 20000;
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
