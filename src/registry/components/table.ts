@@ -305,6 +305,11 @@ export const tableComponents: ComponentRegistry["components"] = {
         "default": "Tag",
         "description": "标签文本"
       },
+      "statusSemantic": {
+        "type": "string",
+        "default": "",
+        "description": "状态语义标识，优先于标签文案推断主题色；推荐值如 waiting / processing / success / warning / error / pending-review / under-review / approved / rejected"
+      },
       "statusTheme": {
         "type": "select",
         "default": "Success 成功",
@@ -406,6 +411,14 @@ export const tableComponents: ComponentRegistry["components"] = {
       }
     },
     "typographyBindings": {
+      "status-tag-text-medium-style-key": {
+        "enabled": true,
+        "nameCandidates": [
+          "Body/Medium",
+          "正文/中",
+          "Text/Body Medium"
+        ]
+      },
       "tag-text-style-key": {
         "enabled": true,
         "token": "tag.text",
@@ -417,6 +430,9 @@ export const tableComponents: ComponentRegistry["components"] = {
           "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
         ],
         "nameCandidates": [
+          "Body/Medium",
+          "正文/中",
+          "Text/Body Medium",
           "Body",
           "正文",
           "Text/Body"
@@ -1447,7 +1463,7 @@ export const tableComponents: ComponentRegistry["components"] = {
     "schemaVersion": "2.0.0",
     "prompts": {
       "description": "由多个列组成的完整表格",
-      "usage": "表格创建优先走 draw_table(payload)（不要输出冗长 table 子树）。\n- 当目标是创建新表格时，直接调用 draw_table。\n- 如果是“新建表格”，禁止输出 apply_scene(table-root)。\n- draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。\n- 支持直接定义表格工具栏与分页：\n  - 若需标签页，请在 payload 中添加 \"tabs\": [\"全部\", \"进行中\"] 或 \"hasTabs\": true。\n  - 若需筛选器，请在 payload 中添加 \"filters\": [\"状态\", \"城市\", \"关键词\"] 或字符串。\n  - 若需按钮组，请在 payload 中添加 \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" } 或 \"hasButtonGroup\": true。\n  - 分页器默认启用；若需关闭，请显式设置 \"pagination\": false。\n  - 不要为此拆分任务，直接在一个 draw_table 动作中完成。\n- 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 \"rowAction\": \"multiple\"。\n- 单选列请使用 \"rowAction\": \"single\"。\n- 不要把勾选列写进 headers/rows/columnTypes。\n- 标签列（Tag）请显式区分两类：\n  - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：{ \"text\": \"启用\", \"statusTheme\": \"Success 成功\" } 或 { \"statusText\": \"禁用\", \"statusColor\": \"red\" }\n  - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：{ \"text\": \"企业\", \"tagType\": \"Outline 线型标签\" }\n- 兼容：旧的 columnTypes \"Tag\" 视为 \"StatusTag\"。\n- 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 \"ActionText\" 或 \"ActionIcon\"。\n- 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：\n @@table_stream {\"event\":\"table_start\",\"headers\":[\"姓名\",\"年龄\"],\"rows\":[[\"张三\",28]],\"columnTypes\":[\"Text\",\"Text\"],\"rowHeight\":{\"header\":40,\"body\":40}}\n @@table_stream {\"event\":\"table_row\",\"row\":[\"李四\",32]}\n @@table_stream {\"event\":\"table_done\"}\n- 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。",
+      "usage": "表格创建优先走 draw_table(payload)（不要输出冗长 table 子树）。\n- 当目标是创建新表格时，直接调用 draw_table。\n- 如果是“新建表格”，禁止输出 apply_scene(table-root)。\n- draw_table payload 必须是紧凑数据结构，禁止包含 nodeId/componentId/props/children。\n- 支持直接定义表格工具栏与分页：\n  - 若需标签页，请在 payload 中添加 \"tabs\": [\"全部\", \"进行中\"] 或 \"hasTabs\": true。\n  - 若需筛选器，请在 payload 中添加 \"filters\": [\"状态\", \"城市\", \"关键词\"] 或字符串。\n  - 若需按钮组，请在 payload 中添加 \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" } 或 \"hasButtonGroup\": true。\n  - 分页器默认启用；若需关闭，请显式设置 \"pagination\": false。\n  - 不要为此拆分任务，直接在一个 draw_table 动作中完成。\n- 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 \"rowAction\": \"multiple\"。\n- 单选列请使用 \"rowAction\": \"single\"。\n- 不要把勾选列写进 headers/rows/columnTypes。\n- 标签列（Tag）请显式区分两类：\n  - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格优先输出结构化语义：{ \"text\": \"待审核\", \"statusSemantic\": \"pending-review\" }、{ \"text\": \"审核中\", \"statusSemantic\": \"under-review\" }、{ \"text\": \"已通过\", \"statusSemantic\": \"approved\" }、{ \"text\": \"已驳回\", \"statusSemantic\": \"rejected\" }。也可补充 statusTheme，但优先由 statusSemantic 决定主题色。\n  - TypeTag：类型/分类标签。单元格建议用对象表示文案+样式，例如：{ \"text\": \"企业\", \"tagType\": \"Outline 线型标签\" }\n- 兼容：旧的 columnTypes \"Tag\" 视为 \"StatusTag\"。\n- 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 \"ActionText\" 或 \"ActionIcon\"。\n- 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：\n @@table_stream {\"event\":\"table_start\",\"headers\":[\"姓名\",\"年龄\"],\"rows\":[[\"张三\",28]],\"columnTypes\":[\"Text\",\"Text\"],\"rowHeight\":{\"header\":40,\"body\":40}}\n @@table_stream {\"event\":\"table_row\",\"row\":[\"李四\",32]}\n @@table_stream {\"event\":\"table_done\"}\n- 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。",
       "examples": [
         "标准表格: { \"headers\": [\"姓名\", \"年龄\", \"城市\"], \"rows\": [[\"张三\", \"28\", \"北京\"], [\"李四\", \"32\", \"上海\"]], \"columnTypes\": [\"Text\", \"Text\", \"Text\"], \"tabs\": [\"全部\", \"进行中\"], \"filters\": [\"状态\", \"城市\", \"关键词\"], \"buttonGroup\": { \"primaryText\": \"新建\", \"secondaryText\": \"导出\" }, \"pagination\": true, \"rowHeight\": { \"header\": 40, \"body\": 40 } }"
       ]

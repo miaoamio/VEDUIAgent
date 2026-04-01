@@ -31,6 +31,7 @@ import {
   resolveFormLayoutParamsUpdate
 } from './engine/skills/form.skill';
 import { getChartToken, buildChartBlockComponentFromPayload } from './engine/skills/chart.skill';
+import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from './statusTagSemantic';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 const isEnabledComponent = (def: ComponentDefinition) => (
@@ -1993,6 +1994,26 @@ function compactStructureResult(item: any): any {
 
 function App() {
   const [userInput, setUserInput] = React.useState('');
+  const debugSessionIdRef = React.useRef(`ui-hang-${Date.now()}`);
+  const debugTraceIdRef = React.useRef('');
+  const emitDebugEvent = React.useCallback((hypothesisId: string, location: string, msg: string, data?: Record<string, unknown>) => {
+    const event = {
+      sessionId: debugSessionIdRef.current,
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data: data || {},
+      traceId: debugTraceIdRef.current || undefined,
+      ts: Date.now()
+    };
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    }).catch(() => {});
+    parent.postMessage({ pluginMessage: { type: 'debug-event', event } }, '*');
+  }, []);
   const composerTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const composerRichInputRef = React.useRef<HTMLSpanElement | null>(null);
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
@@ -3411,29 +3432,6 @@ StepD:
     return 'status';
   };
 
-  const resolveStatusThemeFromColor = (value: unknown): string | null => {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) return null;
-    if (normalized.includes('green') || normalized.includes('success') || normalized.includes('成功') || normalized.includes('启用')) {
-      return 'Success 成功';
-    }
-    if (normalized.includes('orange') || normalized.includes('yellow') || normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) {
-      return 'Warning 告警';
-    }
-    if (normalized.includes('red') || normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) {
-      return 'Error 错误';
-    }
-    if (normalized.includes('gray') || normalized.includes('grey') || normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) {
-      return 'Stop 停止';
-    }
-    if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-    if (normalized.includes('waiting') || normalized.includes('待启用')) return 'Waiting 待启用';
-    if (normalized.includes('processing') || normalized.includes('pending') || normalized.includes('等待') || normalized.includes('进行中') || normalized.includes('blue')) {
-      return 'Processing 等待中';
-    }
-    return null;
-  };
-
   const extractTagCellPayload = (
     value: unknown,
     fallbackKind: TagColumnKind
@@ -3448,10 +3446,12 @@ StepD:
     tagColor?: string;
   } => {
     if (!isObject(value)) {
+      const text = extractCellText(value);
+      const statusTheme = fallbackKind === 'status' ? resolveStatusTagThemeFromSemantic(text) || undefined : undefined;
       return {
-        text: extractCellText(value),
+        text,
         kind: fallbackKind,
-        tagColor: fallbackKind === 'status' ? 'green' : undefined
+        ...(statusTheme ? { statusTheme } : {})
       };
     }
 
@@ -3481,10 +3481,12 @@ StepD:
     const tagColor = typeof tagColorRaw === 'string' && tagColorRaw.trim() ? tagColorRaw.trim() : undefined;
 
     const statusThemeRaw = obj.statusTheme ?? obj.theme ?? obj.tagTheme;
+    const textTheme = resolveStatusTagThemeFromSemantic(text) || undefined;
     const statusTheme =
-      typeof statusThemeRaw === 'string' && statusThemeRaw.trim()
-        ? statusThemeRaw.trim()
-        : resolveStatusThemeFromColor(tagColorRaw) || undefined;
+      textTheme ||
+      normalizeStatusTagThemeInput(statusThemeRaw) ||
+      resolveStatusTagThemeFromSemantic(tagColorRaw) ||
+      undefined;
 
     const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
     const statusType =
@@ -6844,6 +6846,15 @@ StepD:
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
     const displaySummary = buildUserSummary(turnInput, turnImages, turnTables);
     const currentTurnRichContent = buildRichUserContent(turnInput, turnImages, turnTables);
+    debugTraceIdRef.current = `trace-${Date.now()}`;
+    // #region debug-point A:send-start
+    emitDebugEvent('A', 'App.tsx:6844', 'request-start', {
+      turnInput,
+      chartTokenOverride,
+      imageCount: turnImages.length,
+      tableCount: turnTables.length
+    });
+    // #endregion
 
     // Track AI Generation attempt
     trackEvent("ai_generation", {
@@ -6891,6 +6902,8 @@ StepD:
 
     // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
     const url = `${WORKER_URL}/api/chat`;
+    const LLM_FETCH_TIMEOUT_MS = 15000;
+    const LLM_STREAM_CHUNK_TIMEOUT_MS = 20000;
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -6903,7 +6916,17 @@ StepD:
                 if (abortController.signal.aborted) {
                     throw new DOMException('Aborted', 'AbortError');
                 }
-                const res = await fetch(url, {
+                const attemptController = new AbortController();
+                const forwardAbort = () => attemptController.abort();
+                abortController.signal.addEventListener('abort', forwardAbort, { once: true });
+                let fetchTimedOut = false;
+                const fetchTimeoutId = window.setTimeout(() => {
+                    fetchTimedOut = true;
+                    attemptController.abort();
+                }, LLM_FETCH_TIMEOUT_MS);
+                let res: Response;
+                try {
+                    res = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -6912,8 +6935,20 @@ StepD:
                             stream: true,
                             stream_options: { include_usage: true }
                         }),
-                        signal: abortController.signal
+                        signal: attemptController.signal
                     });
+                } catch (error) {
+                    if (abortController.signal.aborted) {
+                        throw new DOMException('Aborted', 'AbortError');
+                    }
+                    if (fetchTimedOut) {
+                        throw new Error(`LLM 请求超时：${Math.ceil(LLM_FETCH_TIMEOUT_MS / 1000)} 秒内未连通代理服务`);
+                    }
+                    throw error;
+                } finally {
+                    window.clearTimeout(fetchTimeoutId);
+                    abortController.signal.removeEventListener('abort', forwardAbort);
+                }
 
                 if (res.status === 429) {
                     // Try to parse error body for more info
@@ -6962,45 +6997,62 @@ StepD:
                     if (abortController.signal.aborted) {
                         throw new DOMException('Aborted', 'AbortError');
                     }
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const chunk = decoder.decode(value, { stream: true });
-                    buffer += chunk;
-                    const lines = buffer.split('\n');
-                    
-                    // The last element might be incomplete, keep it in buffer
-                    buffer = lines.pop() || '';
-                    
-                    for (const line of lines) {
-                        if (line.trim() === '') continue;
-                        if (line.trim() === 'data: [DONE]') continue;
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const json = JSON.parse(line.substring(6));
-                                const content = json.choices?.[0]?.delta?.content || '';
-                                if (content) {
-                                    fullContent += content;
-                                    if (onStream) onStream(content);
-                                }
-                                // In streaming SSE, usage is typically sent in a final chunk where choices may be empty or delta is empty
-                                const usage = json.usage || json.x_groq?.usage || json.usage_info || json.usage_metadata;
-                                if (usage && usage.total_tokens) {
-                                    console.log("Found token usage in stream:", usage);
-                                    trackEvent("token_usage", {
-                                        tokenCount: usage.total_tokens,
-                                        promptTokens: usage.prompt_tokens || 0,
-                                        completionTokens: usage.completion_tokens || 0,
-                                        details: JSON.stringify({ usage })
-                                    });
-                                }
-                            } catch (e) {
-                                // Ignore "[DONE]" message parse error
-                                if (line.trim() !== 'data: [DONE]') {
-                                    console.error('Error parsing stream:', e);
+                    let readTimeoutId = 0;
+                    try {
+                        const { done, value } = await Promise.race([
+                            reader.read(),
+                            new Promise<never>((_, reject) => {
+                                readTimeoutId = window.setTimeout(() => {
+                                    reject(new Error(`LLM 响应超时：${Math.ceil(LLM_STREAM_CHUNK_TIMEOUT_MS / 1000)} 秒内未收到新的流式数据`));
+                                }, LLM_STREAM_CHUNK_TIMEOUT_MS);
+                            })
+                        ]);
+                        if (readTimeoutId) window.clearTimeout(readTimeoutId);
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        buffer += chunk;
+                        const lines = buffer.split('\n');
+                        
+                        // The last element might be incomplete, keep it in buffer
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            if (line.trim() === '') continue;
+                            if (line.trim() === 'data: [DONE]') continue;
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const json = JSON.parse(line.substring(6));
+                                    const content = json.choices?.[0]?.delta?.content || '';
+                                    if (content) {
+                                        fullContent += content;
+                                        if (onStream) onStream(content);
+                                    }
+                                    // In streaming SSE, usage is typically sent in a final chunk where choices may be empty or delta is empty
+                                    const usage = json.usage || json.x_groq?.usage || json.usage_info || json.usage_metadata;
+                                    if (usage && usage.total_tokens) {
+                                        console.log("Found token usage in stream:", usage);
+                                        trackEvent("token_usage", {
+                                            tokenCount: usage.total_tokens,
+                                            promptTokens: usage.prompt_tokens || 0,
+                                            completionTokens: usage.completion_tokens || 0,
+                                            details: JSON.stringify({ usage })
+                                        });
+                                    }
+                                } catch (e) {
+                                    // Ignore "[DONE]" message parse error
+                                    if (line.trim() !== 'data: [DONE]') {
+                                        console.error('Error parsing stream:', e);
+                                    }
                                 }
                             }
                         }
+                    } catch (error) {
+                        if (readTimeoutId) window.clearTimeout(readTimeoutId);
+                        try {
+                            await reader.cancel();
+                        } catch {}
+                        throw error;
                     }
                 }
                 return fullContent;
@@ -7008,6 +7060,17 @@ StepD:
             } catch (error) {
                 if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
                     throw error;
+                }
+                if (
+                    error instanceof Error &&
+                    (
+                        error.message.includes('LLM 请求超时') ||
+                        error.message.includes('LLM 响应超时') ||
+                        error.message.includes('Failed to fetch') ||
+                        error.message.includes('NetworkError')
+                    )
+                ) {
+                    throw new Error(`模型请求失败：${error.message}。请检查代理服务或网络连通性。`);
                 }
                 if (attempt === maxRetries - 1) throw error;
                 attempt++;
@@ -7083,10 +7146,19 @@ StepD:
         while (loopCount < MAX_LOOPS) {
             if (stopRequestedRef.current || abortController.signal.aborted) break;
             loopCount++;
+            // #region debug-point A:loop
+            emitDebugEvent('A', 'App.tsx:7083', 'agent-loop-enter', {
+              loopCount,
+              hasRuntimePlan: Boolean(runtimePlan),
+              shouldPrefetchTableSpecs,
+              shouldPrefetchChartSpecs
+            });
+            // #endregion
             
             // 1. Get LLM response with streaming
             let currentStreamedResponse = '';
             let streamLineBuffer = '';
+            let firstStreamChunkSeen = false;
             const streamPlanSnapshot = runtimePlan;
             streamTableStateRef.current = null;
             const baseMessages = replaceLastUserMessageContent(messages, currentTurnRichContent);
@@ -7100,6 +7172,9 @@ StepD:
                 streamLineBuffer = lines.pop() || '';
                 let displayDelta = '';
                 for (const line of lines) {
+                    if (!firstStreamChunkSeen && line.trim()) {
+                        firstStreamChunkSeen = true;
+                    }
                     if (line.trimStart().startsWith(STREAM_TABLE_PREFIX)) {
                         const events = extractStreamTableEvents(line);
                         events.forEach((event) => {
@@ -7115,6 +7190,9 @@ StepD:
                 }
             });
             if (streamLineBuffer.trim()) {
+                if (!firstStreamChunkSeen) {
+                    firstStreamChunkSeen = true;
+                }
                 if (streamLineBuffer.trimStart().startsWith(STREAM_TABLE_PREFIX)) {
                     const events = extractStreamTableEvents(streamLineBuffer);
                     events.forEach((event) => {
@@ -7147,6 +7225,13 @@ StepD:
                 // Commit to accumulated log
                 accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
                 setResponse(accumulatedLog);
+                // #region debug-point B:action-parsed
+                emitDebugEvent('B', 'App.tsx:7133', 'action-parsed', {
+                  loopCount,
+                  actionType: actionData?.action?.type,
+                  thought: actionData?.thought || ''
+                });
+                // #endregion
                 
             } catch (e) {
                 // If it's the last chunk and still not valid JSON, show raw
@@ -7423,6 +7508,12 @@ StepD:
             if (action.type === 'read_specs') {
                 const payload = action.payload;
                 const ids = normalizeSpecIdsFromPayload(payload);
+                // #region debug-point C:read-specs
+                emitDebugEvent('C', 'App.tsx:7423', 'read-specs', {
+                  loopCount,
+                  ids
+                });
+                // #endregion
                 if (ids.length === 0) {
                     console.warn("Invalid payload for read_specs", payload);
                 }
@@ -7818,6 +7909,13 @@ StepD:
 
             else if (action.type === 'draw_table' || action.type === 'draw_tabl') {
                 const payload = action.payload;
+                // #region debug-point D:draw-table
+                emitDebugEvent('D', 'App.tsx:7819', 'draw-table-start', {
+                  loopCount,
+                  hasPayload: Boolean(payload),
+                  actionType: action.type
+                });
+                // #endregion
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7836,6 +7934,14 @@ StepD:
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
+                        // #region debug-point D:draw-table-success
+                        emitDebugEvent('D', 'App.tsx:7838', 'draw-table-success', {
+                          loopCount,
+                          rootNodeId,
+                          columnCount: tableComponent.params.columnCount,
+                          rowCount: tableComponent.params.rowCount
+                        });
+                        // #endregion
                         const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
@@ -7847,6 +7953,12 @@ StepD:
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
+                        // #region debug-point D:draw-table-error
+                        emitDebugEvent('D', 'App.tsx:7849', 'draw-table-error', {
+                          loopCount,
+                          error: String(e)
+                        });
+                        // #endregion
                         const errorMsg = `[System]: 表格创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -7860,6 +7972,12 @@ StepD:
 
             else if (action.type === 'draw_form') {
                 const payload = action.payload;
+                // #region debug-point D:draw-form
+                emitDebugEvent('D', 'App.tsx:7861', 'draw-form-start', {
+                  loopCount,
+                  hasPayload: Boolean(payload)
+                });
+                // #endregion
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7879,6 +7997,13 @@ StepD:
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
+                        // #region debug-point D:draw-form-success
+                        emitDebugEvent('D', 'App.tsx:7881', 'draw-form-success', {
+                          loopCount,
+                          rootNodeId,
+                          rowCount: Array.isArray(formComponent.children) ? formComponent.children.length : 0
+                        });
+                        // #endregion
                         const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
                         const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
@@ -7891,6 +8016,12 @@ StepD:
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
+                        // #region debug-point D:draw-form-error
+                        emitDebugEvent('D', 'App.tsx:7893', 'draw-form-error', {
+                          loopCount,
+                          error: String(e)
+                        });
+                        // #endregion
                         const errorMsg = `[System]: 表单创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -7904,6 +8035,12 @@ StepD:
 
             else if (action.type === 'create_node') {
                 const { componentId, params, children, parentId } = action.payload;
+                // #region debug-point D:create-node
+                emitDebugEvent('D', 'App.tsx:7905', 'create-node-start', {
+                  loopCount,
+                  componentId
+                });
+                // #endregion
                 const resolvedParentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -7957,6 +8094,13 @@ StepD:
                       { componentId: nextComponentId, params: nextParams, children },
                       resolvedParentId
                     );
+                    // #region debug-point D:create-node-success
+                    emitDebugEvent('D', 'App.tsx:7956', 'create-node-success', {
+                      loopCount,
+                      componentId: nextComponentId,
+                      rootNodeId
+                    });
+                    // #endregion
 
                     accumulatedLog += '\n\n' + `[System]: 组件创建成功。`;
                     setResponse(accumulatedLog);
@@ -7971,6 +8115,13 @@ StepD:
                     }
 
                 } catch (e) {
+                    // #region debug-point D:create-node-error
+                    emitDebugEvent('D', 'App.tsx:7973', 'create-node-error', {
+                      loopCount,
+                      componentId,
+                      error: String(e)
+                    });
+                    // #endregion
                     const errorMsg = `[System]: 组件创建失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
@@ -7981,6 +8132,12 @@ StepD:
                 }
             }
             else {
+                // #region debug-point E:unknown-action
+                emitDebugEvent('E', 'App.tsx:7983', 'unknown-action', {
+                  loopCount,
+                  actionType: String(action.type)
+                });
+                // #endregion
                 const unknownMsg = `[System]: 未知动作类型：${String(action.type)}。`;
                 accumulatedLog += '\n\n' + unknownMsg;
                 setResponse(accumulatedLog);
@@ -8011,7 +8168,8 @@ StepD:
         setResponse((prev) => (prev ? `${prev}\n\n[System]: 已停止。` : `[System]: 已停止。`));
       } else {
         console.error('Agent Loop Error:', error);
-        setResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        setResponse((prev) => (prev ? `${prev}\n\n[System]: ${message}` : `[System]: ${message}`));
       }
     } finally {
       setAgentPlan(runtimePlan);

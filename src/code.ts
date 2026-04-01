@@ -24,6 +24,10 @@ import {
 } from './theme/volcengine-design/component-tokens';
 import { createInspectDrivenTagFallbackNode } from './theme/volcengine-design/tag-fallback';
 import {
+  normalizeStatusTagThemeInput,
+  resolveStatusTagThemeFromSemantic
+} from './statusTagSemantic';
+import {
   applyColorVariable,
   applyEffectColorVariable,
   applyStrokeColorVariable,
@@ -50,6 +54,7 @@ const TEMPLATE_CACHE_FRAME_KEY = 'uia-template-cache-frame';
 const TEMPLATE_CACHE_NODE_KEY = 'uia-template-cache-node';
 const TEMPLATE_CACHE_NODE_CACHE_KEY = 'uia-template-cache-key';
 const TEMPLATE_CACHE_NODE_KIND = 'uia-template-cache-kind';
+const STATUS_TAG_LABEL_NODE_KEY = 'uia-status-tag-label-node';
 type TemplateCacheKind = 'component-instance' | 'tag-template';
 const TABLE_CELL_PREWARM_STATE = {
   scheduled: false,
@@ -190,6 +195,28 @@ function registerTemplateNode(cacheKey: string, kind: TemplateCacheKind, node: S
   }
   node.x = 0;
   node.y = 0;
+}
+
+function clearTemplateNodeMarker(node: SceneNode): void {
+  try {
+    node.setPluginData(TEMPLATE_CACHE_NODE_KEY, '');
+    node.setPluginData(TEMPLATE_CACHE_NODE_CACHE_KEY, '');
+    node.setPluginData(TEMPLATE_CACHE_NODE_KIND, '');
+  } catch {}
+}
+
+function markStatusTagLabelNode(root: SceneNode, target: TextNode | null): void {
+    const allTextNodes =
+        'findAll' in root
+            ? (root.findAll((node) => node.type === 'TEXT') as TextNode[])
+            : root.type === 'TEXT'
+                ? [root]
+                : [];
+    allTextNodes.forEach((node) => {
+        try {
+            node.setPluginData(STATUS_TAG_LABEL_NODE_KEY, node === target ? 'true' : '');
+        } catch {}
+    });
 }
 
 async function cleanupLegacyPrewarmTemplates(): Promise<void> {
@@ -2720,15 +2747,6 @@ type OtherTagType = 'marketing' | 'group';
 const TAG_COMPONENT_TOKEN = 'lib-data-display-tag';
 const OTHER_TAG_COMPONENT_TOKEN = 'lib-data-display-other-tag';
 const STATUS_TAG_COMPONENT_TOKEN = 'lib-data-display-status-tag';
-const STATUS_TAG_THEME_OPTIONS = new Set([
-    'Success 成功',
-    'Warning 告警',
-    'Error 错误',
-    'Stop 停止',
-    'Processing 等待中',
-    'Loading 加载中',
-    'Waiting 待启用'
-]);
 
 function resolveTagComponentFamily(componentToken: unknown): TagComponentFamily {
     const normalized = String(componentToken || '').trim();
@@ -2874,67 +2892,12 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
                             ? 'Processing 等待中'
                             : undefined;
 
-    const resolveStatusThemeFromSemanticText = (value: unknown):
-        | 'Success 成功'
-        | 'Warning 告警'
-        | 'Error 错误'
-        | 'Stop 停止'
-        | 'Processing 等待中'
-        | 'Loading 加载中'
-        | 'Waiting 待启用'
-        | null => {
-        const normalized = String(value || '').trim().toLowerCase();
-        if (!normalized) return null;
-        if (normalized.includes('critical') || normalized.includes('严重') || normalized.includes('致命') || normalized.includes('高危')) return 'Error 错误';
-        if (normalized.includes('error') || normalized.includes('错误') || normalized.includes('失败') || normalized.includes('禁用')) return 'Error 错误';
-        if (normalized.includes('warning') || normalized.includes('告警') || normalized.includes('警告')) return 'Warning 告警';
-        if (normalized.includes('stop') || normalized.includes('停止') || normalized.includes('终止')) return 'Stop 停止';
-        if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-        if (
-            normalized.includes('waiting') ||
-            normalized.includes('待启用') ||
-            normalized.includes('待开始') ||
-            normalized.includes('未开始') ||
-            normalized.includes('not started') ||
-            normalized.includes('todo')
-        ) return 'Waiting 待启用';
-        if (
-            normalized.includes('processing') ||
-            normalized.includes('pending') ||
-            normalized.includes('等待') ||
-            normalized.includes('进行中') ||
-            normalized.includes('填写中') ||
-            normalized.includes('处理中') ||
-            normalized.includes('in progress') ||
-            normalized.includes('notice')
-        ) return 'Processing 等待中';
-        if (
-            normalized.includes('success') ||
-            normalized.includes('成功') ||
-            normalized.includes('启用') ||
-            normalized.includes('已完成') ||
-            normalized.includes('完成') ||
-            normalized.includes('done') ||
-            normalized.includes('completed') ||
-            normalized.includes('resolved') ||
-            normalized.includes('recovered') ||
-            normalized.includes('已恢复') ||
-            normalized.includes('恢复')
-        ) return 'Success 成功';
-        return null;
-    };
-
-    const normalizeStatusThemeInput = (value: unknown): string | undefined => {
-        if (value === undefined || value === null) return undefined;
-        const trimmed = String(value).trim();
-        if (!trimmed) return undefined;
-        if (STATUS_TAG_THEME_OPTIONS.has(trimmed)) return trimmed;
-        const mapped = resolveStatusThemeFromSemanticText(trimmed);
-        return mapped || undefined;
-    };
-
-    const semanticThemeOverride = resolveStatusThemeFromSemanticText(label) || undefined;
-    const normalizedStatusThemeInput = normalizeStatusThemeInput(params.statusTheme ?? params.theme ?? legacyStatusTheme);
+    const semanticKeyRaw = params.statusSemantic ?? params.statusIntent ?? params.semantic ?? params.intent;
+    const semanticThemeOverride =
+        resolveStatusTagThemeFromSemantic(semanticKeyRaw) ||
+        resolveStatusTagThemeFromSemantic(label) ||
+        undefined;
+    const normalizedStatusThemeInput = normalizeStatusTagThemeInput(params.statusTheme ?? params.theme ?? legacyStatusTheme);
 
     const tagParams: Record<string, any> = {
         text: label,
@@ -3003,21 +2966,7 @@ function resolveStatusTagThemeVariantLabel(
     | 'Processing 等待中'
     | 'Loading 加载中'
     | 'Waiting 待启用' {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized.includes('critical') || normalized.includes('严重') || normalized.includes('致命') || normalized.includes('高危')) {
-        return 'Error 错误';
-    }
-    if (normalized.includes('resolved') || normalized.includes('recovered') || normalized.includes('已恢复') || normalized.includes('恢复')) {
-        return 'Success 成功';
-    }
-    if (normalized.includes('warning') || normalized.includes('告警')) return 'Warning 告警';
-    if (normalized.includes('error') || normalized.includes('错误')) return 'Error 错误';
-    if (normalized.includes('stop') || normalized.includes('停止')) return 'Stop 停止';
-    if (normalized.includes('notice') || normalized.includes('通知')) return 'Processing 等待中';
-    if (normalized.includes('processing') || normalized.includes('等待') || normalized.includes('填写中') || normalized.includes('进行中')) return 'Processing 等待中';
-    if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
-    if (normalized.includes('waiting') || normalized.includes('待启用') || normalized.includes('待开始')) return 'Waiting 待启用';
-    return 'Success 成功';
+    return resolveStatusTagThemeFromSemantic(value) || 'Waiting 待启用';
 }
 
 function resolveStatusTagStateVariantLabel(value: unknown): 'Default 默认' | 'Hover 悬浮' | 'Active 点击' {
@@ -3306,9 +3255,25 @@ function findStatusTagLabelNode(root: SceneNode, preferredLabel: string): TextNo
     if (allTextNodes.length === 0) return null;
 
     const normalizedPreferred = String(preferredLabel || '').trim();
-    const themes = ['Success', 'Warning', 'Error', 'Stop', 'Processing', 'Loading', 'Waiting'];
-    const themeLabelNode = allTextNodes.find((node) => themes.includes(String(node.characters || '').trim())) ||
-        allTextNodes.find((node) => themes.includes(String(node.name || '').trim()));
+    const markedNode = allTextNodes.find((node) => {
+        try {
+            return node.getPluginData(STATUS_TAG_LABEL_NODE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    });
+    if (markedNode) return markedNode;
+
+    const reservedTokens = new Set([
+        'success', 'warning', 'error', 'stop', 'processing', 'loading', 'waiting',
+        'default', 'hover', 'active', 'true', 'false',
+        'l1', 'l2', 'l3',
+        'success 成功', 'warning 告警', 'error 错误', 'stop 停止',
+        'processing 等待中', 'loading 加载中', 'waiting 待启用',
+        'default 默认', 'hover 悬浮', 'active 点击',
+        'l1 一级标签', 'l2 二级标签', 'l3 三级标签'
+    ]);
+    const normalizeToken = (value: unknown) => String(value || '').trim().toLowerCase();
 
     if (normalizedPreferred) {
         const match = allTextNodes.find((node) => {
@@ -3319,7 +3284,34 @@ function findStatusTagLabelNode(root: SceneNode, preferredLabel: string): TextNo
         if (match) return match;
     }
 
-    return themeLabelNode || allTextNodes.find((node) => String(node.characters || '').trim().length > 0) || allTextNodes[0] || null;
+    let bestNode: TextNode | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const node of allTextNodes) {
+        const nodeName = String(node.name || '').trim();
+        const nodeChars = String(node.characters || '').trim();
+        const normalizedName = normalizeToken(nodeName);
+        const normalizedChars = normalizeToken(nodeChars);
+        let score = 0;
+        if (normalizedPreferred) {
+            const normalizedPreferredToken = normalizeToken(normalizedPreferred);
+            if (normalizedChars === normalizedPreferredToken) score += 1000;
+            if (normalizedName === normalizedPreferredToken) score += 900;
+            if (normalizedName.includes(normalizedPreferredToken)) score += 120;
+            if (normalizedChars.includes(normalizedPreferredToken)) score += 80;
+        }
+        if (normalizedName.includes('label') || normalizedName.includes('text') || normalizedName.includes('content')) score += 80;
+        if (nodeChars.length > 0) score += Math.min(nodeChars.length, 24);
+        if (nodeChars.length > 1) score += 24;
+        if (reservedTokens.has(normalizedChars)) score -= 400;
+        if (reservedTokens.has(normalizedName)) score -= 300;
+        if (nodeChars.length === 1) score -= 40;
+        if (score > bestScore) {
+            bestScore = score;
+            bestNode = node;
+        }
+    }
+
+    return bestNode || allTextNodes[0] || null;
 }
 
 function resolvePrimaryTagText(params: Record<string, any>): string {
@@ -3408,6 +3400,7 @@ async function applyTagTemplateContent(
         const nextLabel = explicitLabel || resolvePrimaryTagText(params);
         if (labelNode) {
             await updateTextNodeCharacters(labelNode, nextLabel);
+            markStatusTagLabelNode(root, labelNode);
         }
         return;
     }
@@ -3437,6 +3430,24 @@ async function createTagFromFigmaTemplate(
     if (!componentKey) return null;
 
     const family = resolveTagComponentFamily(componentToken || def.figmaPropertySnapshot?.token);
+    const statusThemeLabel = family === 'status'
+        ? (
+            resolveStatusTagThemeFromSemantic(
+                params.statusSemantic ??
+                params.statusIntent ??
+                params.semantic ??
+                params.intent
+            ) ||
+            resolveStatusTagThemeFromSemantic(resolvePrimaryTagText(params)) ||
+            resolveStatusTagThemeVariantLabel(params.statusTheme ?? params.theme)
+        )
+        : null;
+    if (family === 'status' && statusThemeLabel === 'Waiting 待启用') {
+        return createTagFallbackNode({
+            ...params,
+            componentToken: componentToken || STATUS_TAG_COMPONENT_TOKEN
+        });
+    }
     const criteriaCandidates = buildTagVariantCriteriaCandidates(params, family);
 
     for (let index = 0; index < criteriaCandidates.length; index += 1) {
@@ -3449,6 +3460,7 @@ async function createTagFromFigmaTemplate(
                 cloned.visible = true;
                 await applyTagTemplateContent(cloned, params, family);
                 cloned.name = def.name;
+                clearTemplateNodeMarker(cloned as SceneNode);
                 return cloned;
             } catch (e) {
                 console.warn('[TagTemplate] failed to clone cached template', e);
@@ -3470,6 +3482,7 @@ async function createTagFromFigmaTemplate(
             }
 
             const detached = importedInstance.detachInstance();
+            await applyTagTemplateContent(detached, params, family);
             try {
                 const template = detached.clone();
                 registerTemplateNode(cacheKey, 'tag-template', template);
@@ -3477,9 +3490,9 @@ async function createTagFromFigmaTemplate(
             } catch (e) {
                 console.warn('[TagTemplate] failed to cache template', e);
             }
-            await applyTagTemplateContent(detached, params, family);
             detached.name = def.name;
             detached.visible = true;
+            clearTemplateNodeMarker(detached as SceneNode);
             return detached;
         } catch (e) {
             if (importedInstance) {
@@ -3508,6 +3521,7 @@ async function createTagFromFigmaTemplate(
             cloned.visible = true;
             await applyTagTemplateContent(cloned, params, family);
             cloned.name = def.name;
+            clearTemplateNodeMarker(cloned as SceneNode);
             return cloned;
         }
         const fallbackInstance = await createFigmaComponentInstanceFromRef({
@@ -3516,6 +3530,7 @@ async function createTagFromFigmaTemplate(
             visible: false
         });
         const detached = fallbackInstance.detachInstance();
+        await applyTagTemplateContent(detached, params, family);
         try {
             const template = detached.clone();
             registerTemplateNode(fallbackKey, 'tag-template', template);
@@ -3523,9 +3538,9 @@ async function createTagFromFigmaTemplate(
         } catch (e) {
             console.warn('[TagTemplate] failed to cache fallback template', e);
         }
-        await applyTagTemplateContent(detached, params, family);
         detached.name = def.name;
         detached.visible = true;
+        clearTemplateNodeMarker(detached as SceneNode);
         return detached;
     } catch (e) {
         console.warn('[TagTemplate] failed to create fallback tag instance without criteria', e);
@@ -3575,7 +3590,16 @@ function resolveStatusTagFallbackPalette(value: unknown): {
 async function createStatusTagFallbackNode(params: Record<string, any>): Promise<FrameNode> {
     const metrics = resolveTagMetrics(params.size);
     const label = resolvePrimaryTagText(params);
-    const palette = resolveStatusTagFallbackPalette(params.statusTheme ?? params.theme);
+    const theme =
+        resolveStatusTagThemeFromSemantic(
+            params.statusSemantic ??
+            params.statusIntent ??
+            params.semantic ??
+            params.intent
+        ) ||
+        resolveStatusTagThemeFromSemantic(label) ||
+        resolveStatusTagThemeVariantLabel(params.statusTheme ?? params.theme);
+    const palette = resolveStatusTagFallbackPalette(theme);
 
     const frame = figma.createFrame();
     frame.layoutMode = 'HORIZONTAL';
@@ -3596,8 +3620,16 @@ async function createStatusTagFallbackNode(params: Record<string, any>): Promise
 
     const text = figma.createText();
     text.characters = label;
-    const appliedTextStyle = await applyTextStyleBinding(text, 'tag-text-style-key', { family: 'Inter', style: 'Regular', size: metrics.fontSize });
+    let appliedTextStyle = false;
+    if (theme !== 'Waiting 待启用') {
+        appliedTextStyle = await applyTextStyleBinding(text, 'status-tag-text-medium-style-key', { family: 'Inter', style: 'Medium', size: metrics.fontSize });
+    }
     if (!appliedTextStyle) {
+        const fallbackFont: FontName = theme === 'Waiting 待启用'
+            ? { family: 'PingFang SC', style: 'Medium' }
+            : { family: 'Inter', style: 'Medium' };
+        await figma.loadFontAsync(fallbackFont);
+        text.fontName = fallbackFont;
         text.fontSize = metrics.fontSize;
         text.lineHeight = { value: metrics.height, unit: 'PIXELS' };
     }
@@ -9542,8 +9574,24 @@ function centerNodeInViewport(node: SceneNode): void {
 // Calls to "parent.postMessage" from within the HTML page will trigger this
 // callback. The callback will be passed the "pluginMessage" property of the
 // posted message.
+async function reportDebugEventToServer(event: any): Promise<void> {
+  try {
+    await fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    });
+  } catch {}
+}
+
 figma.ui.onmessage = async (msg) => {
   // #endregion
+  if (msg.type === 'debug-event') {
+    // #region debug-point A:debug-forward
+    await reportDebugEventToServer(msg.event);
+    // #endregion
+  }
+
   if (msg.type === 'cancel') {
     figma.closePlugin();
   }
