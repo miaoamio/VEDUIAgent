@@ -10397,14 +10397,6 @@ StepD:
                   <button
                     type="button"
                     className="chat-selection-action"
-                    onClick={() => setActiveTabWithRef('docs')}
-                    disabled={loading}
-                  >
-                    组件反查
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-selection-action"
                     onClick={() => setActiveTabWithRef('selection')}
                     disabled={manualAdjustDisabled}
                   >
@@ -11102,8 +11094,6 @@ StepD:
             </div>
           </div>
         </div>
-      ) : activeTab === 'docs' ? (
-        renderDocs()
       ) : (
         renderSelectionPage()
       )}
