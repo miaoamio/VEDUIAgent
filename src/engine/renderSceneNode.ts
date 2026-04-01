@@ -165,6 +165,8 @@ function normalizeStatusTagThemeVariant(
   | "Loading 加载中"
   | "Waiting 待启用" {
   const normalized = String(value ?? "").trim().toLowerCase();
+  if (/^已.+/.test(normalized)) return "Success 成功";
+  if (/^待.+/.test(normalized)) return "Waiting 待启用";
   if (normalized.includes("warning") || normalized.includes("告警")) return "Warning 告警";
   if (normalized.includes("error") || normalized.includes("错误")) return "Error 错误";
   if (normalized.includes("stop") || normalized.includes("停止")) return "Stop 停止";

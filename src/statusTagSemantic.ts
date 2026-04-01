@@ -36,6 +36,7 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
   ) return 'Error 错误';
 
   if (
+    /^已.+/.test(normalized) ||
     normalized.includes('success') ||
     normalized.includes('成功') ||
     normalized.includes('已启用') ||
@@ -85,6 +86,7 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
   if (normalized.includes('loading') || normalized.includes('加载')) return 'Loading 加载中';
 
   if (
+    /^待.+/.test(normalized) ||
     normalized.includes('waiting') ||
     normalized.includes('待启用') ||
     normalized.includes('待审核') ||

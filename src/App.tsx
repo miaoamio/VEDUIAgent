@@ -3638,6 +3638,39 @@ StepD:
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
+  const buildDefaultTablePayload = () => ({
+    headers: ['姓名', '状态', '时间'],
+    rows: [
+      ['张三', '进行中', '2024-05-20 10:00'],
+      ['李四', '待开始', '2024-05-21 14:30'],
+      ['王五', '已完成', '2024-05-22 09:15']
+    ],
+    columnTypes: ['Text', 'StatusTag', 'Text']
+  });
+
+  const buildDefaultFormPayload = () => ({
+    layout: 'vertical',
+    align: 'top',
+    labelWidthPreset: 'fill',
+    rows: [
+      [{ componentId: 'input', label: '关键词', props: { placeholder: '请输入关键词' } }],
+      [{ componentId: 'select', label: '状态', props: { value: '全部状态' } }],
+      [{ componentId: 'datepicker', label: '创建时间' }],
+      [{ componentId: 'button', props: { label: '查询', variant: 'primary' } }],
+      [{ componentId: 'button', props: { label: '重置', variant: 'secondary' } }]
+    ]
+  });
+
+  const countVisibleFormRowsFromPayload = (payload: any): number => {
+    const source = isObject(payload?.schema) ? payload.schema : payload;
+    const body = isObject(source?.block) ? (source.block as any).body || source : source;
+    const rows: any[][] | undefined = Array.isArray(body?.rows) ? body.rows : undefined;
+    if (!rows) return 0;
+    const isVisibleRow = (row: any[]): boolean =>
+      Array.isArray(row) && row.some((item) => isObject(item) && String(item.componentId || '').trim().toLowerCase() !== 'button');
+    return rows.filter(isVisibleRow).length;
+  };
+
   const buildTableComponentFromPayload = (
     payload: any,
     options?: { minRowCount?: number }
@@ -6676,6 +6709,14 @@ StepD:
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   };
+  const readBooleanConfig = (runtimeKey: string, envKey: string, fallback: boolean): boolean => {
+    const runtimeValue = (globalThis as any)[runtimeKey];
+    const envValue = (import.meta as any)?.env?.[envKey];
+    const raw = runtimeValue ?? envValue;
+    if (raw === undefined || raw === null) return fallback;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  };
   const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
@@ -6685,6 +6726,26 @@ StepD:
     '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
     20000
+  );
+  const UI_SHOW_ACTION_JSON = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_ACTION_JSON__',
+    'VITE_FIGMA_AGENT_SHOW_ACTION_JSON',
+    false
+  );
+  const UI_SHOW_STREAMING = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_STREAMING__',
+    'VITE_FIGMA_AGENT_SHOW_STREAMING',
+    false
+  );
+  const UI_SHOW_CODE_BLOCKS = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_CODE_BLOCKS__',
+    'VITE_FIGMA_AGENT_SHOW_CODE_BLOCKS',
+    false
+  );
+  const UI_SHOW_RAW_LINES = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_RAW_LINES__',
+    'VITE_FIGMA_AGENT_SHOW_RAW_LINES',
+    false
   );
   const url = `${WORKER_URL}/api/chat`;
 
@@ -6885,6 +6946,14 @@ StepD:
           }))
         }
       : null;
+
+    const resolveHiddenStreamingStatusText = (rawText?: string) => {
+        const haystack = `${currentTurnText}\n${String(rawText || '')}`.toLowerCase();
+        if (/draw_form|表单|form|筛选|filter/.test(haystack)) return '生成表单';
+        if (/draw_tabl|draw_table|表格|table/.test(haystack)) return '生成表格';
+        if (/图表|chart/.test(haystack)) return '生成图表';
+        return '处理中';
+    };
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -7281,7 +7350,10 @@ StepB:\n`;
                 // Always show the latest streamed content (including incomplete lines in buffer)
                 const liveText = currentStreamedResponse + streamLineBuffer;
                 if (liveText) {
-                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${liveText}`);
+                    setResponse(
+                      accumulatedLog + (accumulatedLog ? '\n\n' : '') +
+                      (UI_SHOW_STREAMING ? `[Streaming]: ${liveText}` : `[AI]: ${resolveHiddenStreamingStatusText(liveText)}`)
+                    );
                 }
             });
             if (streamLineBuffer.trim()) {
@@ -7295,7 +7367,10 @@ StepB:\n`;
                     });
                 } else {
                     currentStreamedResponse += streamLineBuffer;
-                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${currentStreamedResponse}`);
+                    setResponse(
+                      accumulatedLog + (accumulatedLog ? '\n\n' : '') +
+                      (UI_SHOW_STREAMING ? `[Streaming]: ${currentStreamedResponse}` : `[AI]: ${resolveHiddenStreamingStatusText(currentStreamedResponse)}`)
+                    );
                 }
                 streamLineBuffer = '';
             }
@@ -8022,7 +8097,10 @@ StepB:\n`;
                   actionTaskId,
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
-                const tableComponent = buildTableComponentFromPayload(payload?.table ?? payload, { minRowCount: 10 });
+                const tablePayload = payload?.table ?? payload;
+                const tableComponent =
+                    buildTableComponentFromPayload(tablePayload, { minRowCount: 10 }) ||
+                    buildTableComponentFromPayload(buildDefaultTablePayload(), { minRowCount: 10 });
 
                 if (!tableComponent) {
                     const invalidMsg = `[System]: 表格参数无效。`;
@@ -8084,7 +8162,10 @@ StepB:\n`;
                   actionTaskId,
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
-                const formComponent = buildFormComponentFromPayloadSkill(payload?.form ?? payload);
+                const formPayload = payload?.form ?? payload;
+                const formComponent =
+                    buildFormComponentFromPayloadSkill(formPayload) ||
+                    buildNormalizedFormComponentFromSource(buildDefaultFormPayload(), { defaultWidth: 720 });
 
                 if (!formComponent) {
                     const rawPayload = JSON.stringify(payload?.form ?? payload, null, 2);
@@ -8105,8 +8186,10 @@ StepB:\n`;
                           rowCount: Array.isArray(formComponent.children) ? formComponent.children.length : 0
                         });
                         // #endregion
-                        const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
-                        const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
+                        const visibleRowCount =
+                          countVisibleFormRowsFromPayload(formPayload) ||
+                          (Array.isArray(formComponent.children) ? formComponent.children.length : 0);
+                        const successMsg = `[System]: 表单创建成功（行数=${visibleRowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -9390,6 +9473,7 @@ StepB:\n`;
     const currentCellType = isColumn
       ? (selectedComponent.childComponentId || 'table-cell')
       : selectedComponent.componentId;
+    const supportsTextDisplay = currentCellType === 'table-cell';
     const headerTypeValue = params.headerType || 'None';
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
@@ -9481,15 +9565,19 @@ StepB:\n`;
           </div>
         </div>
 
-        <div className="section-title">文本显示</div>
-        <div className="row">
-          <div className="col">
-            <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
-              <option value="ellipsis">单行省略</option>
-              <option value="lineBreak">支持换行</option>
-            </SelectControl>
-          </div>
-        </div>
+        {supportsTextDisplay && (
+          <>
+            <div className="section-title">文本显示</div>
+            <div className="row">
+              <div className="col">
+                <SelectControl value={textDisplayValue} onChange={(value) => updateParam('textDisplay', value)}>
+                  <option value="ellipsis">单行省略</option>
+                  <option value="lineBreak">支持换行</option>
+                </SelectControl>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="section-title">列宽</div>
         <div className="row">
@@ -10171,30 +10259,17 @@ StepB:\n`;
                             ? buildAttachmentParseText(attachmentImages, attachmentTables)
                             : '';
                           const showBreathingDots = isLast && loading;
-                          let lastRenderableIndex = -1;
+                          const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
+                          let lastProcessItemIndex = -1;
                           for (let i = items.length - 1; i >= 0; i -= 1) {
-                            if (items[i]?.kind !== 'action_json') {
-                              lastRenderableIndex = i;
+                            const item = items[i];
+                            if (item?.kind === 'thought' || item?.kind === 'spec_hint') {
+                              lastProcessItemIndex = i;
                               break;
                             }
                           }
-                          const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
                           const shouldShowAttachmentDots = showBreathingDots && !hasProcessItem;
                           const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
-                          const lastItemKind = lastRenderableIndex >= 0 ? items[lastRenderableIndex]?.kind : null;
-                          let lastSystemIndex = -1;
-                          let lastFrameThoughtIndex = -1;
-                          for (let i = 0; i < items.length; i += 1) {
-                            const it = items[i];
-                            if (it.kind === 'system') lastSystemIndex = i;
-                            if (it.kind === 'thought' && isFrameThoughtText(it.text)) lastFrameThoughtIndex = i;
-                          }
-                          const dotsTargetIndex =
-                            showBreathingDots && lastFrameThoughtIndex > lastSystemIndex
-                              ? lastFrameThoughtIndex
-                              : lastRenderableIndex;
-                          const shouldShowIdleThinking =
-                            isLast && loading && lastItemKind === 'system';
                           return (
                             <>
                               {showThinkingRow && (
@@ -10257,7 +10332,7 @@ StepB:\n`;
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
-                                const shouldShowLineDots = showBreathingDots && hasProcessItem && itemIndex === dotsTargetIndex;
+                                const shouldShowLineDots = showBreathingDots && itemIndex === lastProcessItemIndex;
                                 if (item.kind === 'spec_hint') {
                                   return (
                                     <IconTextRow
@@ -10304,57 +10379,7 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'action_json') {
-                                  if (itemIndex > 0 && items[itemIndex - 1]?.kind === 'action_json') {
-                                    return null;
-                                  }
-                                  const jsonGroup: typeof items = [item];
-                                  for (let j = itemIndex + 1; j < items.length && items[j]?.kind === 'action_json'; j += 1) {
-                                    jsonGroup.push(items[j]);
-                                  }
-                                  const jsonStateKey = index * 10000 + itemIndex;
-                                  const isJsonExpanded = Boolean(aiActionJsonExpanded[jsonStateKey]);
-                                  const toggleJsonExpanded = () =>
-                                    setAiActionJsonExpanded((prev) => ({
-                                      ...prev,
-                                      [jsonStateKey]: !prev[jsonStateKey]
-                                    }));
-                                  const actionLabel = jsonGroup.length === 1
-                                    ? (jsonGroup[0].actionType ? 'Action: ' + jsonGroup[0].actionType : 'LLM JSON')
-                                    : 'LLM JSON (' + jsonGroup.length + ')';
-                                  return (
-                                    <div key={`aj_${index}_${itemIndex}`} className="ai-action-json-collapse">
-                                      <IconTextRow
-                                        as="button"
-                                        className={`ai-action-json-toggle ${isJsonExpanded ? 'expanded' : ''}`}
-                                        textClassName="ai-action-json-label"
-                                        icon={
-                                          <span className="ai-action-json-icon" aria-hidden="true">
-                                            {isJsonExpanded ? (
-                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
-                                            ) : (
-                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
-                                            )}
-                                          </span>
-                                        }
-                                        onClick={toggleJsonExpanded}
-                                        aria-expanded={isJsonExpanded}
-                                      >
-                                        {actionLabel}
-                                      </IconTextRow>
-                                      {isJsonExpanded && (
-                                        <div className="ai-action-json-panel">
-                                          {jsonGroup.map((jsonItem, gi) => (
-                                            <div key={gi} className="ai-action-json-entry">
-                                              {jsonItem.actionType && (
-                                                <div className="ai-action-json-type">{jsonItem.actionType}</div>
-                                              )}
-                                              <pre className="ai-action-json-pre"><code>{jsonItem.llmRawText || jsonItem.payloadText || jsonItem.text}</code></pre>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
+                                  if (!UI_SHOW_ACTION_JSON) return null;
                                 }
                                 if (item.kind === 'system') {
                                   const tone = resolveSystemTone(item.text);
@@ -10380,94 +10405,16 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'streaming') {
-                                  const streamStateKey = index * 10000 + 9999;
-                                  const isStreamExpanded = Boolean(aiActionJsonExpanded[streamStateKey]);
-                                  const toggleStreamExpanded = () =>
-                                    setAiActionJsonExpanded((prev) => ({
-                                      ...prev,
-                                      [streamStateKey]: !prev[streamStateKey]
-                                    }));
-                                  return (
-                                    <div key={`stream_${itemIndex}`} className="ai-action-json-collapse">
-                                      <IconTextRow
-                                        as="button"
-                                        className={`ai-action-json-toggle ${isStreamExpanded ? 'expanded' : ''}`}
-                                        textClassName="ai-action-json-label"
-                                        icon={
-                                          <span className="ai-action-json-icon" aria-hidden="true">
-                                            {isStreamExpanded ? (
-                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
-                                            ) : (
-                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
-                                            )}
-                                          </span>
-                                        }
-                                        onClick={toggleStreamExpanded}
-                                        aria-expanded={isStreamExpanded}
-                                      >
-                                        LLM 输出中
-                                        <span className="ai-stream-cursor" aria-hidden="true">_</span>
-                                      </IconTextRow>
-                                      {isStreamExpanded && (
-                                        <div className="ai-action-json-panel ai-stream-panel" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
-                                          <pre className="ai-action-json-pre">{item.text}</pre>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
+                                  if (!UI_SHOW_STREAMING) return null;
+                                  return null;
                                 }
                                 if (item.kind === 'code_block') {
-                                  return (
-                                    <div key={`code_${itemIndex}`} className="ai-code-block">
-                                      <div className="ai-code-block-header">
-                                        <span className="ai-code-block-lang">{item.language || 'json'}</span>
-                                      </div>
-                                      <pre className="ai-code-block-pre">
-                                        <code>{item.text}</code>
-                                      </pre>
-                                      <div className="ai-code-block-footer">
-                                        <button 
-                                          className="ai-code-block-copy" 
-                                          onClick={async (e) => {
-                                            try {
-                                              // navigator.clipboard is sometimes not fully available or needs specific context in Figma iframe
-                                              // Using the custom copyTextToClipboard helper or a fallback text area
-                                              let success = false;
-                                              if (navigator.clipboard && navigator.clipboard.writeText) {
-                                                await navigator.clipboard.writeText(item.text);
-                                                success = true;
-                                              } else {
-                                                const textArea = document.createElement("textarea");
-                                                textArea.value = item.text;
-                                                document.body.appendChild(textArea);
-                                                textArea.select();
-                                                success = document.execCommand("copy");
-                                                document.body.removeChild(textArea);
-                                              }
-                                              
-                                              if (success) {
-                                                const btn = e.currentTarget;
-                                                const t = btn.innerText;
-                                                btn.innerText = '已复制';
-                                                setTimeout(() => { btn.innerText = t; }, 1500);
-                                              }
-                                            } catch (err) {
-                                              console.error("Copy failed", err);
-                                            }
-                                          }}
-                                        >
-                                          复制
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
+                                  if (!UI_SHOW_CODE_BLOCKS) return null;
+                                  return null;
                                 }
                                 if (item.kind === 'raw') {
-                                  return (
-                                    <div key={`raw_${itemIndex}`} className="ai-raw-line">
-                                      {item.text}
-                                    </div>
-                                  );
+                                  if (!UI_SHOW_RAW_LINES) return null;
+                                  return null;
                                 }
                                 return (
                                   <div key={`text_${itemIndex}`} className="ai-text-line">
@@ -10475,18 +10422,6 @@ StepB:\n`;
                                   </div>
                                 );
                               })}
-                              {shouldShowIdleThinking && (
-                                <IconTextRow
-                                  className="ai-thought ai-thinking"
-                                  textClassName="ai-thought-text"
-                                  icon={<ThinkingIcon className="ai-thought-icon" />}
-                                >
-                                  思考中
-                                  <span className="ai-breathing-dots" aria-hidden="true">
-                                    ...
-                                  </span>
-                                </IconTextRow>
-                              )}
                             </>
                           );
                         })()}
