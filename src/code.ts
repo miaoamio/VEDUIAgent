@@ -2090,15 +2090,20 @@ async function updateTableRowCount(table: FrameNode, targetRows: number) {
         if (currentRows === safeTarget) continue;
 
         if (currentRows < safeTarget) {
-            const templateIndex = offset + currentRows - 1;
-            const template =
-                templateIndex >= offset ? (column.children[templateIndex] as SceneNode | undefined) : undefined;
+            // Collect all existing body cells as clone templates.
+            const bodyCells: SceneNode[] = [];
+            for (let b = offset; b < offset + currentRows; b += 1) {
+                const c = column.children[b] as SceneNode | undefined;
+                if (c) bodyCells.push(c);
+            }
             const columnParams = readNodeParams(column);
             const bodyHeight = resolveTableBodyHeight(columnParams);
             for (let i = currentRows; i < safeTarget; i += 1) {
                 let newCell: SceneNode | null = null;
-                if (template) {
-                    newCell = template.clone();
+                if (bodyCells.length > 0) {
+                    // Pick a random body cell to clone so duplicated rows look varied.
+                    const randomIdx = Math.floor(Math.random() * bodyCells.length);
+                    newCell = bodyCells[randomIdx].clone();
                 } else {
                     const cellInstance: ComponentInstance = {
                         id: `cell-${Date.now()}-${i}`,
@@ -2614,23 +2619,35 @@ const generationLockedNodeIds = new Set<string>();
 const LOCKABLE_COMPONENT_IDS = new Set(['page', 'layout', 'card', 'table', 'table-column']);
 
 function lockGeneratedContainerNode(node: BaseNode, componentId?: string) {
+  // Lock mechanism temporarily disabled for debugging
   if (!generationLockEnabled) return;
   if (!componentId || !LOCKABLE_COMPONENT_IDS.has(componentId)) return;
   if (!('locked' in node)) return;
 
-  try {
-    node.locked = true;
-    if ('id' in node) {
-      generationLockedNodeIds.add(node.id);
-    }
-  } catch (e) {
-    console.warn('Failed to lock generated container node:', e);
+  // Skip actual locking — just track the ID for debugging
+  if ('id' in node) {
+    generationLockedNodeIds.add(node.id);
   }
 }
 
 async function unlockGeneratedContainerNodes() {
+  // Helper: recursively unlock a node and all its descendants.
+  let deepUnlockCount = 0;
+  const deepUnlock = (node: BaseNode) => {
+    if ('locked' in node && (node as SceneNode).locked) {
+      try { (node as SceneNode).locked = false; deepUnlockCount++; } catch {}
+    }
+    if ('children' in node) {
+      for (const child of (node as any).children) {
+        deepUnlock(child);
+      }
+    }
+  };
+
   const ids = Array.from(generationLockedNodeIds);
   generationLockedNodeIds.clear();
+
+  // 1. Unlock tracked nodes by ID (deep — unlock children too).
   await Promise.all(
     ids.map(async (id) => {
       let node: BaseNode | null = null;
@@ -2640,14 +2657,25 @@ async function unlockGeneratedContainerNodes() {
         console.warn('Failed to resolve generated container node:', e);
         return;
       }
-      if (!node || !('locked' in node)) return;
-      try {
-        (node as any).locked = false;
-      } catch (e) {
-        console.warn('Failed to unlock generated container node:', e);
-      }
+      if (!node) return;
+      deepUnlock(node);
     })
   );
+  
+  console.log('[gen-lock] deep unlocked', deepUnlockCount, 'nodes');
+
+  // 2. Fallback: scan current page for any AI-component nodes that are still locked.
+  try {
+    const lockedAiNodes = figma.currentPage.findAll((n) =>
+      'locked' in n && (n as SceneNode).locked &&
+      'getPluginData' in n && (n as SceneNode).getPluginData('is-ai-component') === 'true'
+    );
+    for (const n of lockedAiNodes) {
+      deepUnlock(n);
+    }
+  } catch (e) {
+    console.warn('Fallback unlock scan failed:', e);
+  }
 }
 
 function mergeUnique(base: string[] | undefined, incoming: string[] | undefined): string[] | undefined {
@@ -9640,6 +9668,7 @@ figma.ui.onmessage = async (msg) => {
 
   if (msg.type === 'set-generation-lock') {
     generationLockEnabled = Boolean(msg.enabled);
+    console.log('[gen-lock]', generationLockEnabled ? 'LOCKED' : 'UNLOCKED', 'tracked:', generationLockedNodeIds.size);
     if (!generationLockEnabled) {
       await unlockGeneratedContainerNodes();
     }

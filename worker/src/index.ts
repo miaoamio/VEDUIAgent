@@ -112,7 +112,7 @@ export default {
           FROM user_metrics
         `).first();
 
-        // 2. 获取按天统计的趋势 (最近7天)
+        // 2. 获取按天统计的趋势 (最近30天)
         const dailyResult = await env.DB.prepare(`
           SELECT 
             date(datetime(created_at / 1000, 'unixepoch')) as date,
@@ -124,7 +124,7 @@ export default {
           FROM user_metrics
           GROUP BY date
           ORDER BY date DESC
-          LIMIT 7
+          LIMIT 30
         `).all();
 
         // 3. 获取最近的事件流
