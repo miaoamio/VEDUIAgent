@@ -6917,9 +6917,6 @@ StepD:
         }
       : null;
 
-    // ── API Key 已移至 Cloudflare Worker 代理，前端不再持有 ──
-    const url = `${WORKER_URL}/api/chat`;
-
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
         const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
