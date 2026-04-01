@@ -3661,6 +3661,16 @@ StepD:
     ]
   });
 
+  const countVisibleFormRowsFromPayload = (payload: any): number => {
+    const source = isObject(payload?.schema) ? payload.schema : payload;
+    const body = isObject(source?.block) ? (source.block as any).body || source : source;
+    const rows: any[][] | undefined = Array.isArray(body?.rows) ? body.rows : undefined;
+    if (!rows) return 0;
+    const isVisibleRow = (row: any[]): boolean =>
+      Array.isArray(row) && row.some((item) => isObject(item) && String(item.componentId || '').trim().toLowerCase() !== 'button');
+    return rows.filter(isVisibleRow).length;
+  };
+
   const buildTableComponentFromPayload = (
     payload: any,
     options?: { minRowCount?: number }
@@ -6699,6 +6709,14 @@ StepD:
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   };
+  const readBooleanConfig = (runtimeKey: string, envKey: string, fallback: boolean): boolean => {
+    const runtimeValue = (globalThis as any)[runtimeKey];
+    const envValue = (import.meta as any)?.env?.[envKey];
+    const raw = runtimeValue ?? envValue;
+    if (raw === undefined || raw === null) return fallback;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  };
   const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
@@ -6708,6 +6726,26 @@ StepD:
     '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
     20000
+  );
+  const UI_SHOW_ACTION_JSON = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_ACTION_JSON__',
+    'VITE_FIGMA_AGENT_SHOW_ACTION_JSON',
+    false
+  );
+  const UI_SHOW_STREAMING = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_STREAMING__',
+    'VITE_FIGMA_AGENT_SHOW_STREAMING',
+    false
+  );
+  const UI_SHOW_CODE_BLOCKS = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_CODE_BLOCKS__',
+    'VITE_FIGMA_AGENT_SHOW_CODE_BLOCKS',
+    false
+  );
+  const UI_SHOW_RAW_LINES = readBooleanConfig(
+    '__FIGMA_AGENT_SHOW_RAW_LINES__',
+    'VITE_FIGMA_AGENT_SHOW_RAW_LINES',
+    false
   );
   const url = `${WORKER_URL}/api/chat`;
 
@@ -6908,6 +6946,14 @@ StepD:
           }))
         }
       : null;
+
+    const resolveHiddenStreamingStatusText = (rawText?: string) => {
+        const haystack = `${currentTurnText}\n${String(rawText || '')}`.toLowerCase();
+        if (/draw_form|表单|form|筛选|filter/.test(haystack)) return '生成表单';
+        if (/draw_tabl|draw_table|表格|table/.test(haystack)) return '生成表格';
+        if (/图表|chart/.test(haystack)) return '生成图表';
+        return '处理中';
+    };
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -7304,7 +7350,10 @@ StepB:\n`;
                 // Always show the latest streamed content (including incomplete lines in buffer)
                 const liveText = currentStreamedResponse + streamLineBuffer;
                 if (liveText) {
-                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${liveText}`);
+                    setResponse(
+                      accumulatedLog + (accumulatedLog ? '\n\n' : '') +
+                      (UI_SHOW_STREAMING ? `[Streaming]: ${liveText}` : `[AI]: ${resolveHiddenStreamingStatusText(liveText)}`)
+                    );
                 }
             });
             if (streamLineBuffer.trim()) {
@@ -7318,7 +7367,10 @@ StepB:\n`;
                     });
                 } else {
                     currentStreamedResponse += streamLineBuffer;
-                    setResponse(accumulatedLog + (accumulatedLog ? '\n\n' : '') + `[Streaming]: ${currentStreamedResponse}`);
+                    setResponse(
+                      accumulatedLog + (accumulatedLog ? '\n\n' : '') +
+                      (UI_SHOW_STREAMING ? `[Streaming]: ${currentStreamedResponse}` : `[AI]: ${resolveHiddenStreamingStatusText(currentStreamedResponse)}`)
+                    );
                 }
                 streamLineBuffer = '';
             }
@@ -8134,8 +8186,10 @@ StepB:\n`;
                           rowCount: Array.isArray(formComponent.children) ? formComponent.children.length : 0
                         });
                         // #endregion
-                        const rowCount = Array.isArray(formComponent.children) ? formComponent.children.length : 0;
-                        const successMsg = `[System]: 表单创建成功（行数=${rowCount}，布局=${formComponent.params.layout}）。`;
+                        const visibleRowCount =
+                          countVisibleFormRowsFromPayload(formPayload) ||
+                          (Array.isArray(formComponent.children) ? formComponent.children.length : 0);
+                        const successMsg = `[System]: 表单创建成功（行数=${visibleRowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
                         messages.push({
@@ -10205,30 +10259,17 @@ StepB:\n`;
                             ? buildAttachmentParseText(attachmentImages, attachmentTables)
                             : '';
                           const showBreathingDots = isLast && loading;
-                          let lastRenderableIndex = -1;
+                          const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
+                          let lastProcessItemIndex = -1;
                           for (let i = items.length - 1; i >= 0; i -= 1) {
-                            if (items[i]?.kind !== 'action_json') {
-                              lastRenderableIndex = i;
+                            const item = items[i];
+                            if (item?.kind === 'thought' || item?.kind === 'spec_hint') {
+                              lastProcessItemIndex = i;
                               break;
                             }
                           }
-                          const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
                           const shouldShowAttachmentDots = showBreathingDots && !hasProcessItem;
                           const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
-                          const lastItemKind = lastRenderableIndex >= 0 ? items[lastRenderableIndex]?.kind : null;
-                          let lastSystemIndex = -1;
-                          let lastFrameThoughtIndex = -1;
-                          for (let i = 0; i < items.length; i += 1) {
-                            const it = items[i];
-                            if (it.kind === 'system') lastSystemIndex = i;
-                            if (it.kind === 'thought' && isFrameThoughtText(it.text)) lastFrameThoughtIndex = i;
-                          }
-                          const dotsTargetIndex =
-                            showBreathingDots && lastFrameThoughtIndex > lastSystemIndex
-                              ? lastFrameThoughtIndex
-                              : lastRenderableIndex;
-                          const shouldShowIdleThinking =
-                            isLast && loading && lastItemKind === 'system';
                           return (
                             <>
                               {showThinkingRow && (
@@ -10291,7 +10332,7 @@ StepB:\n`;
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
-                                const shouldShowLineDots = showBreathingDots && hasProcessItem && itemIndex === dotsTargetIndex;
+                                const shouldShowLineDots = showBreathingDots && itemIndex === lastProcessItemIndex;
                                 if (item.kind === 'spec_hint') {
                                   return (
                                     <IconTextRow
@@ -10338,6 +10379,7 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'action_json') {
+                                  if (!UI_SHOW_ACTION_JSON) return null;
                                   return null;
                                 }
                                 if (item.kind === 'system') {
@@ -10364,12 +10406,15 @@ StepB:\n`;
                                   );
                                 }
                                 if (item.kind === 'streaming') {
+                                  if (!UI_SHOW_STREAMING) return null;
                                   return null;
                                 }
                                 if (item.kind === 'code_block') {
+                                  if (!UI_SHOW_CODE_BLOCKS) return null;
                                   return null;
                                 }
                                 if (item.kind === 'raw') {
+                                  if (!UI_SHOW_RAW_LINES) return null;
                                   return null;
                                 }
                                 return (
@@ -10378,18 +10423,6 @@ StepB:\n`;
                                   </div>
                                 );
                               })}
-                              {shouldShowIdleThinking && (
-                                <IconTextRow
-                                  className="ai-thought ai-thinking"
-                                  textClassName="ai-thought-text"
-                                  icon={<ThinkingIcon className="ai-thought-icon" />}
-                                >
-                                  思考中
-                                  <span className="ai-breathing-dots" aria-hidden="true">
-                                    ...
-                                  </span>
-                                </IconTextRow>
-                              )}
                             </>
                           );
                         })()}
