@@ -9917,12 +9917,15 @@ StepB:\n`;
     let activeRetryTaskId: string | null = null;
     let retryFallbackNotes: string | null = null;
     const rollbackRetryTasks = (plan: AgentPlanState, notes: string, taskId?: string | null) => {
-      const rollbackTargetIds = plan.tasks
-        .filter((task) => task.status === 'in_progress' && (!taskId || task.taskId === taskId))
-        .map((task) => task.taskId);
-      if (rollbackTargetIds.length === 0 && taskId) {
-        rollbackTargetIds.push(taskId);
-      }
+      const rollbackTargetIds =
+        taskId == null
+          ? plan.tasks.filter((task) => task.status === 'in_progress').map((task) => task.taskId)
+          : (() => {
+              const matchedTask = plan.tasks.find((task) => task.taskId === taskId);
+              if (!matchedTask) return [];
+              return [taskId];
+            })();
+      if (rollbackTargetIds.length === 0) return plan;
       return rollbackTargetIds.reduce((acc, currentTaskId) => {
         try {
           return updateTaskStatus(acc, currentTaskId, 'failed', notes);
