@@ -249,8 +249,10 @@ function normalizeComponentSpecLine(text: string): string {
 
 const SEARCH_THOUGHT_KEYWORDS_CN = ['规范', '读取', '阅读', '目录', '组件库', '了解规范', '了解组件'];
 const SEARCH_THOUGHT_KEYWORDS_EN = ['spec', 'component', 'figma'];
-const PROPS_THOUGHT_KEYWORDS_CN = ['属性', '探测', '探查', '发现属性'];
+const PROPS_THOUGHT_KEYWORDS_CN = ['属性'];
 const PROPS_THOUGHT_KEYWORDS_EN = ['props'];
+const PROPS_DISCOVERY_CONTEXT_KEYWORDS_CN = ['探测', '探查', '读取', '读取组件', '发现', '查看', '了解'];
+const PROPS_DISCOVERY_CONTEXT_KEYWORDS_EN = ['discover', 'inspect', 'read', 'find', 'check', 'view'];
 const FRAME_THOUGHT_KEYWORDS_CN = ['生成', '创建', '绘制'];
 const FRAME_THOUGHT_KEYWORDS_EN = ['generate', 'create', 'draw'];
 const PLAN_THOUGHT_KEYWORDS_CN = ['任务', '计划'];
@@ -272,11 +274,13 @@ function isSearchThoughtText(text: string): boolean {
   if (!raw) return false;
   const lower = raw.toLowerCase();
   if (raw.startsWith('读')) return true;
+  const propDiscoveryInContext =
+    (includesAny(raw, PROPS_THOUGHT_KEYWORDS_CN) || includesAny(lower, PROPS_THOUGHT_KEYWORDS_EN)) &&
+    (includesAny(raw, PROPS_DISCOVERY_CONTEXT_KEYWORDS_CN) || includesAny(lower, PROPS_DISCOVERY_CONTEXT_KEYWORDS_EN));
   return (
     includesAny(raw, SEARCH_THOUGHT_KEYWORDS_CN) ||
     includesAny(lower, SEARCH_THOUGHT_KEYWORDS_EN) ||
-    includesAny(raw, PROPS_THOUGHT_KEYWORDS_CN) ||
-    includesAny(lower, PROPS_THOUGHT_KEYWORDS_EN)
+    propDiscoveryInContext
   );
 }
 
@@ -828,6 +832,7 @@ function IconTextRow({
   className,
   textClassName,
   icon,
+  floatingSuffix,
   children,
   ...rest
 }: {
@@ -835,6 +840,7 @@ function IconTextRow({
   className?: string;
   textClassName?: string;
   icon?: React.ReactNode;
+  floatingSuffix?: React.ReactNode;
   children: React.ReactNode;
   [key: string]: any;
 }) {
@@ -852,13 +858,15 @@ function IconTextRow({
     setMultiLine(el.scrollHeight > lineHeight + 1);
   }, [children]);
   const Container = as || 'div';
-  const containerClass = `${className || ''} ${multiLine ? 'multi-line' : 'single-line'}`.trim();
+  const containerClass = `${className || ''} ${multiLine ? 'multi-line' : 'single-line'} ${floatingSuffix ? 'has-floating-suffix' : ''}`.trim();
+  const resolvedTextClassName = `${textClassName || ''} ${floatingSuffix ? 'has-floating-suffix-text' : ''}`.trim();
   return (
     <Container className={containerClass} {...rest}>
       {icon}
-      <span ref={textRef as any} className={textClassName}>
+      <span ref={textRef as any} className={resolvedTextClassName}>
         {children}
       </span>
+      {floatingSuffix ? <span className="ai-floating-suffix" aria-hidden="true">{floatingSuffix}</span> : null}
     </Container>
   );
 }
@@ -871,6 +879,7 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
   let inCodeBlock = false;
   let codeLanguage = '';
   let codeBuffer: string[] = [];
+  let inLlmRaw = false;
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
@@ -893,6 +902,23 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
 
     if (line.trim() === '') continue;
     const trimmedStart = line.trimStart();
+    if (inLlmRaw) {
+      const isPrefixedLine =
+        trimmedStart.startsWith('[AI]:') ||
+        trimmedStart.startsWith('[System]:') ||
+        trimmedStart.startsWith('[Streaming]:') ||
+        trimmedStart.startsWith('[Raw]:') ||
+        trimmedStart.startsWith('[JSON]:') ||
+        trimmedStart.startsWith('```');
+      if (!isPrefixedLine) {
+        const prevItem = items.length > 0 ? items[items.length - 1] : null;
+        if (prevItem && prevItem.kind === 'action_json') {
+          prevItem.llmRawText = `${prevItem.llmRawText ?? ''}\n${rawLine}`;
+        }
+        continue;
+      }
+      inLlmRaw = false;
+    }
     const isSpecHintLine = (input: string) => {
       const normalized = String(input || '').trim();
       if (parseSeriesSpecLine(normalized)) return true;
@@ -927,6 +953,7 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       if (prevItem && prevItem.kind === 'action_json') {
         prevItem.llmRawText = rawText;
       }
+      inLlmRaw = true;
       continue;
     }
     if (trimmedStart.startsWith('[Raw]:')) {
@@ -968,10 +995,20 @@ function buildAiDisplayItems(value: string): AiDisplayItem[] {
       const subject = String(matched[1] || '').replace(/[。.!！…]+$/g, '').trim();
       return subject ? `绘制${subject}` : raw;
     };
+    const normalizePlanThoughtLine = (raw: string) => {
+      const text = String(raw || '').trim();
+      if (!text || !/任务计划/.test(text)) return raw;
+      const matched = text.match(/^(.+?任务计划)[，,：:].*$/);
+      if (matched) return matched[1];
+      const splitMatched = text.match(/^(.+?任务计划)\s+.+$/);
+      if (splitMatched) return splitMatched[1];
+      return raw;
+    };
     const specNormalized = normalizeComponentSpecLine(normalized);
     if (specNormalized !== normalized) displayLine = specNormalized;
     displayLine = normalizeExampleLine(displayLine);
     displayLine = normalizeDrawLine(displayLine);
+    displayLine = normalizePlanThoughtLine(displayLine);
 
     if (kind === 'thought' && isSpecHintLine(displayLine)) {
       kind = 'spec_hint';
@@ -2065,6 +2102,8 @@ function App() {
   const chartShortcutOnSendRef = React.useRef<string | null>(null);
   const [chartExtraOptions, setChartExtraOptions] = React.useState<Record<string, string>>({});
   const [activeOptionMenu, setActiveOptionMenu] = React.useState<string | null>(null);
+  const [chartMenuStyle, setChartMenuStyle] = React.useState<React.CSSProperties>({});
+  const [activeOptionMenuStyle, setActiveOptionMenuStyle] = React.useState<React.CSSProperties>({});
   const [tagRowHeight, setTagRowHeight] = React.useState(0);
 
   // Update tag row height when options change
@@ -2084,6 +2123,11 @@ function App() {
   }, [chartShortcutActive, chartExtraOptions]);
   const [chartMenuOpen, setChartMenuOpen] = React.useState(false);
   const [quickComponentMenuOpen, setQuickComponentMenuOpen] = React.useState(false);
+  const buildFloatingMenuStyle = React.useCallback((rect: DOMRect): React.CSSProperties => ({
+    left: rect.left,
+    bottom: window.innerHeight - rect.top + 6,
+    top: 'auto'
+  }), []);
   const chartUiHtml = React.useMemo(
     () =>
       AI_CHART_UI_HTML.replace(
@@ -2102,6 +2146,12 @@ function App() {
   const [tableLimitNotice, setTableLimitNotice] = React.useState(false);
   const [agentPlan, setAgentPlan] = React.useState<AgentPlanState | null>(null);
   const [manualTaskRunner, setManualTaskRunner] = React.useState(false);
+  const [llmRetryState, setLlmRetryState] = React.useState<{
+    attempt: number;
+    maxRetries: number;
+    waitMs: number;
+    message: string;
+  } | null>(null);
   const [planTasksCollapsed, setPlanTasksCollapsed] = React.useState(false);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const tableInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -2117,8 +2167,6 @@ function App() {
   } | null>(null);
   const quickComponentDropdownRef = React.useRef<HTMLDivElement | null>(null);
   const quickComponentMenuRef = React.useRef<HTMLDivElement | null>(null);
-  const [actionStreamPulse, setActionStreamPulse] = React.useState(0);
-  const lastResponseRef = React.useRef<string>('');
   const [aiAttachmentParseExpanded, setAiAttachmentParseExpanded] = React.useState<Record<number, boolean>>({});
   const [aiActionJsonExpanded, setAiActionJsonExpanded] = React.useState<Record<number, boolean>>({});
   const [aiAttachmentParseHover, setAiAttachmentParseHover] = React.useState<Record<number, boolean>>({});
@@ -2191,6 +2239,7 @@ function App() {
     }
   }, [quickComponentMenuOpen]);
   const stopRequestedRef = React.useRef(false);
+  const autoPausedForRetryRef = React.useRef(false);
   const thinkingStartedAtRef = React.useRef<number | null>(null);
   const readSpecsCacheRef = React.useRef<Set<string>>(new Set());
   const [thinkingActive, setThinkingActive] = React.useState(false);
@@ -2286,6 +2335,13 @@ function App() {
       uploadedImages.length > 0 ||
       uploadedTables.length > 0
   );
+  const generationBusy = loading || manualTaskRunner;
+  const agentPlanHasRetryTargets = Boolean(
+    agentPlan?.tasks.some((task) => task.status === 'failed' || task.status === 'blocked')
+  );
+  const llmRetrySummaryText = llmRetryState
+    ? `请求限流（429），自动重试 ${llmRetryState.attempt}/${llmRetryState.maxRetries}，${Math.max(1, Math.ceil(llmRetryState.waitMs / 1000))}s 后继续`
+    : '';
 
   React.useEffect(() => {
     // Listen for messages from the plugin code
@@ -2752,7 +2808,18 @@ function App() {
     stopRequestedRef.current = true;
     llmAbortRef.current?.abort();
     setGenerationLock(false);
+    setLlmRetryState(null);
   }, []);
+
+  React.useEffect(() => {
+    if (!agentPlanHasRetryTargets) {
+      autoPausedForRetryRef.current = false;
+      return;
+    }
+    if (!loading || manualTaskRunner || autoPausedForRetryRef.current) return;
+    autoPausedForRetryRef.current = true;
+    stopGeneration();
+  }, [agentPlanHasRetryTargets, loading, manualTaskRunner, stopGeneration]);
 
   const applyQuickPrompt = React.useCallback((prompt: string) => {
     setUserInput((prev) => (prev.trim() ? `${prev}\n${prompt}` : prompt));
@@ -2806,31 +2873,6 @@ function App() {
     if (response === null) return;
     updateLastAiMessage(response);
   }, [response, updateLastAiMessage]);
-
-  React.useEffect(() => {
-    if (response === null) {
-      lastResponseRef.current = '';
-      return;
-    }
-    const prev = lastResponseRef.current;
-    lastResponseRef.current = response;
-    if (!response) return;
-    const prevLines = prev.split('\n');
-    const nextLines = response.split('\n');
-    let index = 0;
-    while (index < prevLines.length && index < nextLines.length && prevLines[index] === nextLines[index]) {
-      index += 1;
-    }
-    const addedLines = nextLines.slice(index);
-    if (addedLines.length === 0) return;
-    const matchCount = addedLines.filter((line) => {
-      const trimmed = line.trimStart();
-      return trimmed.startsWith('[JSON]:') || trimmed.startsWith('[Streaming]:');
-    }).length;
-    if (matchCount > 0) {
-      setActionStreamPulse((prevPulse) => prevPulse + matchCount);
-    }
-  }, [response]);
 
   const resolveSystemTone = React.useCallback((text: string) => {
     const normalized = String(text || '').toLowerCase();
@@ -3661,61 +3703,15 @@ StepD:
     ]
   });
 
-  const countVisibleFormItemsFromPayload = (payload: any): number => {
-    const source = isObject(payload?.schema) ? payload.schema : payload;
-    const body = isObject(source?.block) ? (source.block as any).body || source : source;
-    const countItems = (items: any[]): number =>
-      items.filter((item) => isObject(item) && String(item.componentId || '').trim().toLowerCase() !== 'button').length;
-    const countRows = (rows: any[]): number =>
-      rows.reduce((sum, row) => sum + (Array.isArray(row) ? countItems(row) : 0), 0);
-    const countGroups = (groups: any[]): number =>
-      groups.reduce((sum, group) => {
-        const groupObj = isObject(group) ? group : {};
-        const groupFields = Array.isArray(group)
-          ? group
-          : Array.isArray(groupObj.fields)
-            ? groupObj.fields
-            : Array.isArray(groupObj.items)
-              ? groupObj.items
-              : [];
-        return sum + countItems(groupFields);
-      }, 0);
-
-    let total = 0;
-    if (Array.isArray(body?.rows)) total += countRows(body.rows);
-    else if (Array.isArray(body?.fields)) total += countItems(body.fields);
-    else if (isObject(body?.filters) && Array.isArray((body.filters as any).items)) total += countItems((body.filters as any).items);
-    else if (Array.isArray(source?.rows)) total += countRows(source.rows);
-    else if (Array.isArray(source?.fields)) total += countItems(source.fields);
-    else if (isObject(source?.filters) && Array.isArray((source.filters as any).items)) total += countItems((source.filters as any).items);
-
-    const sections = Array.isArray(body?.sections) ? body.sections : Array.isArray(source?.sections) ? source.sections : [];
-    total += sections.reduce((sum: number, section: any) => {
-      const sectionObj = isObject(section) ? section : {};
-      const sectionRows = Array.isArray(sectionObj.rows)
-        ? sectionObj.rows
-        : Array.isArray(sectionObj.fields)
-          ? [sectionObj.fields]
-          : [];
-      const sectionGroups = Array.isArray(sectionObj.groups)
-        ? sectionObj.groups
-        : Array.isArray(sectionObj.fieldGroups)
-          ? sectionObj.fieldGroups
-          : [];
-      return sum + countRows(sectionRows) + countGroups(sectionGroups);
-    }, 0);
-
-    const groups = Array.isArray(body?.groups)
-      ? body.groups
-      : Array.isArray(body?.fieldGroups)
-        ? body.fieldGroups
-        : Array.isArray(source?.groups)
-          ? source.groups
-          : Array.isArray(source?.fieldGroups)
-            ? source.fieldGroups
-            : [];
-    total += countGroups(groups);
-    return total;
+  const countRenderedFormItems = (component: any): number => {
+    if (!isObject(component)) return 0;
+    const componentId = String(component.componentId || '').trim().toLowerCase();
+    if (componentId === 'button') return 0;
+    const childCount = Array.isArray(component.children)
+      ? component.children.reduce((sum: number, child: any) => sum + countRenderedFormItems(child), 0)
+      : 0;
+    if (componentId === 'form-field') return 1;
+    return childCount;
   };
 
   const buildTableComponentFromPayload = (
@@ -6903,8 +6899,12 @@ StepD:
     }
 
     stopRequestedRef.current = false;
+    autoPausedForRetryRef.current = false;
     deferSelectionAutoSwitchRef.current = false;
     setPlanPanelClosed(true);
+    setAgentPlan(null);
+    setPlanTasksCollapsed(false);
+    setLlmRetryState(null);
     llmAbortRef.current?.abort();
     const abortController = new AbortController();
     llmAbortRef.current = abortController;
@@ -6983,24 +6983,7 @@ StepD:
       ...chatHistory,
       { role: "user", content: currentTurnText }
     ];
-    let runtimePlan: AgentPlanState | null = agentPlan
-      ? {
-          ...agentPlan,
-          tasks: agentPlan.tasks.map((task) => ({
-            ...task,
-            dependsOn: [...task.dependsOn],
-            requiredSpecs: [...task.requiredSpecs]
-          }))
-        }
-      : null;
-
-    const resolveHiddenStreamingStatusText = (rawText?: string) => {
-        const haystack = `${currentTurnText}\n${String(rawText || '')}`.toLowerCase();
-        if (/draw_form|表单|form|筛选|filter/.test(haystack)) return '生成表单';
-        if (/draw_tabl|draw_table|表格|table/.test(haystack)) return '生成表格';
-        if (/图表|chart/.test(haystack)) return '生成图表';
-        return '处理中';
-    };
+    let runtimePlan: AgentPlanState | null = null;
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -7059,12 +7042,15 @@ StepD:
                     if (abortController.signal.aborted) {
                         throw new DOMException('Aborted', 'AbortError');
                     }
-                    
-                    // Show error in UI immediately if it's the first attempt or if the user wants to see it
-                    setResponse(prev => (prev ? prev + '\n' : '') + `[System]: 请求过于频繁（429）：${errorMsg}。正在重试…`);
 
                     const retryAfter = res.headers.get('Retry-After');
                     const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 2000 * Math.pow(2, attempt); 
+                    setLlmRetryState({
+                        attempt: attempt + 1,
+                        maxRetries,
+                        waitMs: waitTime,
+                        message: errorMsg
+                    });
                     console.log(`Rate limited (429): ${errorMsg}. Attempt ${attempt + 1}/${maxRetries}. Retrying in ${waitTime}ms...`);
                     
                     // If the server says we exceeded quota/credits, no point retrying
@@ -7080,6 +7066,7 @@ StepD:
                 if (!res.ok) {
                     throw new Error(`API Error: ${res.status} ${res.statusText}`);
                 }
+                setLlmRetryState(null);
 
                 const reader = res.body?.getReader();
                 const decoder = new TextDecoder();
@@ -7399,7 +7386,7 @@ StepB:\n`;
                 if (liveText) {
                     setResponse(
                       accumulatedLog + (accumulatedLog ? '\n\n' : '') +
-                      (UI_SHOW_STREAMING ? `[Streaming]: ${liveText}` : `[AI]: ${resolveHiddenStreamingStatusText(liveText)}`)
+                      `[Streaming]: ${liveText}`
                     );
                 }
             });
@@ -7416,7 +7403,7 @@ StepB:\n`;
                     currentStreamedResponse += streamLineBuffer;
                     setResponse(
                       accumulatedLog + (accumulatedLog ? '\n\n' : '') +
-                      (UI_SHOW_STREAMING ? `[Streaming]: ${currentStreamedResponse}` : `[AI]: ${resolveHiddenStreamingStatusText(currentStreamedResponse)}`)
+                      `[Streaming]: ${currentStreamedResponse}`
                     );
                 }
                 streamLineBuffer = '';
@@ -8234,7 +8221,7 @@ StepB:\n`;
                         });
                         // #endregion
                         const visibleRowCount =
-                          countVisibleFormItemsFromPayload(formPayload) ||
+                          countRenderedFormItems(formComponent) ||
                           (Array.isArray(formComponent.children) ? formComponent.children.length : 0);
                         const successMsg = `[System]: 表单创建成功（行数=${visibleRowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
@@ -8395,6 +8382,7 @@ StepB:\n`;
         setChatHistory(messages.filter(m => m.role !== 'system' || m.content !== generateMasterPrompt()));
 
     } catch (error) {
+            setLlmRetryState(null);
       if (error instanceof DOMException && error.name === 'AbortError') {
         setResponse((prev) => (prev ? `${prev}\n\n[System]: 已停止。` : `[System]: 已停止。`));
       } else {
@@ -8403,6 +8391,7 @@ StepB:\n`;
         setResponse((prev) => (prev ? `${prev}\n\n[System]: ${message}` : `[System]: ${message}`));
       }
     } finally {
+            setLlmRetryState(null);
       setAgentPlan(runtimePlan);
       setLoading(false);
       setGenerationLock(false);
@@ -9920,8 +9909,12 @@ StepB:\n`;
 
   const handleRetryFailedTasks = async () => {
     if (!agentPlan || manualTaskRunner || loading) return;
+    stopRequestedRef.current = false;
+    autoPausedForRetryRef.current = false;
+    setGenerationLock(true);
     setManualTaskRunner(true);
     let nextPlan = agentPlan;
+    let activeRetryTaskId: string | null = null;
     try {
       nextPlan = nextPlan.tasks.reduce((acc, task) => {
         if (task.status === 'failed' || task.status === 'blocked') {
@@ -9934,6 +9927,7 @@ StepB:\n`;
       const maxRetryRuns = Math.max(10, nextPlan.tasks.length * 3);
       let retryRuns = 0;
       while (retryRuns < maxRetryRuns) {
+        if (stopRequestedRef.current) break;
         const task = getNextExecutableTask(nextPlan);
         if (!task) break;
         retryRuns += 1;
@@ -9952,6 +9946,7 @@ StepB:\n`;
 
         nextPlan = updateTaskStatus(nextPlan, task.taskId, 'in_progress', 'manual retry');
         setAgentPlan(nextPlan);
+        activeRetryTaskId = task.taskId;
         const result = await executeTaskByType(task, { taskId: task.taskId }, nextPlan);
         setResponse((prev) => (prev ? `${prev}\n\n${result.message}` : result.message));
         if (result.ok) {
@@ -9962,17 +9957,38 @@ StepB:\n`;
         } else {
           nextPlan = updateTaskStatus(nextPlan, task.taskId, 'failed', result.message);
         }
+        activeRetryTaskId = null;
         setAgentPlan(nextPlan);
+      }
+      if (stopRequestedRef.current) {
+        const stoppedMsg = `[System]: 已停止。`;
+        setResponse((prev) => (prev ? `${prev}\n\n${stoppedMsg}` : stoppedMsg));
       }
       if (retryRuns >= maxRetryRuns) {
         const warnMsg = `[System]: 全部重试已停止：超过最大重试步数（${maxRetryRuns}）。`;
         setResponse((prev) => (prev ? `${prev}\n\n${warnMsg}` : warnMsg));
       }
     } catch (e) {
-      const errorMsg = `[System]: 全部重试失败：${e}`;
-      setResponse((prev) => (prev ? `${prev}\n\n${errorMsg}` : errorMsg));
+      const rawError = e instanceof Error ? e.message : String(e);
+      if (stopRequestedRef.current) {
+        if (activeRetryTaskId) {
+          nextPlan = updateTaskStatus(nextPlan, activeRetryTaskId, 'failed', 'retry stopped');
+          setAgentPlan(nextPlan);
+        }
+        const stoppedMsg = `[System]: 已停止。`;
+        setResponse((prev) => (prev ? `${prev}\n\n${stoppedMsg}` : stoppedMsg));
+      } else {
+        const errorMsg = `[System]: 全部重试失败：${rawError}`;
+        if (activeRetryTaskId) {
+          nextPlan = updateTaskStatus(nextPlan, activeRetryTaskId, 'failed', errorMsg);
+          setAgentPlan(nextPlan);
+        }
+        setResponse((prev) => (prev ? `${prev}\n\n${errorMsg}` : errorMsg));
+      }
     } finally {
       setManualTaskRunner(false);
+      setGenerationLock(false);
+      stopRequestedRef.current = false;
     }
   };
 
@@ -10036,6 +10052,8 @@ StepB:\n`;
 
     const totalCount = agentPlan.tasks.length;
     const doneCount = agentPlan.tasks.reduce((acc, task) => (task.status === 'done' ? acc + 1 : acc), 0);
+    const activeTask = agentPlan.tasks.find((task) => task.status === 'in_progress') || null;
+    const transitionTask = loading && !activeTask ? getNextExecutableTask(agentPlan) : null;
     const hasRetryTargets = agentPlan.tasks.some(
       (task) => task.status === 'failed' || task.status === 'blocked'
     );
@@ -10063,7 +10081,7 @@ StepB:\n`;
                 type="button"
                 className="plan-retry-btn"
                 onClick={handleRetryFailedTasks}
-                disabled={loading || manualTaskRunner}
+                disabled={generationBusy}
               >
                 {manualTaskRunner ? '重试中...' : '全部重试'}
               </button>
@@ -10071,7 +10089,7 @@ StepB:\n`;
                 type="button"
                 className="plan-close-btn"
                 onClick={handleClosePlanPanel}
-                disabled={loading}
+                disabled={generationBusy}
                 aria-label="关闭任务面板"
               >
                 <CloseIcon className="plan-close-icon" />
@@ -10079,18 +10097,24 @@ StepB:\n`;
             </div>
           )}
         </div>
+        {llmRetryState && (
+          <div className="plan-rate-limit-hint">{llmRetrySummaryText}</div>
+        )}
 
         {!planTasksCollapsed && (
           <div className="plan-task-list">
             {agentPlan.tasks.map((task) => (
-              <div key={task.taskId} className={`plan-task plan-task-${task.status}`}>
+              <div
+                key={task.taskId}
+                className={`plan-task plan-task-${transitionTask?.taskId === task.taskId ? 'in_progress' : task.status}`}
+              >
                 {task.status === 'failed' ? (
                   <CircleXIcon className="plan-task-icon plan-task-icon-error" />
                 ) : task.status === 'blocked' ? (
                   <TriangleAlertIcon className="plan-task-icon plan-task-icon-warning" />
                 ) : task.status === 'done' ? (
                   <CircleCheckIcon className="plan-task-icon plan-task-icon-done" />
-                ) : task.status === 'in_progress' ? (
+                ) : task.status === 'in_progress' || transitionTask?.taskId === task.taskId ? (
                   <SpinnerIcon className="plan-task-icon plan-task-icon-running spin" />
                 ) : (
                   <CircleDashedIcon className="plan-task-icon plan-task-icon-pending" />
@@ -10238,7 +10262,7 @@ StepB:\n`;
                       setQuickComponentMenuOpen(false);
                       composerTextareaRef.current?.focus();
                     }}
-                    disabled={loading}
+                    disabled={generationBusy}
                   >
                     绘制一个表格
                   </button>
@@ -10255,7 +10279,7 @@ StepB:\n`;
                       setQuickComponentMenuOpen(false);
                       composerTextareaRef.current?.focus();
                     }}
-                    disabled={loading}
+                    disabled={generationBusy}
                   >
                     绘制一个表单
                   </button>
@@ -10272,7 +10296,7 @@ StepB:\n`;
                       setChartMenuOpen(false);
                       requestAnimationFrame(() => focusComposerInput());
                     }}
-                    disabled={loading}
+                    disabled={generationBusy}
                   >
                     绘制一个折线图
                   </button>
@@ -10284,17 +10308,10 @@ StepB:\n`;
                 <div key={`${msg.role}_${index}`} className={`chat-message ${msg.role}`}>
                   <div className="chat-bubble">
                     {msg.role === 'ai' ? (
-                      <div
-                        className={`ai-message${
-                          index === uiMessages.length - 1 && actionStreamPulse > 0
-                            ? ` ${actionStreamPulse % 2 === 0 ? 'ai-line-pulse-a' : 'ai-line-pulse-b'}`
-                            : ''
-                        }`}
-                      >
+                      <div className="ai-message">
                         {(() => {
                           const items = buildAiDisplayItems(msg.content);
                           const isLast = index === uiMessages.length - 1;
-                          const showThinkingRow = isLast && (thinkingActive || thinkingSeconds !== null);
                           const hasSpecThought = items.some((item) => item.kind === 'spec_hint');
                           const prevMessage = index > 0 ? uiMessages[index - 1] : null;
                           const attachmentImages = prevMessage?.role === 'user' ? prevMessage.images ?? [] : [];
@@ -10307,6 +10324,15 @@ StepB:\n`;
                             : '';
                           const showBreathingDots = isLast && loading;
                           const hasProcessItem = items.some((item) => item.kind === 'thought' || item.kind === 'spec_hint');
+                          const showThinkingRow = isLast && !hasProcessItem && (thinkingActive || thinkingSeconds !== null);
+                          const hasHiddenMachineItem = items.some(
+                            (item) =>
+                              item.kind === 'action_json' ||
+                              item.kind === 'streaming' ||
+                              item.kind === 'raw' ||
+                              item.kind === 'code_block'
+                          );
+                          const showHiddenFallbackThinking = isLast && loading && hasHiddenMachineItem && !hasProcessItem;
                           let lastProcessItemIndex = -1;
                           for (let i = items.length - 1; i >= 0; i -= 1) {
                             const item = items[i];
@@ -10315,22 +10341,30 @@ StepB:\n`;
                               break;
                             }
                           }
-                          const shouldShowAttachmentDots = showBreathingDots && !hasProcessItem;
+                          const statusSlotItem = lastProcessItemIndex >= 0 ? items[lastProcessItemIndex] : null;
+                          const showRetryStatusLine = isLast && Boolean(llmRetryState);
+                          const shouldShowAttachmentDots = showBreathingDots && !hasProcessItem && !showHiddenFallbackThinking && !showRetryStatusLine;
                           const attachmentLabelText = shouldShowAttachmentDots ? '附件内容解析中' : '附件内容解析';
                           return (
                             <>
-                              {showThinkingRow && (
+                              {showRetryStatusLine && (
                                 <IconTextRow
                                   className="ai-thought ai-thinking"
                                   textClassName="ai-thought-text"
                                   icon={<ThinkingIcon className="ai-thought-icon" />}
+                                  floatingSuffix={<span className="ai-breathing-dots">...</span>}
                                 >
-                                  {thinkingActive ? '思考中' : `思考 ${thinkingSeconds ?? 1}s`}
-                                  {thinkingActive && (
-                                    <span className="ai-breathing-dots" aria-hidden="true">
-                                      ...
-                                    </span>
-                                  )}
+                                  {llmRetrySummaryText}
+                                </IconTextRow>
+                              )}
+                              {!showRetryStatusLine && !statusSlotItem && (showThinkingRow || showHiddenFallbackThinking) && (
+                                <IconTextRow
+                                  className="ai-thought ai-thinking"
+                                  textClassName="ai-thought-text"
+                                  icon={<ThinkingIcon className="ai-thought-icon" />}
+                                  floatingSuffix={(thinkingActive || showHiddenFallbackThinking) ? <span className="ai-breathing-dots">...</span> : undefined}
+                                >
+                                  {thinkingActive || showHiddenFallbackThinking ? '思考中' : `思考 ${thinkingSeconds ?? 1}s`}
                                 </IconTextRow>
                               )}
                               {hasAttachmentParse && (
@@ -10363,13 +10397,9 @@ StepB:\n`;
                                       setAiAttachmentParseHover((prev) => ({ ...prev, [index]: false }))
                                     }
                                     aria-expanded={attachmentExpanded}
+                                    floatingSuffix={shouldShowAttachmentDots ? <span className="ai-breathing-dots">...</span> : undefined}
                                   >
                                     {attachmentLabelText}
-                                    {shouldShowAttachmentDots && (
-                                      <span className="ai-breathing-dots" aria-hidden="true">
-                                        ...
-                                      </span>
-                                    )}
                                   </IconTextRow>
                                   {attachmentExpanded && (
                                     <div className="ai-attachment-parse-panel">
@@ -10379,27 +10409,34 @@ StepB:\n`;
                                 </div>
                               )}
                               {items.map((item, itemIndex) => {
-                                const shouldShowLineDots = showBreathingDots && itemIndex === lastProcessItemIndex;
+                                const isStatusIndex = isLast && itemIndex === lastProcessItemIndex;
+                                const shouldShowLineDots = showBreathingDots && isStatusIndex;
                                 if (item.kind === 'spec_hint') {
-                                  return (
+                                  return isStatusIndex ? (
                                     <IconTextRow
                                       key={`spec_${itemIndex}`}
                                       className="ai-spec-hint"
                                       textClassName="ai-spec-text"
                                       icon={<SearchIcon className="ai-spec-icon" />}
+                                      floatingSuffix={shouldShowLineDots ? <span className="ai-breathing-dots">...</span> : undefined}
                                     >
                                       {item.text}
-                                      {shouldShowLineDots && (
-                                        <span className="ai-breathing-dots" aria-hidden="true">
-                                          ...
-                                        </span>
-                                      )}
+                                    </IconTextRow>
+                                  ) : (
+                                    <IconTextRow
+                                      key={`spec_${itemIndex}`}
+                                      className="ai-spec-hint"
+                                      textClassName="ai-spec-text"
+                                      icon={<SearchIcon className="ai-spec-icon" />}
+                                      floatingSuffix={shouldShowLineDots ? <span className="ai-breathing-dots">...</span> : undefined}
+                                    >
+                                      {item.text}
                                     </IconTextRow>
                                   );
                                 }
                                 if (item.kind === 'thought') {
                                   const iconKind = getThoughtIconKind(item.text);
-                                  return (
+                                  return isStatusIndex ? (
                                     <IconTextRow
                                       key={`thought_${itemIndex}`}
                                       className="ai-thought"
@@ -10415,18 +10452,78 @@ StepB:\n`;
                                           <ThinkingIcon className="ai-thought-icon" />
                                         )
                                       }
+                                      floatingSuffix={shouldShowLineDots ? <span className="ai-breathing-dots">...</span> : undefined}
                                     >
                                       {item.text}
-                                      {shouldShowLineDots && (
-                                        <span className="ai-breathing-dots" aria-hidden="true">
-                                          ...
-                                        </span>
-                                      )}
+                                    </IconTextRow>
+                                  ) : (
+                                    <IconTextRow
+                                      key={`thought_${itemIndex}`}
+                                      className="ai-thought"
+                                      textClassName="ai-thought-text"
+                                      icon={
+                                        iconKind === 'search' ? (
+                                          <SearchIcon className="ai-thought-icon" />
+                                        ) : iconKind === 'plan' ? (
+                                          <PlanFrameIcon className="ai-thought-icon" />
+                                        ) : iconKind === 'frame' ? (
+                                          <FrameIcon className="ai-thought-icon" />
+                                        ) : (
+                                          <ThinkingIcon className="ai-thought-icon" />
+                                        )
+                                      }
+                                      floatingSuffix={shouldShowLineDots ? <span className="ai-breathing-dots">...</span> : undefined}
+                                    >
+                                      {item.text}
                                     </IconTextRow>
                                   );
                                 }
                                 if (item.kind === 'action_json') {
-                                  if (!UI_SHOW_ACTION_JSON) return null;
+                                  const rawText = String(item.llmRawText || '').replace(/\r\n/g, '\n');
+                                  const rawLines = rawText ? rawText.split('\n') : [];
+                                  const firstRawLine = rawLines.length > 0 ? rawLines[0] : '';
+                                  const remainingRawText = rawLines.slice(1).join('\n').trim();
+                                  const jsonStateKey = index * 10000 + itemIndex;
+                                  const isJsonExpanded = Boolean(aiActionJsonExpanded[jsonStateKey]);
+                                  const toggleJsonExpanded = () =>
+                                    setAiActionJsonExpanded((prev) => ({
+                                      ...prev,
+                                      [jsonStateKey]: !prev[jsonStateKey]
+                                    }));
+
+                                  if (!UI_SHOW_ACTION_JSON) {
+                                    return null;
+                                  }
+
+                                  const visibleText = item.llmRawText || item.payloadText || item.text;
+                                  const actionLabel = item.actionType ? 'Action: ' + item.actionType : 'LLM JSON';
+                                  return (
+                                    <div key={`aj_${index}_${itemIndex}`} className="ai-action-json-collapse">
+                                      <IconTextRow
+                                        as="button"
+                                        className={`ai-action-json-toggle ${isJsonExpanded ? 'expanded' : ''}`}
+                                        textClassName="ai-action-json-label"
+                                        icon={
+                                          <span className="ai-action-json-icon" aria-hidden="true">
+                                            {isJsonExpanded ? (
+                                              <ChevronDownIcon className="ai-action-json-icon-inner" />
+                                            ) : (
+                                              <CodeBracesIcon className="ai-action-json-icon-inner" />
+                                            )}
+                                          </span>
+                                        }
+                                        onClick={toggleJsonExpanded}
+                                        aria-expanded={isJsonExpanded}
+                                      >
+                                        {actionLabel}
+                                      </IconTextRow>
+                                      {isJsonExpanded && (
+                                        <div className="ai-action-json-panel">
+                                          <pre className="ai-action-json-pre"><code>{visibleText}</code></pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
                                 }
                                 if (item.kind === 'system') {
                                   const tone = resolveSystemTone(item.text);
@@ -10569,7 +10666,7 @@ StepB:\n`;
                         type="button"
                         className="attachment-remove"
                         onClick={() => removeImageAttachment(image.id)}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         删除
                       </button>
@@ -10654,7 +10751,7 @@ StepB:\n`;
                           type="button"
                           className="attachment-remove"
                           onClick={() => removeTableAttachment(table.id)}
-                          disabled={loading}
+                          disabled={generationBusy}
                         >
                           删除
                         </button>
@@ -10699,14 +10796,16 @@ StepB:\n`;
                           <button
                             type="button"
                             className="composer-chart-tag"
-                            onClick={() => {
+                            onClick={(event) => {
+                              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                              setChartMenuStyle(buildFloatingMenuStyle(rect));
                               setAttachmentMenuOpen(false);
                               setChartMenuOpen((prev) => {
                                 if (!prev) setActiveOptionMenu(null);
                                 return !prev;
                               });
                             }}
-                            disabled={loading}
+                            disabled={generationBusy}
                           >
                             <span className="composer-chart-tag-text">{chartShortcutActive}</span>
                             <span className="composer-chart-tag-icon" aria-hidden="true">
@@ -10720,7 +10819,10 @@ StepB:\n`;
                               </svg>
                             </span>
                           </button>
-                          <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
+                          <div
+                            className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}
+                            style={chartMenuStyle}
+                          >
                             {chartTypeShortcuts.map((shortcut) => (
                               <button
                                 key={shortcut.label}
@@ -10742,7 +10844,7 @@ StepB:\n`;
                                   setChartMenuOpen(false);
                                   requestAnimationFrame(() => focusComposerInput());
                                 }}
-                                disabled={loading}
+                                disabled={generationBusy}
                               >
                                 <span className="composer-chart-dropdown-icon" aria-hidden="true">
                                   {chartShortcutIcons[shortcut.label]}
@@ -10760,11 +10862,13 @@ StepB:\n`;
                               <button
                                 type="button"
                                 className="composer-chart-tag"
-                                onClick={() => {
+                                onClick={(event) => {
+                                  const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                  setActiveOptionMenuStyle(buildFloatingMenuStyle(rect));
                                   setChartMenuOpen(false);
                                   setActiveOptionMenu(isOpen ? null : opt.key);
                                 }}
-                                disabled={loading}
+                                disabled={generationBusy}
                               >
                                 <span className="composer-chart-tag-text">
                                   {opt.label}： {value}
@@ -10780,7 +10884,10 @@ StepB:\n`;
                                   </svg>
                                 </span>
                               </button>
-                              <div className={`composer-chart-dropdown ${isOpen ? 'open' : ''}`}>
+                              <div
+                                className={`composer-chart-dropdown ${isOpen ? 'open' : ''}`}
+                                style={activeOptionMenuStyle}
+                              >
                                 {opt.options.map((val) => (
                                   <button
                                     key={val}
@@ -10791,7 +10898,7 @@ StepB:\n`;
                                       setActiveOptionMenu(null);
                                       requestAnimationFrame(() => focusComposerInput());
                                     }}
-                                    disabled={loading}
+                                    disabled={generationBusy}
                                   >
                                     <span className="composer-chart-dropdown-label">{val}</span>
                                   </button>
@@ -10803,7 +10910,7 @@ StepB:\n`;
                       </div>
                       <span
                         className="composer-rich-input"
-                        contentEditable
+                        contentEditable={!generationBusy}
                         suppressContentEditableWarning
                         ref={composerRichInputRef}
                         onInput={(e) => {
@@ -10816,7 +10923,7 @@ StepB:\n`;
                             !e.shiftKey &&
                             !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
                             canSend &&
-                            !loading
+                            !generationBusy
                           ) {
                             e.preventDefault();
                             onSend();
@@ -10850,7 +10957,7 @@ StepB:\n`;
                           !e.shiftKey &&
                           !('isComposing' in e.nativeEvent && e.nativeEvent.isComposing) &&
                           canSend &&
-                          !loading
+                          !generationBusy
                         ) {
                           e.preventDefault();
                           onSend();
@@ -10873,7 +10980,7 @@ StepB:\n`;
                             ? '请输入需要调整的地方...'
                             : '让 VED UI Agent 绘制... ✦'
                       }
-                      disabled={loading}
+                      disabled={generationBusy}
                       rows={4}
                       ref={composerTextareaRef}
                     />
@@ -10890,7 +10997,7 @@ StepB:\n`;
                         type="button"
                         className="composer-icon-button"
                         onClick={() => setAttachmentMenuOpen((prev) => !prev)}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M9 3.75V14.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -10912,7 +11019,7 @@ StepB:\n`;
                                   setAttachmentMenuOpen(false);
                                   imageInputRef.current?.click();
                                 }}
-                                disabled={loading || isImageUploadAtLimit}
+                                disabled={generationBusy || isImageUploadAtLimit}
                               >
                                 <span className="composer-menu-icon">
                                   <svg
@@ -10939,7 +11046,7 @@ StepB:\n`;
                           </Tooltip>
                           <Tooltip
                             content={getTableUploadTooltip(uploadedTables.length)}
-                            enabled={!loading}
+                            enabled={!generationBusy}
                             placement="top-start"
                           >
                             <div className="composer-menu-item-wrap">
@@ -10950,7 +11057,7 @@ StepB:\n`;
                                   setAttachmentMenuOpen(false);
                                   tableInputRef.current?.click();
                                 }}
-                                disabled={loading || isTableUploadAtLimit}
+                                disabled={generationBusy || isTableUploadAtLimit}
                               >
                                 <span className="composer-menu-icon">
                                   <svg
@@ -11001,7 +11108,7 @@ StepB:\n`;
                           setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
                         }}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         <span className="composer-quick-chip-icon" aria-hidden="true">
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11035,7 +11142,7 @@ StepB:\n`;
                           setQuickComponentMenuOpen(false);
                           composerTextareaRef.current?.focus();
                         }}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         <span className="composer-quick-chip-icon" aria-hidden="true">
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11064,7 +11171,9 @@ StepB:\n`;
                       <button
                         type="button"
                         className="composer-quick-chip composer-quick-chip-btn"
-                        onClick={() => {
+                        onClick={(event) => {
+                          const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                          setChartMenuStyle(buildFloatingMenuStyle(rect));
                           replaceQuickPrompt('生成一个图表');
                           setChartPromptMode(false);
                           setChartShortcutActive(null);
@@ -11075,7 +11184,7 @@ StepB:\n`;
                           setChartMenuOpen((prev) => !prev);
                           composerTextareaRef.current?.focus();
                         }}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         <span className="composer-quick-chip-icon" aria-hidden="true">
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11097,7 +11206,10 @@ StepB:\n`;
                         <span className="composer-quick-chip-label">图表</span>
                       </button>
                       {!chartShortcutActive && (
-                        <div className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}>
+                        <div
+                          className={`composer-chart-dropdown ${chartMenuOpen ? 'open' : ''}`}
+                          style={chartMenuStyle}
+                        >
                           {chartTypeShortcuts.map((shortcut) => (
                             <button
                               key={shortcut.label}
@@ -11117,7 +11229,7 @@ StepB:\n`;
                                 setChartMenuOpen(false);
                                 composerTextareaRef.current?.focus();
                               }}
-                              disabled={loading}
+                              disabled={generationBusy}
                             >
                               <span className="composer-chart-dropdown-icon" aria-hidden="true">
                                 {chartShortcutIcons[shortcut.label]}
@@ -11146,7 +11258,7 @@ StepB:\n`;
                           setQuickComponentMenuOpen((prev) => !prev);
                           composerTextareaRef.current?.focus();
                         }}
-                        disabled={loading}
+                        disabled={generationBusy}
                       >
                         <span className="composer-quick-chip-label">快速组件</span>
                       </button>
@@ -11204,7 +11316,7 @@ StepB:\n`;
                                     setAttachmentError(`快速组件插入失败：${String(error)}`);
                                   }
                                 }}
-                                disabled={loading}
+                                disabled={generationBusy}
                               >
                                 <span className="composer-component-item-zh">{item.zh}</span>
                                 <span className="composer-component-item-divider">/</span>
@@ -11217,14 +11329,14 @@ StepB:\n`;
                     </div>
                     </div>
                   </div>
-                  <Tooltip content={loading ? '停止生成' : '发送'} enabled={loading || canSend} placement="top">
+                  <Tooltip content={generationBusy ? '停止生成' : '发送'} enabled={generationBusy || canSend} placement="top">
                     <div className="composer-send-wrap">
                       <button
                         className="composer-send"
-                        onClick={loading ? stopGeneration : onSend}
-                        disabled={!loading && !canSend}
+                        onClick={generationBusy ? stopGeneration : onSend}
+                        disabled={!generationBusy && !canSend}
                       >
-                      {loading ? (
+                      {generationBusy ? (
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <rect x="6" y="6" width="8" height="8" rx="2" fill="white" />
                         </svg>

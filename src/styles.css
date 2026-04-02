@@ -407,6 +407,7 @@ button.chat-empty-guide-tag:disabled {
 .composer-chart-dropdown-wrap {
   position: relative;
   display: inline-flex;
+  overflow: visible;
 }
 
 .composer-chart-tag-row {
@@ -450,6 +451,7 @@ button.chat-empty-guide-tag:disabled {
 .composer-chart-tag-wrap {
   position: relative;
   display: inline-flex;
+  overflow: visible;
 }
 
 .composer-chart-tag-group {
@@ -516,6 +518,8 @@ button.chat-empty-guide-tag:disabled {
   z-index: 2000;
   width: max-content;
   min-width: 86px;
+  max-height: 240px;
+  overflow: auto;
 }
 
 .composer-chart-dropdown.open {
@@ -1049,9 +1053,11 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
   align-items: center;
   column-gap: 8px;
   min-width: 0;
+  min-height: 20px;
 }
 
 .ai-thought-icon {
+  flex: 0 0 16px;
   flex-shrink: 0;
   width: 16px;
   height: 16px;
@@ -1065,6 +1071,7 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+  min-height: 18px;
   line-height: 18px;
   letter-spacing: 0;
   color: var(--ved-text-terminal-comment, #71717A);
@@ -1077,8 +1084,23 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
 
 .ai-breathing-dots {
   display: inline-block;
-  margin-left: 2px;
   animation: aiBreathingDots 1.4s ease-in-out infinite;
+}
+
+.has-floating-suffix {
+  position: relative;
+}
+
+.has-floating-suffix-text {
+  padding-right: 18px;
+}
+
+.ai-floating-suffix {
+  position: absolute;
+  right: 0;
+  top: 0;
+  line-height: 18px;
+  pointer-events: none;
 }
 
 @keyframes aiBreathingDots {
@@ -1135,13 +1157,15 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
 }
 
 .ai-spec-hint {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
+  min-width: 0;
+  min-height: 20px;
 }
 
 .ai-spec-icon {
+  flex: 0 0 16px;
   width: 16px;
   height: 16px;
   color: var(--ved-icon-tertiary, #71717A);
@@ -1149,7 +1173,10 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
 }
 
 .ai-spec-text {
+  min-width: 0;
+  min-height: 18px;
   font-size: 13px;
+  line-height: 18px;
   color: #71717A;
   text-align: left;
 }
@@ -2877,6 +2904,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 32px;
 }
 
 .plan-header-summary {
@@ -2888,10 +2916,13 @@ button:disabled {
 }
 
 .plan-header-summary-btn {
+  display: inline-flex;
+  align-items: center;
   background: transparent;
   border: none;
   padding: 0;
   margin: 0;
+  min-height: 32px;
   cursor: pointer;
   font: inherit;
 }
@@ -2910,34 +2941,47 @@ button:disabled {
 
 .plan-header-summary-text {
   font-size: 13px;
-  line-height: 16px;
-  padding: 8px 0;
+  line-height: 20px;
+  padding: 0;
 }
 
 .plan-header-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  min-height: 32px;
+}
+
+.plan-rate-limit-hint {
+  margin-top: 2px;
+  color: var(--ved-text-secondary, #6B7280);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .plan-retry-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
+  min-height: 32px;
   border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--ved-text-secondary, #6B7280);
   padding: 0 8px;
-  font-size: 12px;
-  cursor: pointer;
   font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .plan-retry-btn:hover {
-  background: #E5E7EB;
+  background: transparent;
+  color: var(--ved-text-primary, #111827);
+}
+
+.plan-retry-btn:active {
+  background: transparent;
+  color: var(--ved-text-primary, #111827);
 }
 
 .plan-retry-btn:disabled {
@@ -2951,8 +2995,8 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -2963,7 +3007,11 @@ button:disabled {
 }
 
 .plan-close-btn:hover {
-  background: #E5E7EB;
+  background: transparent;
+}
+
+.plan-close-btn:active {
+  background: transparent;
 }
 
 .plan-close-btn:disabled {
