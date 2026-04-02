@@ -3661,14 +3661,61 @@ StepD:
     ]
   });
 
-  const countVisibleFormRowsFromPayload = (payload: any): number => {
+  const countVisibleFormItemsFromPayload = (payload: any): number => {
     const source = isObject(payload?.schema) ? payload.schema : payload;
     const body = isObject(source?.block) ? (source.block as any).body || source : source;
-    const rows: any[][] | undefined = Array.isArray(body?.rows) ? body.rows : undefined;
-    if (!rows) return 0;
-    const isVisibleRow = (row: any[]): boolean =>
-      Array.isArray(row) && row.some((item) => isObject(item) && String(item.componentId || '').trim().toLowerCase() !== 'button');
-    return rows.filter(isVisibleRow).length;
+    const countItems = (items: any[]): number =>
+      items.filter((item) => isObject(item) && String(item.componentId || '').trim().toLowerCase() !== 'button').length;
+    const countRows = (rows: any[]): number =>
+      rows.reduce((sum, row) => sum + (Array.isArray(row) ? countItems(row) : 0), 0);
+    const countGroups = (groups: any[]): number =>
+      groups.reduce((sum, group) => {
+        const groupObj = isObject(group) ? group : {};
+        const groupFields = Array.isArray(group)
+          ? group
+          : Array.isArray(groupObj.fields)
+            ? groupObj.fields
+            : Array.isArray(groupObj.items)
+              ? groupObj.items
+              : [];
+        return sum + countItems(groupFields);
+      }, 0);
+
+    let total = 0;
+    if (Array.isArray(body?.rows)) total += countRows(body.rows);
+    else if (Array.isArray(body?.fields)) total += countItems(body.fields);
+    else if (isObject(body?.filters) && Array.isArray((body.filters as any).items)) total += countItems((body.filters as any).items);
+    else if (Array.isArray(source?.rows)) total += countRows(source.rows);
+    else if (Array.isArray(source?.fields)) total += countItems(source.fields);
+    else if (isObject(source?.filters) && Array.isArray((source.filters as any).items)) total += countItems((source.filters as any).items);
+
+    const sections = Array.isArray(body?.sections) ? body.sections : Array.isArray(source?.sections) ? source.sections : [];
+    total += sections.reduce((sum: number, section: any) => {
+      const sectionObj = isObject(section) ? section : {};
+      const sectionRows = Array.isArray(sectionObj.rows)
+        ? sectionObj.rows
+        : Array.isArray(sectionObj.fields)
+          ? [sectionObj.fields]
+          : [];
+      const sectionGroups = Array.isArray(sectionObj.groups)
+        ? sectionObj.groups
+        : Array.isArray(sectionObj.fieldGroups)
+          ? sectionObj.fieldGroups
+          : [];
+      return sum + countRows(sectionRows) + countGroups(sectionGroups);
+    }, 0);
+
+    const groups = Array.isArray(body?.groups)
+      ? body.groups
+      : Array.isArray(body?.fieldGroups)
+        ? body.fieldGroups
+        : Array.isArray(source?.groups)
+          ? source.groups
+          : Array.isArray(source?.fieldGroups)
+            ? source.fieldGroups
+            : [];
+    total += countGroups(groups);
+    return total;
   };
 
   const buildTableComponentFromPayload = (
@@ -8187,7 +8234,7 @@ StepB:\n`;
                         });
                         // #endregion
                         const visibleRowCount =
-                          countVisibleFormRowsFromPayload(formPayload) ||
+                          countVisibleFormItemsFromPayload(formPayload) ||
                           (Array.isArray(formComponent.children) ? formComponent.children.length : 0);
                         const successMsg = `[System]: 表单创建成功（行数=${visibleRowCount}，布局=${formComponent.params.layout}）。`;
                         accumulatedLog += '\n\n' + successMsg;
