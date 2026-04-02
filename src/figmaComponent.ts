@@ -928,7 +928,7 @@ export async function loadFigmaComponentByKey(
   }
 
   if (componentNodeId) {
-    const localNode = figma.getNodeById(componentNodeId);
+    const localNode = await figma.getNodeByIdAsync(componentNodeId);
     // Resolve source node (handles INSTANCE and COMPONENT_SET parent)
     const localSource = await resolveSchemaSourceNode(localNode);
     if (localSource) {
@@ -1807,7 +1807,7 @@ export async function discoverFigmaComponentSchemaFromSelection(
   if (base.status !== 'ok') return base;
   const componentNodeId = String(options.componentNodeId || '').trim();
   if (!componentNodeId) return base;
-  const node = figma.getNodeById(componentNodeId);
+  const node = await figma.getNodeByIdAsync(componentNodeId);
   if (!node) return base;
   if (node.type === 'PAGE' || node.type === 'DOCUMENT') return base;
   const extra = await collectNestedInstanceProperties(node as SceneNode);
@@ -1847,7 +1847,7 @@ export async function inspectFigmaComponentStructure(
     const schemaProperties = schema.status === 'ok' ? schema.properties : undefined;
     let selectionNode: SceneNode | null = null;
     if (componentNodeId) {
-      const rawNode = figma.getNodeById(componentNodeId);
+      const rawNode = await figma.getNodeByIdAsync(componentNodeId);
       if (rawNode && rawNode.type !== 'PAGE' && rawNode.type !== 'DOCUMENT') {
         selectionNode = rawNode as SceneNode;
       }

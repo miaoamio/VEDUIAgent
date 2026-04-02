@@ -8797,12 +8797,12 @@ function resolveInspectionTargets(payload: any): Array<{
   return uniqueTargets;
 }
 
-function resolveAppendParent(parentId?: string): BaseNode | null {
+async function resolveAppendParent(parentId?: string): Promise<BaseNode | null> {
   if (!parentId) return null;
   const raw = String(parentId).trim();
   if (!raw) return null;
 
-  const parentNode = figma.getNodeById(raw);
+  const parentNode = await figma.getNodeByIdAsync(raw);
   if (!parentNode) return null;
 
   if (parentNode.type === 'FRAME' && parentNode.getPluginData('component-id') === 'page') {
@@ -9567,8 +9567,8 @@ function hexToRgb(hex: string) {
   } : { r: 0, g: 0, b: 0 };
 }
 
-function appendToResolvedParent(node: SceneNode, parentId?: string): boolean {
-  const appendParent = resolveAppendParent(parentId);
+async function appendToResolvedParent(node: SceneNode, parentId?: string): Promise<boolean> {
+  const appendParent = await resolveAppendParent(parentId);
   if (!appendParent) return false;
   if (
     appendParent.type !== 'FRAME' &&
@@ -9631,10 +9631,10 @@ figma.ui.onmessage = async (msg) => {
       typeof msg.parentId === 'string' && msg.parentId.trim() ? msg.parentId.trim() : undefined;
 
     if (result.ok && result.rootNodeId) {
-      const rootNode = figma.getNodeById(result.rootNodeId);
+      const rootNode = await figma.getNodeByIdAsync(result.rootNodeId);
       let appendedToParent = false;
       if (requestedParentId && rootNode && rootNode.type !== 'PAGE') {
-        appendedToParent = appendToResolvedParent(rootNode as SceneNode, requestedParentId);
+        appendedToParent = await appendToResolvedParent(rootNode as SceneNode, requestedParentId);
       }
       if (result.intent === 'create' && !appendedToParent && rootNode && rootNode.type !== 'PAGE') {
         centerNodeInViewport(rootNode as SceneNode);
@@ -9807,7 +9807,7 @@ figma.ui.onmessage = async (msg) => {
       strictRenderMode = true;
       // Explicitly pass isRoot: true to trigger early viewport movement
       const node = await renderComponent(component, { isRoot: true });
-      if (!appendToResolvedParent(node, parentId)) {
+      if (!(await appendToResolvedParent(node, parentId))) {
           // Center in viewport if no parent
           node.x = figma.viewport.center.x - node.width / 2;
           node.y = figma.viewport.center.y - node.height / 2;
