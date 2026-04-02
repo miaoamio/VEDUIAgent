@@ -280,10 +280,10 @@ export const buildTableComponentFromPayload = (
   const rawColumns = Array.isArray(source.columns) ? source.columns : null;
   const rawHeaders =
     Array.isArray(source.headers) ? source.headers :
-    (rawColumns ? rawColumns.map((c: any, i: number) => c?.title || c?.header || c?.name || `列${i + 1}`) : null);
+    (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
 
   let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
-  let rows = normalizeRowsByHeaders(source.rows ?? source.data ?? [], headers);
+  let rows = normalizeRowsByHeaders(source.rows ?? source.dataSource ?? source.data ?? [], headers);
 
   if ((!headers || headers.length === 0) && rows.length > 0) {
     const first = rows[0];
@@ -425,9 +425,10 @@ export const buildTableComponentFromPayload = (
         return;
       }
       if (cellComponentId === 'table-cell-action-text') {
+        const actionText = (value || '编辑 删除 …').replace(/\s*[|｜／\/]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
         columnChildren.push({
           componentId: 'table-cell-action-text',
-          params: { height: bodyHeight, text: value || '编辑 删除 …' }
+          params: { height: bodyHeight, text: actionText }
         });
         return;
       }

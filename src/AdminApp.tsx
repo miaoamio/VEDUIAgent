@@ -1873,7 +1873,7 @@ const PROMPT_SECTIONS = [
     content: `payload 使用紧凑结构，例如：
 {
   "headers": ["姓名", "年龄", "城市"],
-  "rows": [["张三", "28", "北京"], ["李四", "32", "上海"]],
+  "rows": [["陈默", "28", "北京"], ["林晓", "32", "上海"]],
   "columnTypes": ["Text", "Text", "Text"],
   "tabs": ["全部", "进行中"],
   "filters": ["状态", "城市", "关键词"],

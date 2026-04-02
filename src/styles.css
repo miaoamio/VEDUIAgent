@@ -102,8 +102,9 @@ h2 {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
-  width: 156px;
-  height: 112px;
+  width: auto;
+  max-width: 100%;
+  height: auto;
   row-gap: 8px;
 }
 
@@ -141,6 +142,7 @@ button.chat-empty-guide-tag {
   font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", SimHei, Arial, Helvetica, sans-serif;
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 button.chat-empty-guide-tag:hover {

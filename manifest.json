@@ -1,6 +1,6 @@
 {
-  "name": "Figma UI Agent",
-  "id": "1619201815868805320",
+  "name": "VED UI Agent",
+  "id": "1596108139507490876",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
@@ -9,6 +9,10 @@
   "editorType": [
     "figma",
     "figjam"
+  ],
+  "permissions": [
+    "currentuser",
+    "teamlibrary"
   ],
   "networkAccess": {
     "allowedDomains": [

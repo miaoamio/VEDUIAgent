@@ -111,8 +111,50 @@ const CHART_TOKEN_TO_COMPONENT_ID: Record<string, string> = {
 
 function resolveChartComponentIdOverride(componentId: unknown, chartTokenOverride: string): string {
   const raw = typeof componentId === 'string' ? componentId : '';
+  if (raw === 'figma-component' && chartTokenOverride && CHART_TOKEN_TO_COMPONENT_ID[chartTokenOverride]) {
+    return CHART_TOKEN_TO_COMPONENT_ID[chartTokenOverride];
+  }
   if (!raw.startsWith('chart-')) return raw;
   return CHART_TOKEN_TO_COMPONENT_ID[chartTokenOverride] || raw;
+}
+
+const PIE_CHART_PARAM_ALIAS: Record<string, string> = {
+  '分类数量': '分类数量 Item',
+  '数值标注': '数值标注 Data Annotation',
+  '总数值': '总数值 Sum',
+  '类型': '类型 Type',
+  '色彩模式': '色彩模式 Color mode',
+  '放大比率': '放大比率 Ratio',
+};
+
+function normalizePieChartParams(
+  params: Record<string, any>,
+  isDonut: boolean
+): Record<string, any> {
+  const next = { ...params };
+  delete next.componentToken;
+  delete next.componentKey;
+  delete next.fallbackName;
+
+  let criteria: Record<string, any> = {};
+  if (typeof next.variantCriteria === 'string') {
+    try { criteria = JSON.parse(next.variantCriteria); } catch { criteria = {}; }
+  } else if (next.variantCriteria && typeof next.variantCriteria === 'object' && !Array.isArray(next.variantCriteria)) {
+    criteria = { ...next.variantCriteria };
+  }
+
+  const normalized: Record<string, any> = {};
+  for (const [k, v] of Object.entries(criteria)) {
+    const mapped = PIE_CHART_PARAM_ALIAS[k] || k;
+    normalized[mapped] = typeof v === 'number' ? String(v) : v;
+  }
+
+  if (isDonut && !normalized['类型 Type']) {
+    normalized['类型 Type'] = '环形图 DonutChart';
+  }
+
+  delete next.variantCriteria;
+  return { ...next, ...normalized };
 }
 
 type XlsxWorkbook = {
@@ -2073,26 +2115,6 @@ function compactStructureResult(item: any): any {
 
 function App() {
   const [userInput, setUserInput] = React.useState('');
-  const debugSessionIdRef = React.useRef(`ui-hang-${Date.now()}`);
-  const debugTraceIdRef = React.useRef('');
-  const emitDebugEvent = React.useCallback((hypothesisId: string, location: string, msg: string, data?: Record<string, unknown>) => {
-    const event = {
-      sessionId: debugSessionIdRef.current,
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      msg: `[DEBUG] ${msg}`,
-      data: data || {},
-      traceId: debugTraceIdRef.current || undefined,
-      ts: Date.now()
-    };
-    fetch('http://127.0.0.1:7777/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event)
-    }).catch(() => {});
-    parent.postMessage({ pluginMessage: { type: 'debug-event', event } }, '*');
-  }, []);
   const composerTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const composerRichInputRef = React.useRef<HTMLSpanElement | null>(null);
   const [chartPromptMode, setChartPromptMode] = React.useState(false);
@@ -3031,6 +3053,11 @@ StepD:
 重要:
 - 创建新表格时优先 draw_table，避免输出冗长 table 子树。
 - 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
+- draw_table payload 必须使用 headers + rows 格式，示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串。禁止使用 columns 字段代替 headers。
+- columnTypes 可选值：Text（普通文本）、StatusTag（状态标签，单元格用对象 {"text":"xxx","statusTheme":"Success 成功"}）、Avatar（头像+姓名）、ActionText（操作按钮文字）、ActionIcon（操作图标）。创建人/负责人列用 Avatar，状态列用 StatusTag，操作列用 ActionText。
+- 所有单元格值必须是字符串（StatusTag 列除外）。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
+- 人名禁止使用张三、李四等占位名，使用自然姓名如：林晓然、周思远、苏瑾瑶、赵桐宇、沈清和、韩冬梅、方远哲、叶舟行、卢皓宇、陈默涵。
+- 日期时间统一使用 2026 年，如 2026-03-15 14:30:00。
 - 多区块复杂任务必须先 set_plan，并通过 plan_next / update_plan 驱动执行。
 - 若系统已自动创建 plan，优先 plan_next 并按 taskId 执行动作。
 - 已知 task.type 尽量用 execute_task / run_task，让系统执行器落地。
@@ -3124,15 +3151,15 @@ StepD:
      - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
      - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
      - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
-   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行有代表性的样本数据，插件会自动随机复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。
+   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行样本数据，插件会自动循环复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。**rows 不能为空数组**，必须至少提供 2 行数据，且每个单元格都必须填入贴合业务场景的具体内容（人名、日期、状态词、金额等），不能是空字符串。如果 rows 为空，表格会全部显示占位符。
    - payload 使用紧凑结构即可，例如：
      {
        "headers": ["姓名", "年龄", "城市"],
        "rowCount": 10,
        "rows": [
-         ["张三", "28", "北京"],
-         ["李四", "32", "上海"],
-         ["王五", "25", "深圳"]
+         ["陈默", "28", "北京"],
+         ["林晓", "32", "上海"],
+         ["苏瑾", "25", "深圳"]
        ],
        "columnTypes": ["Text", "Text", "Text"],
        "tabs": ["全部", "进行中"],
@@ -3152,8 +3179,8 @@ StepD:
      - 兼容：旧的 columnTypes "Tag" 视为 "StatusTag"。
    - 若表格包含操作列特征（表头为“操作/Action/Actions/Operation”，或单元格包含编辑/删除/查看/详情/更多/启用/禁用/配置/设置/授权/分配/下载/导出/复制/重置等动词），必须保留该列并将 headers 对应项写为“操作”，columnTypes 设为 "ActionText" 或 "ActionIcon"。
    - 当需要流式绘制表格时，先按行输出事件（每行一个 JSON），每行必须以 @@table_stream 开头：
-    @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["张三",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
-     @@table_stream {"event":"table_row","row":["李四",32]}
+    @@table_stream {"event":"table_start","headers":["姓名","年龄"],"rows":[["陈默",28]],"columnTypes":["Text","Text"],"rowHeight":{"header":40,"body":40}}
+     @@table_stream {"event":"table_row","row":["林晓",32]}
      @@table_stream {"event":"table_done"}
    - 流式事件行不要出现在最终动作 JSON 中，但最终仍需输出标准 action JSON。\n`;
         }
@@ -3656,20 +3683,31 @@ StepD:
   ): unknown[][] => {
     if (!Array.isArray(rawRows)) return [];
 
+    const headerNorm = headers.map((h) => String(h || '').trim().toLowerCase().replace(/[\s_]+/g, ''));
+
     return rawRows.map((row) => {
       if (Array.isArray(row)) {
         return headers.map((_, i) => row[i]);
       }
       if (isObject(row)) {
-        // Try column keys first (e.g. dataIndex/key from columns definition),
-        // then fall back to header titles.
-        return headers.map((headerTitle, i) => {
+        const result = headers.map((headerTitle, i) => {
           if (columnKeys && columnKeys[i]) {
             const val = row[columnKeys[i]];
             if (val !== undefined) return val;
           }
-          return row[headerTitle];
+          if (row[headerTitle] !== undefined) return row[headerTitle];
+          const norm = headerNorm[i];
+          for (const k of Object.keys(row)) {
+            if (k.trim().toLowerCase().replace(/[\s_]+/g, '') === norm) return row[k];
+          }
+          return undefined;
         });
+        const matched = result.filter((v) => v !== undefined).length;
+        if (matched === 0) {
+          const vals = Object.values(row);
+          return headers.map((_, i) => vals[i]);
+        }
+        return result;
       }
       return headers.map(() => row);
     });
@@ -3683,9 +3721,9 @@ StepD:
   const buildDefaultTablePayload = () => ({
     headers: ['姓名', '状态', '时间'],
     rows: [
-      ['张三', '进行中', '2024-05-20 10:00'],
-      ['李四', '待开始', '2024-05-21 14:30'],
-      ['王五', '已完成', '2024-05-22 09:15']
+      ['陈默', '进行中', '2024-05-20 10:00'],
+      ['林晓', '待开始', '2024-05-21 14:30'],
+      ['苏瑾', '已完成', '2024-05-22 09:15']
     ],
     columnTypes: ['Text', 'StatusTag', 'Text']
   });
@@ -3724,7 +3762,7 @@ StepD:
     const rawColumns = Array.isArray(source.columns) ? source.columns : null;
     const rawHeaders =
       Array.isArray(source.headers) ? source.headers :
-      (rawColumns ? rawColumns.map((c: any, i: number) => c?.title || c?.header || c?.name || `列${i + 1}`) : null);
+      (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
 
     let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
 
@@ -3732,7 +3770,18 @@ StepD:
     const columnKeys: string[] = rawColumns
       ? rawColumns.map((c: any) => String(c?.dataIndex || c?.key || ''))
       : [];
-    let rows = normalizeRowsByHeaders(source.rows ?? source.data ?? [], headers, columnKeys);
+    const rawRowSource = source.rows ?? source.dataSource ?? source.data ?? [];
+    let rows = normalizeRowsByHeaders(rawRowSource, headers, columnKeys);
+
+    console.log('[buildTable] headers:', JSON.stringify(headers));
+    console.log('[buildTable] columnKeys:', JSON.stringify(columnKeys));
+    console.log('[buildTable] rawRowSource type:', Array.isArray(rawRowSource) ? 'array' : typeof rawRowSource, 'length:', Array.isArray(rawRowSource) ? rawRowSource.length : 'N/A');
+    if (Array.isArray(rawRowSource) && rawRowSource.length > 0) {
+      console.log('[buildTable] rawRow[0]:', JSON.stringify(rawRowSource[0]));
+    }
+    if (rows.length > 0) {
+      console.log('[buildTable] normalizedRow[0]:', JSON.stringify(rows[0]));
+    }
 
     if ((!headers || headers.length === 0) && rows.length > 0) {
       const first = rows[0];
@@ -3827,9 +3876,12 @@ StepD:
         }
       ];
 
-      rows.forEach((row) => {
+      rows.forEach((row, rowIdx) => {
         const rawValue = row[colIndex];
         const value = extractCellText(rawValue);
+        if (rowIdx === 0) {
+          console.log(`[buildTable] col=${colIndex}(${header}) row[0] rawValue:`, JSON.stringify(rawValue), 'extracted:', JSON.stringify(value));
+        }
         if (cellComponentId === 'table-cell-tag') {
           const columnKind = tagColumnKind || 'status';
           const tagPayload = extractTagCellPayload(rawValue, columnKind);
@@ -3885,11 +3937,12 @@ StepD:
           return;
         }
         if (cellComponentId === 'table-cell-action-text') {
+          const actionText = (value || '编辑 删除 …').replace(/\s*[|｜／\/]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
           columnChildren.push({
             componentId: 'table-cell-action-text',
             params: {
               height: bodyHeight,
-              text: value || '编辑 删除 …'
+              text: actionText
             }
           });
           return;
@@ -4330,7 +4383,12 @@ StepD:
 
   const buildOptionsTextFromValue = (value: unknown, fallback = '选项一,选项二'): string => {
     if (Array.isArray(value)) {
-      const items = value.map((item) => String(item || '').trim()).filter(Boolean);
+      const items = value.map((item) => {
+        if (item && typeof item === 'object') {
+          return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+        }
+        return String(item || '').trim();
+      }).filter(Boolean);
       return items.length > 0 ? items.join(',') : fallback;
     }
     const text = String(value || '').trim();
@@ -6724,10 +6782,11 @@ StepD:
       const failed = Number(summary.failed || 0);
       const json = buildInspectPropsJson(inspectResult);
       setComponentInspectJson(json);
+      const jsonPreview = json.length > 1200 ? json.slice(0, 1200) + '\n…(截断)' : json;
       const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
       setUiMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+        next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n${jsonPreview}` };
         return next;
       });
     } catch (e) {
@@ -6773,7 +6832,7 @@ StepD:
   const UI_SHOW_ACTION_JSON = readBooleanConfig(
     '__FIGMA_AGENT_SHOW_ACTION_JSON__',
     'VITE_FIGMA_AGENT_SHOW_ACTION_JSON',
-    false
+    true
   );
   const UI_SHOW_STREAMING = readBooleanConfig(
     '__FIGMA_AGENT_SHOW_STREAMING__',
@@ -6878,10 +6937,11 @@ StepD:
           const failed = Number(summary.failed || 0);
           const json = buildInspectPropsJson(inspectResult);
           setComponentInspectJson(json);
+          const jsonPreview = json.length > 1200 ? json.slice(0, 1200) + '\n…(截断)' : json;
           const summaryLine = `[System]: /inspect 完成 — success=${success}, failed=${failed}`;
           setUiMessages((prev) => {
             const next = [...prev];
-            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n\`\`\`json\n${json}\n\`\`\`` };
+            next[next.length - 1] = { role: 'ai', content: `${summaryLine}\n${jsonPreview}` };
             return next;
           });
         } catch (e) {
@@ -6894,6 +6954,13 @@ StepD:
         } finally {
           setComponentInspectionRunning(false);
         }
+      } else {
+        setUserInput('');
+        setUiMessages((prev) => [
+          ...prev,
+          { role: 'user', content: '/inspect' },
+          { role: 'ai', content: '[System]: 请先选中一个 Figma 组件实例，然后再使用 /inspect。当前选中的节点不是组件实例。\n\n用法：\n- 选中组件实例后输入 /inspect\n- 或输入 /inspect <token名称> 直接反查指定 token' }
+        ]);
       }
       return;
     }
@@ -6940,15 +7007,7 @@ StepD:
     const currentTurnText = buildCurrentTurnText(turnInput, turnImages, turnTables);
     const displaySummary = buildUserSummary(turnInput, turnImages, turnTables);
     const currentTurnRichContent = buildRichUserContent(turnInput, turnImages, turnTables);
-    debugTraceIdRef.current = `trace-${Date.now()}`;
-    // #region debug-point A:send-start
-    emitDebugEvent('A', 'App.tsx:6844', 'request-start', {
-      turnInput,
-      chartTokenOverride,
-      imageCount: turnImages.length,
-      tableCount: turnTables.length
-    });
-    // #endregion
+
 
     // Track AI Generation attempt
     trackEvent("ai_generation", {
@@ -7307,7 +7366,7 @@ StepD:
 
 表格专用示例（固定链路）:
 Step1:
-{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["张三","28","北京"],["李四","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
+{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["陈默","28","北京"],["林晓","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
 Step2:
 {"thought":"结束","action":{"type":"finish"}}
 
@@ -7340,14 +7399,7 @@ StepB:\n`;
         while (loopCount < MAX_LOOPS) {
             if (stopRequestedRef.current || abortController.signal.aborted) break;
             loopCount++;
-            // #region debug-point A:loop
-            emitDebugEvent('A', 'App.tsx:7083', 'agent-loop-enter', {
-              loopCount,
-              hasRuntimePlan: Boolean(runtimePlan),
-              shouldPrefetchTableSpecs,
-              shouldPrefetchChartSpecs
-            });
-            // #endregion
+
             
             // 1. Get LLM response with streaming
             let currentStreamedResponse = '';
@@ -7435,13 +7487,7 @@ StepB:\n`;
                 // Commit to accumulated log
                 accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
                 setResponse(accumulatedLog);
-                // #region debug-point B:action-parsed
-                emitDebugEvent('B', 'App.tsx:7133', 'action-parsed', {
-                  loopCount,
-                  actionType: actionData?.action?.type,
-                  thought: actionData?.thought || ''
-                });
-                // #endregion
+
                 
             } catch (e) {
                 // If it's the last chunk and still not valid JSON, show raw
@@ -7718,12 +7764,7 @@ StepB:\n`;
             if (action.type === 'read_specs') {
                 const payload = action.payload;
                 const ids = normalizeSpecIdsFromPayload(payload);
-                // #region debug-point C:read-specs
-                emitDebugEvent('C', 'App.tsx:7423', 'read-specs', {
-                  loopCount,
-                  ids
-                });
-                // #endregion
+
                 if (ids.length === 0) {
                     console.warn("Invalid payload for read_specs", payload);
                 }
@@ -8119,13 +8160,7 @@ StepB:\n`;
 
             else if (action.type === 'draw_table' || action.type === 'draw_tabl') {
                 const payload = action.payload;
-                // #region debug-point D:draw-table
-                emitDebugEvent('D', 'App.tsx:7819', 'draw-table-start', {
-                  loopCount,
-                  hasPayload: Boolean(payload),
-                  actionType: action.type
-                });
-                // #endregion
+
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -8147,14 +8182,7 @@ StepB:\n`;
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(tableComponent, parentId);
-                        // #region debug-point D:draw-table-success
-                        emitDebugEvent('D', 'App.tsx:7838', 'draw-table-success', {
-                          loopCount,
-                          rootNodeId,
-                          columnCount: tableComponent.params.columnCount,
-                          rowCount: tableComponent.params.rowCount
-                        });
-                        // #endregion
+
                         const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
                         accumulatedLog += '\n\n' + successMsg;
                         setResponse(accumulatedLog);
@@ -8166,12 +8194,7 @@ StepB:\n`;
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
-                        // #region debug-point D:draw-table-error
-                        emitDebugEvent('D', 'App.tsx:7849', 'draw-table-error', {
-                          loopCount,
-                          error: String(e)
-                        });
-                        // #endregion
+
                         const errorMsg = `[System]: 表格创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -8185,12 +8208,7 @@ StepB:\n`;
 
             else if (action.type === 'draw_form') {
                 const payload = action.payload;
-                // #region debug-point D:draw-form
-                emitDebugEvent('D', 'App.tsx:7861', 'draw-form-start', {
-                  loopCount,
-                  hasPayload: Boolean(payload)
-                });
-                // #endregion
+
                 const parentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -8213,13 +8231,7 @@ StepB:\n`;
                 } else {
                     try {
                         const rootNodeId = await createComponentNode(formComponent, parentId);
-                        // #region debug-point D:draw-form-success
-                        emitDebugEvent('D', 'App.tsx:7881', 'draw-form-success', {
-                          loopCount,
-                          rootNodeId,
-                          rowCount: Array.isArray(formComponent.children) ? formComponent.children.length : 0
-                        });
-                        // #endregion
+
                         const visibleRowCount =
                           countRenderedFormItems(formComponent) ||
                           (Array.isArray(formComponent.children) ? formComponent.children.length : 0);
@@ -8234,12 +8246,7 @@ StepB:\n`;
                             runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
                         }
                     } catch (e) {
-                        // #region debug-point D:draw-form-error
-                        emitDebugEvent('D', 'App.tsx:7893', 'draw-form-error', {
-                          loopCount,
-                          error: String(e)
-                        });
-                        // #endregion
+
                         const errorMsg = `[System]: 表单创建失败：${e}`;
                         accumulatedLog += '\n\n' + errorMsg;
                         setResponse(accumulatedLog);
@@ -8253,12 +8260,7 @@ StepB:\n`;
 
             else if (action.type === 'create_node') {
                 const { componentId, params, children, parentId } = action.payload;
-                // #region debug-point D:create-node
-                emitDebugEvent('D', 'App.tsx:7905', 'create-node-start', {
-                  loopCount,
-                  componentId
-                });
-                // #endregion
+
                 const resolvedParentId = resolveDefaultParentForAction(
                   runtimePlan,
                   actionTaskId,
@@ -8304,21 +8306,21 @@ StepB:\n`;
                 try {
                     const nextComponentId =
                       chartTokenOverride ? resolveChartComponentIdOverride(componentId, chartTokenOverride) : componentId;
+                    const isPieChartReroute =
+                      chartTokenOverride === 'lib-data-display-component-piechart' &&
+                      (componentId === 'figma-component' || nextComponentId === 'chart-pie');
+                    const isDonutRequest = isPieChartReroute && /环形图|donut/i.test(turnInput);
                     const nextParams =
-                      chartTokenOverride && componentId === 'figma-component' && isObject(params)
-                        ? { ...params, componentToken: chartTokenOverride, componentKey: '', fallbackName: '' }
-                        : params;
+                      isPieChartReroute && isObject(params)
+                        ? normalizePieChartParams(params, isDonutRequest)
+                        : chartTokenOverride && componentId === 'figma-component' && isObject(params)
+                          ? { ...params, componentToken: chartTokenOverride, componentKey: '', fallbackName: '' }
+                          : params;
                     const rootNodeId = await createComponentNode(
-                      { componentId: nextComponentId, params: nextParams, children },
+                      { componentId: isPieChartReroute ? 'chart-pie' : nextComponentId, params: nextParams, children },
                       resolvedParentId
                     );
-                    // #region debug-point D:create-node-success
-                    emitDebugEvent('D', 'App.tsx:7956', 'create-node-success', {
-                      loopCount,
-                      componentId: nextComponentId,
-                      rootNodeId
-                    });
-                    // #endregion
+
 
                     accumulatedLog += '\n\n' + `[System]: 组件创建成功。`;
                     setResponse(accumulatedLog);
@@ -8333,13 +8335,7 @@ StepB:\n`;
                     }
 
                 } catch (e) {
-                    // #region debug-point D:create-node-error
-                    emitDebugEvent('D', 'App.tsx:7973', 'create-node-error', {
-                      loopCount,
-                      componentId,
-                      error: String(e)
-                    });
-                    // #endregion
+
                     const errorMsg = `[System]: 组件创建失败：${e}`;
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
@@ -8350,12 +8346,7 @@ StepB:\n`;
                 }
             }
             else {
-                // #region debug-point E:unknown-action
-                emitDebugEvent('E', 'App.tsx:7983', 'unknown-action', {
-                  loopCount,
-                  actionType: String(action.type)
-                });
-                // #endregion
+
                 const unknownMsg = `[System]: 未知动作类型：${String(action.type)}。`;
                 accumulatedLog += '\n\n' + unknownMsg;
                 setResponse(accumulatedLog);
@@ -8433,13 +8424,13 @@ StepB:\n`;
     defaultValue: string;
   }[]> = {
     '环形图': [
-      { key: 'itemCount', label: '分类数量', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
-      { key: 'dataAnnotation', label: '数值标注', options: ['Off', 'On'], defaultValue: 'On' },
-      { key: 'sumValue', label: '总数值', options: ['Off', 'On'], defaultValue: 'On' }
+      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' },
+      { key: 'sumValue', label: '总数值 Sum', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '饼图': [
-      { key: 'itemCount', label: '分类数量', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
-      { key: 'dataAnnotation', label: '数值标注', options: ['Off', 'On'], defaultValue: 'On' }
+      { key: 'itemCount', label: '分类数量 Item', options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'], defaultValue: '5' },
+      { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '柱状图': [
       { key: 'seriesCount', label: '每组柱数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
@@ -10274,7 +10265,7 @@ StepB:\n`;
                     type="button"
                     className="chat-empty-guide-tag"
                     onClick={() => {
-                      replaceQuickPrompt('生成一个表格');
+                      replaceQuickPrompt('绘制一个大模型接入点管理表格，包含名称、状态、购买方式、所属项目、创建时间、创建人和操作列');
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
                       setChartExtraOptions({});
@@ -10285,13 +10276,13 @@ StepB:\n`;
                     }}
                     disabled={generationBusy}
                   >
-                    绘制一个表格
+                    绘制一个大模型接入点管理表格
                   </button>
                   <button
                     type="button"
                     className="chat-empty-guide-tag"
                     onClick={() => {
-                      replaceQuickPrompt('生成一个表单');
+                      replaceQuickPrompt('绘制一个添加字段表单，包含字段名称（必填输入框）、显示名称（必填输入框）、字段类型（string/bool单选）、是否必填（开关）、默认值（下拉选择）、占位符文本（输入框）');
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
                       setChartExtraOptions({});
@@ -10302,7 +10293,7 @@ StepB:\n`;
                     }}
                     disabled={generationBusy}
                   >
-                    绘制一个表单
+                    绘制一个添加字段的表单
                   </button>
                   <button
                     type="button"

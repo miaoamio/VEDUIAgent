@@ -572,7 +572,26 @@ async function checkSelection() {
             figma.ui.postMessage({ type: 'figma-instance-info', data: null });
           }
         } else {
-          figma.ui.postMessage({ type: 'figma-instance-info', data: null });
+          let sentInstanceInfo = false;
+          if (node.type === 'INSTANCE') {
+            const inst = node as InstanceNode;
+            const mainComponent = await resolveInstanceMainComponentNode(inst);
+            const key = mainComponent?.key ?? '';
+            const compName = mainComponent?.name ?? '';
+            const setName = mainComponent?.parent?.type === 'COMPONENT_SET'
+              ? (mainComponent.parent as ComponentSetNode).name
+              : '';
+            if (key) {
+              figma.ui.postMessage({
+                type: 'figma-instance-info',
+                data: { componentKey: key, componentName: compName, componentSetName: setName, nodeName: inst.name, componentNodeId: inst.id }
+              });
+              sentInstanceInfo = true;
+            }
+          }
+          if (!sentInstanceInfo) {
+            figma.ui.postMessage({ type: 'figma-instance-info', data: null });
+          }
         }
 
         return;
@@ -7941,6 +7960,13 @@ async function renderComponent(
           for (const col of columnData) {
               const hasCustomRows = col.bodyChildren.length > 0;
               const bodyChild = col.bodyChildren[rowIndex];
+              if (rowIndex === 0) {
+                  console.log(`[table-render] col=${col.mergedParams.headerText} bodyChild[0]:`, JSON.stringify({
+                      componentId: bodyChild?.componentId,
+                      text: bodyChild?.params?.text,
+                      value: bodyChild?.params?.value
+                  }));
+              }
               if (hasCustomRows && !bodyChild) {
                   continue;
               }
@@ -8290,13 +8316,13 @@ async function renderComponent(
 
         frame.itemSpacing = 16;
 
-        const ellipsisIndex = parts.findIndex((part) => part === '…' || part === '...' || part === '更多');
-        const showMore = ellipsisIndex !== -1 || parts.length > 3;
-        const visibleParts = showMore
-          ? ellipsisIndex !== -1
-            ? parts.slice(0, ellipsisIndex)
-            : parts.slice(0, 2)
-          : parts;
+        const ellipsisIndex = parts.findIndex((part) => part === '…' || part === '...' || part === '更多' || part.toLowerCase() === 'more');
+        const showMore = true;
+        const visibleParts = ellipsisIndex !== -1
+          ? parts.slice(0, ellipsisIndex)
+          : parts.length > 3
+            ? parts.slice(0, 2)
+            : parts;
 
         for (const part of visibleParts) {
             const textNode = figma.createText();
@@ -8312,14 +8338,23 @@ async function renderComponent(
         }
 
         if (showMore) {
-            const moreIcon =
-              (await createFigmaComponentInstanceByToken('table-cell-icon-more')) ||
-              (await createFigmaComponentInstanceByToken('table-cell-icon-action-more'));
+            let moreIcon: InstanceNode | null = null;
+            try {
+                const moreComponent = await figma.importComponentByKeyAsync('27e130c675fe44532f717656d04b2597eb05a67d');
+                if (moreComponent) {
+                    moreIcon = moreComponent.createInstance();
+                }
+            } catch {
+            }
+            if (!moreIcon) {
+                moreIcon =
+                  (await createFigmaComponentInstanceByToken('table-cell-icon-action-more')) ||
+                  (await createFigmaComponentInstanceByToken('table-cell-icon-more'));
+            }
             if (moreIcon) {
                 try {
                     moreIcon.resize(16, 16);
                 } catch {
-                    // ignore
                 }
                 try {
                     const vectorNodes = moreIcon.findAll((node) =>
@@ -8334,7 +8369,6 @@ async function renderComponent(
                         await applyColorVariable(node, 'table-action-primary-key', '#1664FF');
                     }
                 } catch {
-                    // ignore
                 }
                 frame.appendChild(moreIcon);
             } else {
@@ -8397,14 +8431,14 @@ async function renderComponent(
               : 'Regular';
         await applyTextStyleBinding(textNode, typographyKey, { family: 'Inter', style: fallbackStyle, size: 13 });
         
-        // Set characters AFTER setting the font
         const allowEmptyText = params.allowEmptyText === true;
+        const resolvedText = params.text ?? params.value ?? params.label ?? params.content;
         if (
-            params.text !== undefined &&
-            params.text !== null &&
-            (allowEmptyText || String(params.text).trim() !== '')
+            resolvedText !== undefined &&
+            resolvedText !== null &&
+            (allowEmptyText || String(resolvedText).trim() !== '')
         ) {
-            textNode.characters = String(params.text);
+            textNode.characters = String(resolvedText);
         } else {
             textNode.characters = isHeader ? 'Header' : 'Cell';
         }
@@ -9599,27 +9633,7 @@ function centerNodeInViewport(node: SceneNode): void {
   node.y = figma.viewport.center.y - height / 2;
 }
 
-// Calls to "parent.postMessage" from within the HTML page will trigger this
-// callback. The callback will be passed the "pluginMessage" property of the
-// posted message.
-async function reportDebugEventToServer(event: any): Promise<void> {
-  try {
-    await fetch('http://127.0.0.1:7777/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event)
-    });
-  } catch {}
-}
-
 figma.ui.onmessage = async (msg) => {
-  // #endregion
-  if (msg.type === 'debug-event') {
-    // #region debug-point A:debug-forward
-    await reportDebugEventToServer(msg.event);
-    // #endregion
-  }
-
   if (msg.type === 'cancel') {
     figma.closePlugin();
   }
