@@ -2942,9 +2942,9 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
     const semanticKeyRaw = params.statusSemantic ?? params.statusIntent ?? params.semantic ?? params.intent;
     const semanticThemeOverride =
         resolveStatusTagThemeFromSemantic(semanticKeyRaw) ||
-        resolveStatusTagThemeFromSemantic(label) ||
         undefined;
     const normalizedStatusThemeInput = normalizeStatusTagThemeInput(params.statusTheme ?? params.theme ?? legacyStatusTheme);
+    const textBasedTheme = resolveStatusTagThemeFromSemantic(label) || undefined;
 
     const tagParams: Record<string, any> = {
         text: label,
@@ -2957,7 +2957,7 @@ function buildTableCellTagParams(params: Record<string, any>): Record<string, an
         showDot: params.showDot,
         showDropdown: params.showDropdown,
         closable: params.closable,
-        statusTheme: semanticThemeOverride || normalizedStatusThemeInput,
+        statusTheme: semanticThemeOverride || normalizedStatusThemeInput || textBasedTheme,
         statusType: params.statusType ?? params.statusLevel ?? params.level,
         statusState: params.statusState
     };
@@ -8440,7 +8440,7 @@ async function renderComponent(
         ) {
             textNode.characters = String(resolvedText);
         } else {
-            textNode.characters = isHeader ? 'Header' : 'Cell';
+            textNode.characters = isHeader ? 'Header' : '—';
         }
         if (typeof params.fontSize === 'number' && params.fontSize > 0) {
             textNode.fontSize = params.fontSize;

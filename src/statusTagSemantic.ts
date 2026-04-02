@@ -35,8 +35,31 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
     normalized.includes('危险')
   ) return 'Error 错误';
 
+  const isStopWord =
+    normalized.includes('停止') ||
+    normalized.includes('终止') ||
+    normalized.includes('下线') ||
+    normalized.includes('关闭') ||
+    normalized.includes('删除') ||
+    normalized.includes('归档') ||
+    normalized.includes('过期') ||
+    normalized.includes('失效') ||
+    normalized.includes('注销') ||
+    normalized.includes('废弃') ||
+    normalized.includes('停用');
+  if (isStopWord) return 'Stop 停止';
+
+  const isErrorWord =
+    normalized.includes('失败') ||
+    normalized.includes('禁用') ||
+    normalized.includes('驳回') ||
+    normalized.includes('拒绝') ||
+    normalized.includes('错误');
+
+  if (isErrorWord) return 'Error 错误';
+
   if (
-    /^已.+/.test(normalized) ||
+    (/^已.+/.test(normalized) && !isStopWord && !isErrorWord) ||
     normalized.includes('success') ||
     normalized.includes('成功') ||
     normalized.includes('已启用') ||
@@ -77,8 +100,6 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
 
   if (
     normalized.includes('stop') ||
-    normalized.includes('停止') ||
-    normalized.includes('终止') ||
     normalized.includes('gray') ||
     normalized.includes('grey')
   ) return 'Stop 停止';

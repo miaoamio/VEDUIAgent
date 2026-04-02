@@ -3021,12 +3021,12 @@ function App() {
 
     prompt += `
 工作流 (Workflow):
-1. **注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。创建表单（Form）时，请直接使用 draw_form，无需读取 spec。创建图表（Chart）时，直接使用对应组件（如 chart-pie）生成，无需读取 spec。**
+1. **注意：创建表格（Table）时，请直接使用 draw_table，无需读取 spec。创建表单（Form）时，请直接使用 draw_form，无需读取 spec。创建图表（Chart）时，直接使用对应组件 ID（如 chart-pie、chart-line、chart-bar、chart-toplist、chart-area）通过 create_node 生成，不要用 figma-component 代替，无需读取 spec。环形图 = chart-pie + "类型 Type":"环形图 DonutChart"。**
 2. 其他情况先分析用户需求，**必须**从 Component Index 里选择可用组件，再决定需要使用哪些组件。
 3. 当存在自定义组件注册表时，**必须**调用 read_specs([id1, id2...]) 获取组件的详细参数定义和结构要求。
    - ⚠️ **例外：表格组件（table/table-column等）无需读取 spec，直接使用 draw_table 即可。**
    - ⚠️ **例外：表单（form/draw_form）无需读取 spec，直接使用 draw_form 即可。**
-   - ⚠️ **例外：图表组件（chart-pie/chart-line等）无需读取 spec，直接生成即可。**
+   - ⚠️ **例外：图表组件（chart-pie/chart-line等）无需读取 spec，直接使用 chart 组件 ID 通过 create_node 生成，禁止用 figma-component 创建图表。**
    - 禁止在未读取 spec 的情况下直接猜测组件参数（表格和表单除外）。
    - read_specs 会返回组件的 params 定义和使用示例。
    - 已读取过的组件 spec 不要重复调用 read_specs，直接复用已有上下文。
@@ -3051,6 +3051,8 @@ StepD:
 {"thought":"执行任务","action":{"type":"execute_task","payload":{"taskId":"t_shell"}}}
 
 重要:
+- ⚠️ **图表组件（饼图/环形图/折线图/柱状图/条形图/面积图）禁止使用 figma-component 创建，必须使用对应的 chart 组件 ID（chart-pie/chart-line/chart-bar/chart-toplist/chart-area）。**
+- ⚠️ **环形图是饼图（chart-pie）的变体，必须设置 "类型 Type":"环形图 DonutChart"。属性名必须完整包含英文后缀：分类数量 Item / 数值标注 Data Annotation / 总数值 Sum / 类型 Type。**
 - 创建新表格时优先 draw_table，避免输出冗长 table 子树。
 - 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
 - draw_table payload 必须使用 headers + rows 格式，示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串。禁止使用 columns 字段代替 headers。
@@ -3794,9 +3796,11 @@ StepD:
     // Support explicit rowCount from payload (LLM can output fewer rows + rowCount to save tokens).
     const explicitRowCount = getPositiveNumber(source.rowCount);
     const minRowCount = typeof options?.minRowCount === 'number' ? options.minRowCount : 10;
-    const targetRowCount = explicitRowCount
-      ? Math.max(explicitRowCount, rows.length)
-      : (minRowCount > 0 ? Math.max(rows.length, minRowCount) : rows.length);
+    const targetRowCount = Math.max(
+      explicitRowCount ?? rows.length,
+      rows.length,
+      minRowCount > 0 ? minRowCount : 0
+    );
     if (rows.length < targetRowCount) {
       if (rows.length === 0) {
         rows = Array.from({ length: targetRowCount }).map(() => headers.map(() => ''));
