@@ -9915,6 +9915,22 @@ StepB:\n`;
     setManualTaskRunner(true);
     let nextPlan = agentPlan;
     let activeRetryTaskId: string | null = null;
+    let retryFallbackNotes: string | null = null;
+    const rollbackRetryTasks = (plan: AgentPlanState, notes: string, taskId?: string | null) => {
+      const rollbackTargetIds = plan.tasks
+        .filter((task) => task.status === 'in_progress' && (!taskId || task.taskId === taskId))
+        .map((task) => task.taskId);
+      if (rollbackTargetIds.length === 0 && taskId) {
+        rollbackTargetIds.push(taskId);
+      }
+      return rollbackTargetIds.reduce((acc, currentTaskId) => {
+        try {
+          return updateTaskStatus(acc, currentTaskId, 'failed', notes);
+        } catch {
+          return acc;
+        }
+      }, plan);
+    };
     try {
       nextPlan = nextPlan.tasks.reduce((acc, task) => {
         if (task.status === 'failed' || task.status === 'blocked') {
@@ -9971,21 +9987,25 @@ StepB:\n`;
     } catch (e) {
       const rawError = e instanceof Error ? e.message : String(e);
       if (stopRequestedRef.current) {
-        if (activeRetryTaskId) {
-          nextPlan = updateTaskStatus(nextPlan, activeRetryTaskId, 'failed', 'retry stopped');
-          setAgentPlan(nextPlan);
-        }
+        retryFallbackNotes = 'retry stopped';
+        nextPlan = rollbackRetryTasks(nextPlan, retryFallbackNotes, activeRetryTaskId);
+        setAgentPlan(nextPlan);
         const stoppedMsg = `[System]: 已停止。`;
         setResponse((prev) => (prev ? `${prev}\n\n${stoppedMsg}` : stoppedMsg));
       } else {
         const errorMsg = `[System]: 全部重试失败：${rawError}`;
-        if (activeRetryTaskId) {
-          nextPlan = updateTaskStatus(nextPlan, activeRetryTaskId, 'failed', errorMsg);
-          setAgentPlan(nextPlan);
-        }
+        retryFallbackNotes = errorMsg;
+        nextPlan = rollbackRetryTasks(nextPlan, errorMsg, activeRetryTaskId);
+        setAgentPlan(nextPlan);
         setResponse((prev) => (prev ? `${prev}\n\n${errorMsg}` : errorMsg));
       }
     } finally {
+      if (nextPlan.tasks.some((task) => task.status === 'in_progress')) {
+        const fallbackNotes = retryFallbackNotes || (stopRequestedRef.current ? 'retry stopped' : 'retry interrupted');
+        nextPlan = rollbackRetryTasks(nextPlan, fallbackNotes);
+        setAgentPlan(nextPlan);
+      }
+      activeRetryTaskId = null;
       setManualTaskRunner(false);
       setGenerationLock(false);
       stopRequestedRef.current = false;
