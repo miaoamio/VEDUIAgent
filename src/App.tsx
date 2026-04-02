@@ -9920,11 +9920,9 @@ StepB:\n`;
       const rollbackTargetIds =
         taskId == null
           ? plan.tasks.filter((task) => task.status === 'in_progress').map((task) => task.taskId)
-          : (() => {
-              const matchedTask = plan.tasks.find((task) => task.taskId === taskId);
-              if (!matchedTask) return [];
-              return [taskId];
-            })();
+          : plan.tasks.some((task) => task.taskId === taskId)
+            ? [taskId]
+            : [];
       if (rollbackTargetIds.length === 0) return plan;
       return rollbackTargetIds.reduce((acc, currentTaskId) => {
         try {
