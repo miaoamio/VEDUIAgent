@@ -808,10 +808,49 @@ figma.on('documentchange', async (event) => {
 
     const properties = change.properties || [];
     const isSizeChange = properties.includes('height') || properties.includes('width');
+    const isLayoutChange = properties.includes('layoutGrow') || properties.includes('counterAxisSizingMode') || properties.includes('primaryAxisSizingMode');
     const isTextChange = properties.includes('characters');
-    if (!isSizeChange && !isTextChange) continue;
+    if (!isSizeChange && !isTextChange && !isLayoutChange) continue;
 
     const cell = findTableCellFromNode(node);
+
+    if (!cell && (properties.includes('width') || isLayoutChange)) {
+      let table: FrameNode | null = null;
+      if (isTableColumnNode(node)) {
+        table = findTableFrameFromNode(node);
+      } else if (isTableNode(node)) {
+        table = node as FrameNode;
+      }
+      if (table) {
+        const columns = getTableColumns(table);
+        for (const col of columns) {
+          for (let ri = 0; ri < col.children.length; ri++) {
+            const child = col.children[ri];
+            if (!child || child.removed) continue;
+            if (child.type !== 'FRAME' && child.type !== 'INSTANCE') continue;
+            const cellParams = readNodeParams(child);
+            if (cellParams.textDisplay !== 'lineBreak') continue;
+            if ('counterAxisSizingMode' in child) {
+              try { (child as any).counterAxisSizingMode = 'AUTO'; } catch {}
+            }
+            if ('layoutSizingVertical' in child) {
+              try { (child as any).layoutSizingVertical = 'HUG'; } catch {}
+            }
+            const key = `${table.id}:${ri}`;
+            const existing = pendingTableRowSync.get(key);
+            if (existing) {
+              if (!existing.sourceNodes.includes(child)) {
+                existing.sourceNodes.push(child);
+              }
+            } else {
+              pendingTableRowSync.set(key, { table, rowIndex: ri, sourceNodes: [child] });
+            }
+          }
+        }
+        continue;
+      }
+    }
+
     if (!cell) continue;
     const column = cell.parent;
     if (!isTableColumnNode(column)) continue;
@@ -820,19 +859,24 @@ figma.on('documentchange', async (event) => {
 
     const rowIndex = column.children.indexOf(cell as SceneNode);
     if (rowIndex < 0) continue;
-    if (isTextChange) {
-      const cellParams = readNodeParams(cell);
-      if (cellParams.textDisplay === 'lineBreak') {
-        if ('counterAxisSizingMode' in cell) {
-          try {
-            (cell as any).counterAxisSizingMode = 'AUTO';
-          } catch {}
-        }
-        if ('layoutSizingVertical' in cell) {
-          try {
-            (cell as any).layoutSizingVertical = 'HUG';
-          } catch {}
-        }
+
+    const hasHeightChange = properties.includes('height');
+    const hasWidthOnly = !hasHeightChange && properties.includes('width');
+    const cellParams = readNodeParams(cell);
+    const isCellLineBreak = cellParams.textDisplay === 'lineBreak';
+
+    if (hasWidthOnly && !isCellLineBreak) continue;
+
+    if (isCellLineBreak && (isTextChange || hasWidthOnly)) {
+      if ('counterAxisSizingMode' in cell) {
+        try {
+          (cell as any).counterAxisSizingMode = 'AUTO';
+        } catch {}
+      }
+      if ('layoutSizingVertical' in cell) {
+        try {
+          (cell as any).layoutSizingVertical = 'HUG';
+        } catch {}
       }
     }
 
@@ -1941,7 +1985,17 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
     const columns = getTableColumns(table);
     if (columns.length === 0) return;
 
-    let maxHeight = 0;
+    const tableParams = readNodeParams(table);
+    const isHeaderRow = rowIndex === 0 && columns.some(c => {
+        const first = c.children[0];
+        return first && first.getPluginData('component-id') === 'table-header-cell';
+    });
+    const defaultRowHeight = isHeaderRow
+        ? resolveTableHeaderHeight(tableParams)
+        : resolveTableBodyHeight(tableParams);
+
+    let maxHeight = defaultRowHeight > 0 ? defaultRowHeight : 0;
+
     const isLineBreakCell = (cell: SceneNode): boolean => {
         if (!cell || cell.removed) return false;
         const params = readNodeParams(cell);
@@ -1960,64 +2014,58 @@ function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceNodes: S
             } catch {}
         }
     };
-    const normalizeLineBreakAfterAlign = (cell: SceneNode) => {
-        if (!isLineBreakCell(cell)) return;
-        if ('counterAxisSizingMode' in cell) {
-            try {
-                (cell as any).counterAxisSizingMode = 'FIXED';
-            } catch {}
-        }
-        if ('layoutSizingVertical' in cell) {
-            try {
-                (cell as any).layoutSizingVertical = 'FIXED';
-            } catch {}
-        }
-    };
 
-    // Prefer heights from nodes that actually changed. This allows shrinking rows.
-    if (sourceNodes.length > 0) {
-        for (const node of sourceNodes) {
-            if (!node || node.removed) continue;
-            const column = node.parent;
-            if (!isTableColumnNode(column)) continue;
-            if (column.parent !== table) continue;
-            const index = column.children.indexOf(node as SceneNode);
-            if (index !== rowIndex) continue;
-            if (node.type === 'FRAME' || node.type === 'INSTANCE') {
-                ensureLineBreakMeasure(node);
-                if (node.height > maxHeight) maxHeight = node.height;
-            }
+    const sourceNodeSet = new Set(sourceNodes);
+
+    for (const column of columns) {
+        if (rowIndex >= column.children.length) continue;
+        const cell = column.children[rowIndex];
+        if (!cell || cell.removed) continue;
+        if (cell.type !== 'FRAME' && cell.type !== 'INSTANCE') continue;
+
+        if (isLineBreakCell(cell)) {
+            ensureLineBreakMeasure(cell);
+            if (cell.height > maxHeight) maxHeight = cell.height;
+        } else if (sourceNodes.length === 0 || sourceNodeSet.has(cell)) {
+            if (cell.height > maxHeight) maxHeight = cell.height;
         }
     }
 
-    // Fallback: compute max height from the entire row.
-    if (maxHeight <= 0) {
-        for (const column of columns) {
-            if (rowIndex >= column.children.length) continue;
-            const cell = column.children[rowIndex];
-            if (cell.removed) continue;
-            if (cell.type === 'FRAME' || cell.type === 'INSTANCE') {
-                ensureLineBreakMeasure(cell);
-                if (cell.height > maxHeight) maxHeight = cell.height;
-            }
-        }
+    if (!Number.isFinite(maxHeight) || maxHeight <= 0) {
+        maxHeight = defaultRowHeight > 0 ? defaultRowHeight : 40;
     }
-
-    if (!Number.isFinite(maxHeight) || maxHeight <= 0) return;
 
     for (const column of columns) {
         if (rowIndex >= column.children.length) continue;
         const cell = column.children[rowIndex];
         if (cell.removed) continue;
         if (cell.type === 'FRAME' || cell.type === 'INSTANCE') {
-            if (Math.abs(cell.height - maxHeight) > 0.1) {
-                try {
-                    cell.resize(cell.width, maxHeight);
-                } catch (e) {
-                    // Ignore resize failures for non-resizable nodes.
+            const lineBreak = isLineBreakCell(cell);
+            if (lineBreak) {
+                if (Math.abs(cell.height - maxHeight) <= 0.1) {
+                    if ('layoutSizingVertical' in cell) {
+                        try { (cell as any).layoutSizingVertical = 'HUG'; } catch {}
+                    }
+                    if ('counterAxisSizingMode' in cell) {
+                        try { (cell as any).counterAxisSizingMode = 'AUTO'; } catch {}
+                    }
+                } else {
+                    if ('layoutSizingVertical' in cell) {
+                        try { (cell as any).layoutSizingVertical = 'FIXED'; } catch {}
+                    }
+                    if ('counterAxisSizingMode' in cell) {
+                        try { (cell as any).counterAxisSizingMode = 'FIXED'; } catch {}
+                    }
+                    try { cell.resize(cell.width, maxHeight); } catch {}
+                }
+            } else {
+                if ('layoutSizingVertical' in cell) {
+                    try { (cell as any).layoutSizingVertical = 'FIXED'; } catch {}
+                }
+                if (Math.abs(cell.height - maxHeight) > 0.1) {
+                    try { cell.resize(cell.width, maxHeight); } catch {}
                 }
             }
-            normalizeLineBreakAfterAlign(cell);
         }
     }
 }
@@ -5418,6 +5466,19 @@ async function resolveFormContentWidth(
 }
 
 function parseDelimitedText(value: unknown, fallback: string[]): string[] {
+    if (Array.isArray(value)) {
+        const fromArray = value.map((item) => {
+            if (item && typeof item === 'object') {
+                return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+            }
+            return String(item || '').trim();
+        }).filter(Boolean);
+        return fromArray.length > 0 ? fromArray : fallback;
+    }
+    if (value && typeof value === 'object') {
+        const extracted = String((value as any).label || (value as any).name || (value as any).text || (value as any).value || '').trim();
+        return extracted ? [extracted] : fallback;
+    }
     const raw = String(value || '').trim();
     const items = raw
         ? raw.split(/[\n\r,，、|\s]+/).map((item) => item.trim()).filter(Boolean)
@@ -7960,13 +8021,6 @@ async function renderComponent(
           for (const col of columnData) {
               const hasCustomRows = col.bodyChildren.length > 0;
               const bodyChild = col.bodyChildren[rowIndex];
-              if (rowIndex === 0) {
-                  console.log(`[table-render] col=${col.mergedParams.headerText} bodyChild[0]:`, JSON.stringify({
-                      componentId: bodyChild?.componentId,
-                      text: bodyChild?.params?.text,
-                      value: bodyChild?.params?.value
-                  }));
-              }
               if (hasCustomRows && !bodyChild) {
                   continue;
               }

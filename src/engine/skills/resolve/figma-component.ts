@@ -58,6 +58,7 @@ export function buildSnapshotDrivenCriteria(options: {
       }
       return;
     }
+    if (value && typeof value === 'object') return;
     const strValue = String(value).trim();
     const lowerValue = strValue.toLowerCase();
     if ((lowerValue === "true" || lowerValue === "false") && knownBooleanProps.has(keyLower)) {
@@ -168,7 +169,18 @@ export async function renderFigmaComponentInstance(
     componentToken === "lib-data-input-radio-group" ||
     componentToken === "lib-data-input-checkbox-group"
   ) {
-    const optionsRaw = String(params.optionsText ?? "");
+    let optionsRaw = "";
+    const rawVal = params.optionsText;
+    if (Array.isArray(rawVal)) {
+      optionsRaw = rawVal.map((item: unknown) => {
+        if (item && typeof item === 'object') {
+          return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+        }
+        return String(item || '').trim();
+      }).filter(Boolean).join(',');
+    } else {
+      optionsRaw = String(rawVal ?? "");
+    }
     const options = optionsRaw.split(/[,，\n\r]/).map((s: string) => s.trim()).filter(Boolean);
     if (options.length > 0) {
       // Each option is a child instance (Radio 单选框 / Checkbox 复选框) containing a TEXT node.

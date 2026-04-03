@@ -249,7 +249,47 @@ export const inferColumnTypesFromRows = (
 
 export const normalizeRowsByHeaders = (rows: any[], headers: string[]): any[][] => {
   if (!Array.isArray(rows) || rows.length === 0) return [];
-  return rows.map((row) => {
+
+  const colCount = headers.length;
+  let effective = rows;
+
+  if (colCount > 1 && effective.length > colCount) {
+    const hasArrayElements = effective.some((r) => Array.isArray(r));
+    const hasScalarElements = effective.some((r) => !Array.isArray(r) && !isObject(r));
+    if (hasArrayElements && hasScalarElements) {
+      const reassembled: any[][] = [];
+      let cursor = 0;
+      while (cursor < effective.length) {
+        const head = effective[cursor];
+        if (Array.isArray(head)) {
+          if (head.length >= colCount) {
+            reassembled.push(head);
+            cursor += 1;
+          } else {
+            const merged: any[] = [...head];
+            cursor += 1;
+            while (merged.length < colCount && cursor < effective.length && !Array.isArray(effective[cursor])) {
+              merged.push(effective[cursor]);
+              cursor += 1;
+            }
+            reassembled.push(merged);
+          }
+        } else {
+          const merged: any[] = [];
+          while (merged.length < colCount && cursor < effective.length && !Array.isArray(effective[cursor])) {
+            merged.push(effective[cursor]);
+            cursor += 1;
+          }
+          reassembled.push(merged);
+        }
+      }
+      if (reassembled.length > 0 && reassembled.every((r) => r.length >= colCount - 1)) {
+        effective = reassembled;
+      }
+    }
+  }
+
+  return effective.map((row) => {
     if (Array.isArray(row)) return row;
     if (isObject(row)) {
       return headers.map((header) => {

@@ -103,8 +103,17 @@ function parseBooleanFlag(value: unknown): boolean {
 
 function parseDelimitedText(value: unknown, fallback: string[]): string[] {
   if (Array.isArray(value)) {
-    const fromArray = value.map((item) => String(item ?? "").trim()).filter(Boolean);
+    const fromArray = value.map((item) => {
+      if (item && typeof item === 'object') {
+        return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+      }
+      return String(item ?? "").trim();
+    }).filter(Boolean);
     return fromArray.length > 0 ? fromArray : fallback;
+  }
+  if (value && typeof value === 'object') {
+    const extracted = String((value as any).label || (value as any).name || (value as any).text || (value as any).value || '').trim();
+    return extracted ? [extracted] : fallback;
   }
   const normalized = String(value ?? "")
     .split(/[\n\r,，、|\s]+/)

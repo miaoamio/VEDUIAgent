@@ -3685,9 +3685,48 @@ StepD:
   ): unknown[][] => {
     if (!Array.isArray(rawRows)) return [];
 
+    const colCount = headers.length;
+    let rows = rawRows as any[];
+
+    if (colCount > 1 && rows.length > colCount) {
+      const hasArrayElements = rows.some((r) => Array.isArray(r));
+      const hasScalarElements = rows.some((r) => !Array.isArray(r) && !isObject(r));
+      if (hasArrayElements && hasScalarElements) {
+        const reassembled: any[][] = [];
+        let cursor = 0;
+        while (cursor < rows.length) {
+          const head = rows[cursor];
+          if (Array.isArray(head)) {
+            if (head.length >= colCount) {
+              reassembled.push(head);
+              cursor += 1;
+            } else {
+              const merged: any[] = [...head];
+              cursor += 1;
+              while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
+                merged.push(rows[cursor]);
+                cursor += 1;
+              }
+              reassembled.push(merged);
+            }
+          } else {
+            const merged: any[] = [];
+            while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
+              merged.push(rows[cursor]);
+              cursor += 1;
+            }
+            reassembled.push(merged);
+          }
+        }
+        if (reassembled.length > 0 && reassembled.every((r) => r.length >= colCount - 1)) {
+          rows = reassembled;
+        }
+      }
+    }
+
     const headerNorm = headers.map((h) => String(h || '').trim().toLowerCase().replace(/[\s_]+/g, ''));
 
-    return rawRows.map((row) => {
+    return rows.map((row) => {
       if (Array.isArray(row)) {
         return headers.map((_, i) => row[i]);
       }
@@ -3774,16 +3813,6 @@ StepD:
       : [];
     const rawRowSource = source.rows ?? source.dataSource ?? source.data ?? [];
     let rows = normalizeRowsByHeaders(rawRowSource, headers, columnKeys);
-
-    console.log('[buildTable] headers:', JSON.stringify(headers));
-    console.log('[buildTable] columnKeys:', JSON.stringify(columnKeys));
-    console.log('[buildTable] rawRowSource type:', Array.isArray(rawRowSource) ? 'array' : typeof rawRowSource, 'length:', Array.isArray(rawRowSource) ? rawRowSource.length : 'N/A');
-    if (Array.isArray(rawRowSource) && rawRowSource.length > 0) {
-      console.log('[buildTable] rawRow[0]:', JSON.stringify(rawRowSource[0]));
-    }
-    if (rows.length > 0) {
-      console.log('[buildTable] normalizedRow[0]:', JSON.stringify(rows[0]));
-    }
 
     if ((!headers || headers.length === 0) && rows.length > 0) {
       const first = rows[0];
@@ -3883,9 +3912,6 @@ StepD:
       rows.forEach((row, rowIdx) => {
         const rawValue = row[colIndex];
         const value = extractCellText(rawValue);
-        if (rowIdx === 0) {
-          console.log(`[buildTable] col=${colIndex}(${header}) row[0] rawValue:`, JSON.stringify(rawValue), 'extracted:', JSON.stringify(value));
-        }
         if (cellComponentId === 'table-cell-tag') {
           const columnKind = tagColumnKind || 'status';
           const tagPayload = extractTagCellPayload(rawValue, columnKind);
@@ -8272,37 +8298,39 @@ StepB:\n`;
                   typeof componentId === 'string' ? componentId : undefined
                 );
 
-                if (componentId === 'table' && Array.isArray(children) && children.length > 0) {
-                    const tablePayloadFromTree = extractTablePayloadFromSceneRoot({
-                        componentId,
-                        params,
-                        children
-                    });
-                    const tableComponent = buildTableComponentFromPayload(tablePayloadFromTree);
-                    if (tableComponent) {
-                        try {
-                            const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
-                            const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
-                            const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
-                            accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
-                            setResponse(accumulatedLog);
-                            messages.push({
-                                role: "user",
-                                content: `System: draw_table succeeded via create_node reroute. rootNodeId=${rootNodeId}`
-                            });
-                            if (runtimePlan && actionTaskId) {
-                                runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
+                if (componentId === 'table') {
+                    const hasChildren = Array.isArray(children) && children.length > 0;
+                    const hasTableDataInParams = isObject(params) && Array.isArray(params.headers) && params.headers.length > 0;
+                    if (hasChildren || hasTableDataInParams) {
+                        const tablePayloadSource = hasChildren
+                            ? extractTablePayloadFromSceneRoot({ componentId, params, children })
+                            : params;
+                        const tableComponent = buildTableComponentFromPayload(tablePayloadSource, { minRowCount: 10 });
+                        if (tableComponent) {
+                            try {
+                                const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
+                                const rerouteMsg = `[System]: 已识别为表格创建请求，改用表格一键创建流程。`;
+                                const successMsg = `[System]: 表格创建成功（列数=${tableComponent.params.columnCount}，行数=${tableComponent.params.rowCount}）。`;
+                                accumulatedLog += '\n\n' + rerouteMsg + '\n' + successMsg;
+                                setResponse(accumulatedLog);
+                                messages.push({
+                                    role: "user",
+                                    content: `System: draw_table succeeded via create_node reroute. rootNodeId=${rootNodeId}`
+                                });
+                                if (runtimePlan && actionTaskId) {
+                                    runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
+                                }
+                                continue;
+                            } catch (e) {
+                                const errorMsg = `[System]: 表格创建重试失败：${e}`;
+                                accumulatedLog += '\n\n' + errorMsg;
+                                setResponse(accumulatedLog);
+                                messages.push({ role: "user", content: errorMsg });
+                                if (runtimePlan && actionTaskId) {
+                                    runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
+                                }
+                                continue;
                             }
-                            continue;
-                        } catch (e) {
-                            const errorMsg = `[System]: 表格创建重试失败：${e}`;
-                            accumulatedLog += '\n\n' + errorMsg;
-                            setResponse(accumulatedLog);
-                            messages.push({ role: "user", content: errorMsg });
-                            if (runtimePlan && actionTaskId) {
-                                runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
-                            }
-                            continue;
                         }
                     }
                 }
@@ -8437,20 +8465,20 @@ StepB:\n`;
       { key: 'dataAnnotation', label: '数值标注 Data Annotation', options: ['Off', 'On'], defaultValue: 'On' }
     ],
     '柱状图': [
-      { key: 'seriesCount', label: '每组柱数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠'], defaultValue: '基础/分组柱' }
+      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole'], defaultValue: '基础/分组柱 default' }
     ],
     '条形图': [
-      { key: 'seriesCount', label: '线数量', options: ['1', '2', '3', '4'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['基础/分组柱', '堆叠', '百分比堆叠', '特殊'], defaultValue: '基础/分组柱' }
+      { key: 'seriesCount', label: '数量 #of lines', options: ['1', '2', '3', '4'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 type', options: ['基础/分组柱 default', '堆叠 stacked', '百分比堆叠 stacked part to whole', '特殊 special case'], defaultValue: '基础/分组柱 default' }
     ],
     '折线图': [
       { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认', '平滑', '大数据'], defaultValue: '默认' }
+      { key: 'chartType', label: '类型 Type', options: ['默认 default', '平滑 smooth', '大数据 big data'], defaultValue: '默认 default' }
     ],
     '面积图': [
-      { key: 'lineCount', label: '线数量', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
-      { key: 'chartType', label: '类型', options: ['默认', '平滑', '堆叠', '百分比'], defaultValue: '默认' }
+      { key: 'lineCount', label: '线数量 ', options: ['1', '2', '3', '4', '5', '6'], defaultValue: '3' },
+      { key: 'chartType', label: '类型 Type', options: ['默认 Default', '平滑 Smooth', '堆叠 stacked', '百分比 stacked percentage'], defaultValue: '默认 Default' }
     ]
   };
   const buildQuickComponentName = (displayName: string, token: string) => {

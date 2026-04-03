@@ -297,10 +297,21 @@ function normalizeOtherTagColorVariant(value: unknown): "Default 默认" | "Red 
   return "Default 默认";
 }
 
+function stringifyItem(item: unknown): string {
+  if (item && typeof item === 'object') {
+    return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+  }
+  return String(item ?? "").trim();
+}
+
 function parseDelimitedText(value: unknown, fallback: string[]): string[] {
   if (Array.isArray(value)) {
-    const fromArray = value.map((item) => String(item ?? "").trim()).filter(Boolean);
+    const fromArray = value.map((item) => stringifyItem(item)).filter(Boolean);
     return fromArray.length > 0 ? fromArray : fallback;
+  }
+  if (value && typeof value === 'object') {
+    const extracted = stringifyItem(value);
+    return extracted ? [extracted] : fallback;
   }
   const normalized = String(value ?? "")
     .split(/[\n\r,，、|\s]+/)

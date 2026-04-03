@@ -285,8 +285,16 @@ const resolveGroupLabelMode = (value: unknown): 'all' | 'first' => {
 
 const buildOptionsTextFromValue = (value: unknown, fallback = '选项一,选项二'): string => {
   if (Array.isArray(value)) {
-    const items = value.map((item) => String(item || '').trim()).filter(Boolean);
+    const items = value.map((item) => {
+      if (item && typeof item === 'object') {
+        return String((item as any).label || (item as any).name || (item as any).text || (item as any).value || '').trim();
+      }
+      return String(item || '').trim();
+    }).filter(Boolean);
     return items.length > 0 ? items.join(',') : fallback;
+  }
+  if (value && typeof value === 'object') {
+    return fallback;
   }
   const text = String(value || '').trim();
   return text || fallback;
