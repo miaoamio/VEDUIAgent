@@ -7423,7 +7423,10 @@ StepB:\n`;
             );
             accumulatedLog += (accumulatedLog ? '\n\n' : '') + sysMsg;
             setResponse(accumulatedLog);
-            messages.push({ role: "user", content: `Here are the specs you requested:\n\n${combinedSpecsInfo}` });
+            const skipReadHint = combinedIdsToLoad.length === 0
+              ? '\n\n⚠️ 以上规范已预加载完毕。禁止再次输出 read_specs，直接输出 draw_table / draw_form / create_node 动作。'
+              : '';
+            messages.push({ role: "user", content: `Here are the specs you requested:\n\n${combinedSpecsInfo}${skipReadHint}` });
         }
 
         while (loopCount < MAX_LOOPS) {
@@ -7801,18 +7804,20 @@ StepB:\n`;
 
                 const { specsInfo, uniqueIds, idsToLoad } = buildSpecsInfo(ids, readSpecsCacheRef.current, true);
                 const promptHintText = String(currentTurnText || '');
+                const allCached = idsToLoad.length === 0 && uniqueIds.length > 0;
                 const sysMsg = buildSpecsSystemMessage(
                   promptHintText,
                   uniqueIds,
-                  idsToLoad.length === 0 && uniqueIds.length > 0
+                  allCached
                 );
                 accumulatedLog += '\n\n' + sysMsg;
                 setResponse(accumulatedLog);
                 
-                // Add specs to messages for next turn
-                // Crucial: Append the tool output as a User message (or Tool message if supported)
-                // Here we use User role to simulate system feedback
-                messages.push({ role: "user", content: `Here are the specs you requested:\n\n${specsInfo}` });
+                if (allCached) {
+                    messages.push({ role: "user", content: `System: 规范已在上下文中，无需重复读取。请直接输出动作（draw_table / draw_form / create_node），不要再次 read_specs。` });
+                } else {
+                    messages.push({ role: "user", content: `Here are the specs you requested:\n\n${specsInfo}` });
+                }
                 if (runtimePlan && actionTaskId) {
                     runtimePlan = updateTaskStatus(
                       runtimePlan,
