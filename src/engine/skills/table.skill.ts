@@ -15,7 +15,7 @@ import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from 
 
 export type TagColumnKind = 'status' | 'type';
 
-const extractCellText = (value: unknown): string => {
+export const extractCellText = (value: unknown): string => {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
@@ -247,20 +247,29 @@ export const inferColumnTypesFromRows = (
   });
 };
 
-export const normalizeRowsByHeaders = (rows: any[], headers: string[]): any[][] => {
-  if (!Array.isArray(rows) || rows.length === 0) return [];
+export const normalizeRowsByHeaders = (
+  rawRows: unknown,
+  headers: string[],
+  columnKeys?: string[]
+): unknown[][] => {
+  if (!Array.isArray(rawRows)) return [];
 
   const colCount = headers.length;
-  let effective = rows;
+  let rows = rawRows as any[];
 
-  if (colCount > 1 && effective.length > colCount) {
-    const hasArrayElements = effective.some((r) => Array.isArray(r));
-    const hasScalarElements = effective.some((r) => !Array.isArray(r) && !isObject(r));
-    if (hasArrayElements && hasScalarElements) {
+  // 混合行重组逻辑：LLM 输出 JSON 时括号可能提前闭合，
+  // 导致本属于同一行的元素（scalar/object）溢出到 rows 顶层。
+  // 例如: [["A",{status}],"B","C", ["D",{status}],"E","F"]
+  // 应重组为: [["A",{status},"B","C"], ["D",{status},"E","F"]]
+  if (colCount > 1 && rows.length > colCount) {
+    const hasArrayElements = rows.some((r) => Array.isArray(r));
+    const hasNonArrayElements = rows.some((r) => !Array.isArray(r));
+    const allArraysFull = hasArrayElements && rows.filter(Array.isArray).every((r: any[]) => r.length >= colCount);
+    if (hasArrayElements && hasNonArrayElements && !allArraysFull) {
       const reassembled: any[][] = [];
       let cursor = 0;
-      while (cursor < effective.length) {
-        const head = effective[cursor];
+      while (cursor < rows.length) {
+        const head = rows[cursor];
         if (Array.isArray(head)) {
           if (head.length >= colCount) {
             reassembled.push(head);
@@ -268,38 +277,54 @@ export const normalizeRowsByHeaders = (rows: any[], headers: string[]): any[][] 
           } else {
             const merged: any[] = [...head];
             cursor += 1;
-            while (merged.length < colCount && cursor < effective.length && !Array.isArray(effective[cursor])) {
-              merged.push(effective[cursor]);
+            while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
+              merged.push(rows[cursor]);
               cursor += 1;
             }
             reassembled.push(merged);
           }
         } else {
           const merged: any[] = [];
-          while (merged.length < colCount && cursor < effective.length && !Array.isArray(effective[cursor])) {
-            merged.push(effective[cursor]);
+          while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
+            merged.push(rows[cursor]);
             cursor += 1;
           }
           reassembled.push(merged);
         }
       }
       if (reassembled.length > 0 && reassembled.every((r) => r.length >= colCount - 1)) {
-        effective = reassembled;
+        rows = reassembled;
       }
     }
   }
 
-  return effective.map((row) => {
-    if (Array.isArray(row)) return row;
-    if (isObject(row)) {
-      return headers.map((header) => {
-        const key = Object.keys(row as any).find(
-          (k) => k.toLowerCase() === header.toLowerCase() || k === header
-        );
-        return key !== undefined ? (row as any)[key] : '';
-      });
+  const headerNorm = headers.map((h) => String(h || '').trim().toLowerCase().replace(/[\s_]+/g, ''));
+
+  return rows.map((row) => {
+    if (Array.isArray(row)) {
+      return headers.map((_, i) => row[i]);
     }
-    return headers.map(() => '');
+    if (isObject(row)) {
+      const result = headers.map((headerTitle, i) => {
+        if (columnKeys && columnKeys[i]) {
+          const val = (row as any)[columnKeys[i]];
+          if (val !== undefined) return val;
+        }
+        if ((row as any)[headerTitle] !== undefined) return (row as any)[headerTitle];
+        const norm = headerNorm[i];
+        for (const k of Object.keys(row as any)) {
+          if (k.trim().toLowerCase().replace(/[\s_]+/g, '') === norm) return (row as any)[k];
+        }
+        return undefined;
+      });
+      const matched = result.filter((v) => v !== undefined).length;
+      if (matched === 0) {
+        const vals = Object.values(row as any);
+        return headers.map((_, i) => vals[i]);
+      }
+      return result;
+    }
+    return headers.map(() => row);
   });
 };
 
@@ -323,7 +348,14 @@ export const buildTableComponentFromPayload = (
     (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
 
   let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
-  let rows = normalizeRowsByHeaders(source.rows ?? source.dataSource ?? source.data ?? [], headers);
+
+  // Extract column keys (key/dataIndex) for object-row lookup
+  const columnKeys: string[] = rawColumns
+    ? rawColumns.map((c: any) => String(c?.dataIndex || c?.key || ''))
+    : [];
+
+  const rawRowSource = source.rows ?? source.dataSource ?? source.data ?? [];
+  let rows = normalizeRowsByHeaders(rawRowSource, headers, columnKeys);
 
   if ((!headers || headers.length === 0) && rows.length > 0) {
     const first = rows[0];
@@ -334,17 +366,26 @@ export const buildTableComponentFromPayload = (
 
   if (!headers || headers.length === 0) return null;
 
+  // Support explicit rowCount from payload (LLM can output fewer rows + rowCount to save tokens).
+  const explicitRowCount = getPositiveNumber(source.rowCount);
   const minRowCount = typeof options?.minRowCount === 'number' ? options.minRowCount : 10;
-  const targetRowCount = minRowCount > 0 ? Math.max(rows.length, minRowCount) : rows.length;
+  const targetRowCount = Math.max(
+    explicitRowCount ?? rows.length,
+    rows.length,
+    minRowCount > 0 ? minRowCount : 0
+  );
   if (rows.length < targetRowCount) {
     if (rows.length === 0) {
       rows = Array.from({ length: targetRowCount }).map(() => headers.map(() => ''));
     } else {
-      rows = Array.from({ length: targetRowCount }).map((_, index) =>
-        Array.isArray(rows[index % rows.length])
-          ? [...(rows[index % rows.length] as any[])]
-          : headers.map(() => '')
-      );
+      // Keep original rows intact, fill remaining slots by randomly picking from originals.
+      const originalRows = rows.slice();
+      const filled: any[][] = [...originalRows];
+      for (let i = originalRows.length; i < targetRowCount; i += 1) {
+        const src = originalRows[Math.floor(Math.random() * originalRows.length)];
+        filled.push(Array.isArray(src) ? [...src] : headers.map(() => ''));
+      }
+      rows = filled;
     }
   }
 

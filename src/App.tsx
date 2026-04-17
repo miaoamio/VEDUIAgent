@@ -31,6 +31,17 @@ import {
   resolveFormLayoutParamsUpdate
 } from './engine/skills/form.skill';
 import { getChartToken, buildChartBlockComponentFromPayload } from './engine/skills/chart.skill';
+import {
+  buildTableComponentFromPayload as buildTableComponentFromPayloadSkill,
+  normalizeRowsByHeaders,
+  inferColumnTypesFromRows,
+  tableTypeToComponentId,
+  getPositiveNumber,
+  extractCellText,
+  extractTagCellPayload,
+  resolveTagColumnKind,
+  type TagColumnKind,
+} from './engine/skills/table.skill';
 import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from './statusTagSemantic';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
@@ -246,9 +257,8 @@ function normalizeSpecKind(raw: string): string {
   return rawKind;
 }
 
-function toSeriesSpecText(raw: string, redo = false): string {
-  const kind = normalizeSpecKind(raw);
-  return `${redo ? '重新读取' : '读取'}${kind}规范`;
+function toSeriesSpecText(_raw: string, _redo = false): string {
+  return '正在分析需求';
 }
 
 type AiDisplayItem = {
@@ -404,11 +414,11 @@ function translateSystemLine(text: string): string {
   }
   match = normalized.match(/^Loaded specs for\s+(.+?)\.?$/i);
   if (match) {
-    return `已读取规范 (${match[1]})`;
+    return `正在分析需求`;
   }
   match = normalized.match(/^Specs already loaded for\s+(.+?)$/i);
   if (match) {
-    return `规范已加载 (${match[1]})`;
+    return `正在分析需求`;
   }
   match = normalized.match(/^Invalid\s+(.+?)\s+payload\.?$/i);
   if (match) {
@@ -3085,16 +3095,6 @@ function App() {
    - 表格详细规则见 table specs；表单详细规则见 form specs（仅在需要时自动加载）。
 {"thought":"先摆组件本体","action":{"type":"create_node","payload":{"componentId":"figma-component","params":{"componentToken":"lib-navigation-header","width":1440}}}}
 
-计划队列示例:
-StepA:
-{"thought":"建计划","action":{"type":"set_plan","payload":{"rootGoal":"生成客户管理页","tasks":[{"taskId":"t_shell","title":"创建页面外壳","type":"create_shell","status":"pending"},{"taskId":"t_list","title":"下钻客户列表区","type":"expand_table_block","dependsOn":["t_shell"],"status":"pending"}]}}}
-StepB:
-{"thought":"取下一任务","action":{"type":"plan_next","payload":{}}}
-StepC:
-{"thought":"回写状态","action":{"type":"update_plan","payload":{"taskId":"t_shell","status":"done"}}}
-StepD:
-{"thought":"执行任务","action":{"type":"execute_task","payload":{"taskId":"t_shell"}}}
-
 重要:
 - ⚠️ **图表组件（饼图/环形图/折线图/柱状图/条形图/面积图）禁止使用 figma-component 创建，必须使用对应的 chart 组件 ID（chart-pie/chart-line/chart-bar/chart-toplist/chart-area）。**
 - ⚠️ **环形图是饼图（chart-pie）的变体，必须设置 "类型 Type":"环形图 DonutChart"。属性名必须完整包含英文后缀：分类数量 Item / 数值标注 Data Annotation / 总数值 Sum / 类型 Type。**
@@ -3105,13 +3105,11 @@ StepD:
 - 所有单元格值必须是字符串（StatusTag 列除外）。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
 - 人名禁止使用张三、李四等占位名，使用自然姓名如：林晓然、周思远、苏瑾瑶、赵桐宇、沈清和、韩冬梅、方远哲、叶舟行、卢皓宇、陈默涵。
 - 日期时间统一使用 2026 年，如 2026-03-15 14:30:00。
-- 多区块复杂任务必须先 set_plan，并通过 plan_next / update_plan 驱动执行。
-- 若系统已自动创建 plan，优先 plan_next 并按 taskId 执行动作。
-- 已知 task.type 尽量用 execute_task / run_task，让系统执行器落地。
-- 仅允许 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
-- 不要使用未实现 task.type（如 expand_header_block / expand_actions_block）。
-- 复杂结构优先用 apply_scene，一次提交完整 scene 或 patch。
-- 简单创建可用 create_node。
+- **禁止使用 set_plan / init_plan / update_plan / plan_next / execute_task / run_task**。不要创建页面外壳，不要走多区块工作流。
+- 直接使用 draw_table / create_node / apply_scene 等单步 action 完成任务。
+- 用户要求画表格就直接 draw_table，要求画表单就直接 draw_form，不要包裹在页面容器里。
+- **draw_table / draw_form 成功后立即 finish，禁止反复重画。** 不要尝试"匹配图片"、"修正内容"、"精准匹配"等二次绘制。一次 draw 就是最终结果。
+- apply_scene 失败后不要重试，直接 finish。
 - 每次只执行一个动作。
 - "thought" 只保留当前动作意图，越短越好。
 - 如果所有步骤都已完成，调用 { "type": "finish" }。
@@ -3201,20 +3199,20 @@ StepD:
    - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行样本数据，插件会自动循环复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。**rows 不能为空数组**，必须至少提供 2 行数据，且每个单元格都必须填入贴合业务场景的具体内容（人名、日期、状态词、金额等），不能是空字符串。如果 rows 为空，表格会全部显示占位符。
    - payload 使用紧凑结构即可，例如：
      {
-       "headers": ["姓名", "年龄", "城市"],
+       "headers": ["名称", "状态", "负责人", "创建时间", "操作"],
        "rowCount": 10,
        "rows": [
-         ["陈默", "28", "北京"],
-         ["林晓", "32", "上海"],
-         ["苏瑾", "25", "深圳"]
+         ["服务A", {"text":"运行中","statusTheme":"Success 成功"}, "林晓然", "2026-03-15 14:30:00", "编辑 删除"],
+         ["服务B", {"text":"已停止","statusTheme":"Stop 停止"}, "周思远", "2026-02-20 09:15:00", "编辑 删除"]
        ],
-       "columnTypes": ["Text", "Text", "Text"],
+       "columnTypes": ["Text", "StatusTag", "Avatar", "Text", "ActionText"],
        "tabs": ["全部", "进行中"],
        "filters": ["状态", "城市", "关键词"],
        "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" },
        "pagination": true,
        "rowHeight": { "header": 40, "body": 40 }
     }
+   - ⚠️ **rows 中每行必须是一个完整数组，包含与 headers 等长的元素。** 当单元格值是对象（如 StatusTag）时，对象必须在行数组内部，不要提前关闭 ]。正确：["A",{"text":"运行中"},  "B"]，错误：["A",{"text":"运行中"}],"B"。
    - 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 "rowAction": "multiple"。
    - 单选列请使用 "rowAction": "single"。
    - 不要把勾选列写进 headers/rows/columnTypes。
@@ -3284,13 +3282,13 @@ StepD:
     const inferredKind = inferredFromPrompt || inferredFromIds;
     if (inferredKind) {
       return isCachedRead
-        ? `[AI]: 已加载${normalizeSpecKind(inferredKind)}规范，跳过重复读取`
-        : `[AI]: ${toSeriesSpecText(inferredKind)}`;
+        ? `[AI]: 正在分析需求`
+        : `[AI]: 正在分析需求`;
     }
     if (ids.length === 0) {
-      return `[System]: 读取规范失败：未提供规范标识。`;
+      return `[System]: 正在分析需求`;
     }
-    return isCachedRead ? `[System]: 规范已加载，跳过重复读取。` : `[System]: 规范读取完成。`;
+    return `[AI]: 正在分析需求`;
   };
 
   const normalizeSpecIdsFromPayload = (payload: any) => {
@@ -3312,315 +3310,6 @@ StepD:
   const isObject = (value: unknown): value is Record<string, any> =>
     typeof value === 'object' && value !== null;
 
-  const toCellString = (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    return String(value);
-  };
-
-  const extractCellText = (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      return String(value);
-    }
-    if (isObject(value)) {
-      const candidates = ['text', 'tagText', 'statusText', 'label', 'name', 'value', 'title', 'status', 'content'];
-      for (const key of candidates) {
-        const v = (value as any)[key];
-        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-          return String(v);
-        }
-      }
-      return '';
-    }
-    return String(value);
-  };
-
-  const normalizeHeaderToken = (header: unknown): string =>
-    String(header || '').trim().toLowerCase().replace(/[\s_]+/g, '');
-
-  const headerIncludes = (header: unknown, tokens: string[]): boolean => {
-    const normalized = normalizeHeaderToken(header);
-    return tokens.some((token) => normalized.includes(token));
-  };
-
-  const columnHasActionText = (values: unknown[]): boolean => {
-    return values.some((value) => {
-      const text = extractCellText(value);
-      if (!text) return false;
-      const normalized = String(text).trim().toLowerCase();
-      return (
-        normalized.includes('编辑') ||
-        normalized.includes('删除') ||
-        normalized.includes('查看') ||
-        normalized.includes('详情') ||
-        normalized.includes('更多') ||
-        normalized.includes('配置') ||
-        normalized.includes('设置') ||
-        normalized.includes('启用') ||
-        normalized.includes('禁用') ||
-        normalized.includes('重置') ||
-        normalized.includes('下载') ||
-        normalized.includes('导出') ||
-        normalized.includes('复制') ||
-        normalized.includes('更新') ||
-        normalized.includes('保存') ||
-        normalized.includes('发布') ||
-        normalized.includes('撤回') ||
-        normalized.includes('审核') ||
-        normalized.includes('通过') ||
-        normalized.includes('驳回') ||
-        normalized.includes('拒绝') ||
-        normalized.includes('分配') ||
-        normalized.includes('授权') ||
-        normalized.includes('解绑') ||
-        normalized.includes('绑定') ||
-        normalized.includes('打开') ||
-        normalized.includes('关闭') ||
-        normalized.includes('暂停') ||
-        normalized.includes('恢复') ||
-        normalized.includes('edit') ||
-        normalized.includes('delete') ||
-        normalized.includes('view') ||
-        normalized.includes('detail') ||
-        normalized.includes('more') ||
-        normalized.includes('config') ||
-        normalized.includes('setting') ||
-        normalized.includes('enable') ||
-        normalized.includes('disable') ||
-        normalized.includes('reset') ||
-        normalized.includes('download') ||
-        normalized.includes('export') ||
-        normalized.includes('copy') ||
-        normalized.includes('update') ||
-        normalized.includes('save') ||
-        normalized.includes('publish') ||
-        normalized.includes('revoke') ||
-        normalized.includes('approve') ||
-        normalized.includes('reject') ||
-        normalized.includes('assign') ||
-        normalized.includes('authorize') ||
-        normalized.includes('unbind') ||
-        normalized.includes('bind') ||
-        normalized.includes('open') ||
-        normalized.includes('close') ||
-        normalized.includes('pause') ||
-        normalized.includes('resume') ||
-        normalized.includes('action') ||
-        normalized.includes('operate')
-      );
-    });
-  };
-
-  const columnHasTagObject = (values: unknown[]): boolean => {
-    return values.some((value) => {
-      if (!isObject(value)) return false;
-      return Object.keys(value as any).some((key) => /tag|status|badge|state|level/i.test(key));
-    });
-  };
-
-  const columnHasStatusText = (values: unknown[]): boolean => {
-    return values.some((value) => {
-      const text = extractCellText(value);
-      if (!text) return false;
-      const normalized = String(text).trim().toLowerCase();
-      return (
-        normalized.includes('成功') ||
-        normalized.includes('失败') ||
-        normalized.includes('告警') ||
-        normalized.includes('启用') ||
-        normalized.includes('禁用') ||
-        normalized.includes('停止') ||
-        normalized.includes('处理中') ||
-        normalized.includes('等待') ||
-        normalized.includes('success') ||
-        normalized.includes('error') ||
-        normalized.includes('warning') ||
-        normalized.includes('pending') ||
-        normalized.includes('processing') ||
-        normalized.includes('disabled') ||
-        normalized.includes('enabled')
-      );
-    });
-  };
-
-  const inferColumnType = (header: string, values: unknown[]): string => {
-    const isActionHeader = headerIncludes(header, ['操作', 'action', 'actions', 'operation']);
-    if (isActionHeader || columnHasActionText(values)) return 'ActionText';
-
-    const isUserHeader = headerIncludes(header, ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee']);
-    if (isUserHeader) return 'Avatar';
-
-    const isTagHeader = headerIncludes(header, ['状态', '标签', '类型', '分类', '品类', '级别', 'status', 'state', 'tag', 'type', 'badge']);
-    const hasTagSignal = isTagHeader || columnHasTagObject(values) || columnHasStatusText(values);
-    if (hasTagSignal) {
-      const kind = resolveTagColumnKind('Tag', header);
-      return kind === 'type' ? 'TypeTag' : 'StatusTag';
-    }
-
-    return 'Text';
-  };
-
-  const inferColumnTypesFromRows = (
-    headers: string[],
-    rows: unknown[][],
-    currentTypes?: string[]
-  ): string[] => {
-    const normalizedTypes = Array.isArray(currentTypes)
-      ? currentTypes.map((t) => String(t || '').trim())
-      : [];
-    const hasExplicitNonText = normalizedTypes.some((t) => t && t.toLowerCase() !== 'text');
-    const allTextOrEmpty = normalizedTypes.every((t) => !t || t.toLowerCase() === 'text');
-    const shouldInferAll = !hasExplicitNonText && allTextOrEmpty;
-
-    return headers.map((header, index) => {
-      const explicit = normalizedTypes[index];
-      if (explicit && explicit.toLowerCase() !== 'text') return explicit;
-      if (!shouldInferAll && explicit && explicit.toLowerCase() === 'text') return explicit;
-      const columnValues = rows.map((row) => row?.[index]);
-      const inferred = inferColumnType(header, columnValues);
-      return inferred || explicit || 'Text';
-    });
-  };
-
-  type TagColumnKind = 'status' | 'type';
-
-  const resolveTagColumnKind = (columnType: unknown, headerText: string): TagColumnKind => {
-    const normalized = String(columnType || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[_\\s]+/g, '-');
-    if (normalized.includes('type-tag') || normalized.includes('typetag')) return 'type';
-    if (normalized.includes('status-tag') || normalized.includes('statustag')) return 'status';
-    if (normalized.includes('status') || normalized.includes('state') || normalized.includes('badge')) return 'status';
-    const header = String(headerText || '').trim();
-    if (header.includes('类型') || header.includes('分类') || header.includes('品类')) return 'type';
-    return 'status';
-  };
-
-  const extractTagCellPayload = (
-    value: unknown,
-    fallbackKind: TagColumnKind
-  ): {
-    text: string;
-    kind: TagColumnKind;
-    componentToken?: string;
-    statusTheme?: string;
-    statusType?: string;
-    statusState?: string;
-    tagType?: string;
-    tagColor?: string;
-  } => {
-    if (!isObject(value)) {
-      const text = extractCellText(value);
-      const statusTheme = fallbackKind === 'status' ? resolveStatusTagThemeFromSemantic(text) || undefined : undefined;
-      return {
-        text,
-        kind: fallbackKind,
-        ...(statusTheme ? { statusTheme } : {})
-      };
-    }
-
-    const obj = value as any;
-    const text = extractCellText(obj);
-
-    const rawKind =
-      obj.tagKind ??
-      obj.kind ??
-      obj.tagFamily ??
-      (typeof obj.tagType === 'string' && obj.tagType.includes('StatusTag') ? 'status' : undefined);
-    const kindNormalized = String(rawKind || '').trim().toLowerCase();
-    const kind: TagColumnKind =
-      kindNormalized.includes('type')
-        ? 'type'
-        : kindNormalized.includes('status')
-          ? 'status'
-          : obj.statusTheme !== undefined || obj.statusColor !== undefined || obj.statusText !== undefined
-            ? 'status'
-            : fallbackKind;
-
-    const componentToken = typeof obj.componentToken === 'string' && obj.componentToken.trim()
-      ? obj.componentToken.trim()
-      : undefined;
-
-    const tagColorRaw = obj.tagColor ?? obj.color ?? obj.statusColor;
-    const tagColor = typeof tagColorRaw === 'string' && tagColorRaw.trim() ? tagColorRaw.trim() : undefined;
-
-    const statusThemeRaw = obj.statusTheme ?? obj.theme ?? obj.tagTheme;
-    const textTheme = resolveStatusTagThemeFromSemantic(text) || undefined;
-    const statusTheme =
-      textTheme ||
-      normalizeStatusTagThemeInput(statusThemeRaw) ||
-      resolveStatusTagThemeFromSemantic(tagColorRaw) ||
-      undefined;
-
-    const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
-    const statusType =
-      typeof statusTypeRaw === 'string' && statusTypeRaw.trim()
-        ? statusTypeRaw.trim()
-        : undefined;
-
-    const statusStateRaw = obj.statusState ?? obj.state;
-    const statusState =
-      typeof statusStateRaw === 'string' && statusStateRaw.trim()
-        ? statusStateRaw.trim()
-        : undefined;
-
-    const tagTypeRaw = obj.tagType ?? obj.typeStyle ?? obj.style ?? obj.variant;
-    const tagType =
-      typeof tagTypeRaw === 'string' && tagTypeRaw.trim()
-        ? tagTypeRaw.trim()
-        : undefined;
-
-    return {
-      text,
-      kind,
-      componentToken,
-      statusTheme,
-      statusType,
-      statusState,
-      tagType,
-      tagColor
-    };
-  };
-
-  const tableTypeToComponentId = (type?: string): string => {
-    const normalized = (type || 'Text').toLowerCase();
-    if (
-      normalized.includes('actionicon') ||
-      normalized.includes('action-icon') ||
-      normalized.includes('action_icon') ||
-      normalized.includes('操作图标')
-    ) {
-      return 'table-cell-action-icon';
-    }
-    if (
-      normalized.includes('actiontext') ||
-      normalized.includes('action-text') ||
-      normalized.includes('action_text') ||
-      normalized.includes('操作文字') ||
-      normalized.includes('operation') ||
-      normalized.includes('action') ||
-      normalized.includes('操作')
-    ) {
-      return 'table-cell-action-text';
-    }
-    if (normalized.includes('avatar') || normalized.includes('user') || normalized.includes('owner')) {
-      return 'table-cell-avatar';
-    }
-    if (normalized.includes('input') || normalized.includes('edit')) {
-      return 'table-cell-input';
-    }
-    if (
-      normalized.includes('tag') ||
-      normalized.includes('state') ||
-      normalized.includes('badge') ||
-      normalized.includes('status')
-    ) {
-      return 'table-cell-tag';
-    }
-    return 'table-cell';
-  };
-
   const parseAgentActionJson = (rawContent: string): any => {
     let cleanContent = String(rawContent || '').trim();
 
@@ -3629,6 +3318,19 @@ StepD:
       cleanContent = jsonBlockMatch[1];
     } else {
       cleanContent = cleanContent.replace(/```json\n?|\n?```/g, '').trim();
+    }
+
+    // 修复 LLM 常见的行内提前闭合错误：
+    // 错误: "rows":[["A",{"text":"ok"}],"B","C"],["D",...  （] 在对象后提前闭合）
+    // 正确: "rows":[["A",{"text":"ok"},"B","C"],["D",...
+    // 策略：找到 "rows" 区段，把 }]," 替换为 },"（移除多余的 ]）
+    const rowsStart = cleanContent.indexOf('"rows"');
+    if (rowsStart >= 0) {
+      const before = cleanContent.slice(0, rowsStart);
+      let rowsPart = cleanContent.slice(rowsStart);
+      // 只在 rows 值区域内修复：}] 后面紧跟逗号+引号 说明行数组被提前关闭
+      rowsPart = rowsPart.replace(/(\})\s*\]\s*,\s*"/g, '},"');
+      cleanContent = before + rowsPart;
     }
 
     const repairJsonDelimiters = (candidate: string): string => {
@@ -3723,87 +3425,6 @@ StepD:
     return 'Text';
   };
 
-  const normalizeRowsByHeaders = (
-    rawRows: unknown,
-    headers: string[],
-    columnKeys?: string[]
-  ): unknown[][] => {
-    if (!Array.isArray(rawRows)) return [];
-
-    const colCount = headers.length;
-    let rows = rawRows as any[];
-
-    if (colCount > 1 && rows.length > colCount) {
-      const hasArrayElements = rows.some((r) => Array.isArray(r));
-      const hasScalarElements = rows.some((r) => !Array.isArray(r) && !isObject(r));
-      if (hasArrayElements && hasScalarElements) {
-        const reassembled: any[][] = [];
-        let cursor = 0;
-        while (cursor < rows.length) {
-          const head = rows[cursor];
-          if (Array.isArray(head)) {
-            if (head.length >= colCount) {
-              reassembled.push(head);
-              cursor += 1;
-            } else {
-              const merged: any[] = [...head];
-              cursor += 1;
-              while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
-                merged.push(rows[cursor]);
-                cursor += 1;
-              }
-              reassembled.push(merged);
-            }
-          } else {
-            const merged: any[] = [];
-            while (merged.length < colCount && cursor < rows.length && !Array.isArray(rows[cursor])) {
-              merged.push(rows[cursor]);
-              cursor += 1;
-            }
-            reassembled.push(merged);
-          }
-        }
-        if (reassembled.length > 0 && reassembled.every((r) => r.length >= colCount - 1)) {
-          rows = reassembled;
-        }
-      }
-    }
-
-    const headerNorm = headers.map((h) => String(h || '').trim().toLowerCase().replace(/[\s_]+/g, ''));
-
-    return rows.map((row) => {
-      if (Array.isArray(row)) {
-        return headers.map((_, i) => row[i]);
-      }
-      if (isObject(row)) {
-        const result = headers.map((headerTitle, i) => {
-          if (columnKeys && columnKeys[i]) {
-            const val = row[columnKeys[i]];
-            if (val !== undefined) return val;
-          }
-          if (row[headerTitle] !== undefined) return row[headerTitle];
-          const norm = headerNorm[i];
-          for (const k of Object.keys(row)) {
-            if (k.trim().toLowerCase().replace(/[\s_]+/g, '') === norm) return row[k];
-          }
-          return undefined;
-        });
-        const matched = result.filter((v) => v !== undefined).length;
-        if (matched === 0) {
-          const vals = Object.values(row);
-          return headers.map((_, i) => vals[i]);
-        }
-        return result;
-      }
-      return headers.map(() => row);
-    });
-  };
-
-  const getPositiveNumber = (value: unknown): number | null => {
-    const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-
   const buildDefaultTablePayload = () => ({
     headers: ['姓名', '状态', '时间'],
     rows: [
@@ -3838,244 +3459,6 @@ StepD:
     return childCount;
   };
 
-  const buildTableComponentFromPayload = (
-    payload: any,
-    options?: { minRowCount?: number }
-  ): any | null => {
-    const source = isObject(payload?.schema) ? payload.schema : payload;
-    if (!isObject(source)) return null;
-
-    const rawColumns = Array.isArray(source.columns) ? source.columns : null;
-    const rawHeaders =
-      Array.isArray(source.headers) ? source.headers :
-      (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
-
-    let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
-
-    // Extract column keys (key/dataIndex) for object-row lookup
-    const columnKeys: string[] = rawColumns
-      ? rawColumns.map((c: any) => String(c?.dataIndex || c?.key || ''))
-      : [];
-    const rawRowSource = source.rows ?? source.dataSource ?? source.data ?? [];
-    let rows = normalizeRowsByHeaders(rawRowSource, headers, columnKeys);
-
-    if ((!headers || headers.length === 0) && rows.length > 0) {
-      const first = rows[0];
-      if (Array.isArray(first)) {
-        headers = first.map((_, i) => `列${i + 1}`);
-      }
-    }
-
-    if (!headers || headers.length === 0) return null;
-    // Support explicit rowCount from payload (LLM can output fewer rows + rowCount to save tokens).
-    const explicitRowCount = getPositiveNumber(source.rowCount);
-    const minRowCount = typeof options?.minRowCount === 'number' ? options.minRowCount : 10;
-    const targetRowCount = Math.max(
-      explicitRowCount ?? rows.length,
-      rows.length,
-      minRowCount > 0 ? minRowCount : 0
-    );
-    if (rows.length < targetRowCount) {
-      if (rows.length === 0) {
-        rows = Array.from({ length: targetRowCount }).map(() => headers.map(() => ''));
-      } else {
-        // Keep original rows intact, fill remaining slots by randomly picking from originals.
-        const originalRows = rows.slice();
-        const filled: any[][] = [...originalRows];
-        for (let i = originalRows.length; i < targetRowCount; i += 1) {
-          const src = originalRows[Math.floor(Math.random() * originalRows.length)];
-          filled.push(Array.isArray(src) ? [...src] : headers.map(() => ''));
-        }
-        rows = filled;
-      }
-    }
-
-    const rowHeightSource = isObject(source.rowHeight) ? source.rowHeight : null;
-    const headerHeight =
-      getPositiveNumber(source.headerHeight) ??
-      getPositiveNumber(source.rowHeightHeader) ??
-      getPositiveNumber((rowHeightSource as any)?.header) ??
-      40;
-    const bodyHeight =
-      getPositiveNumber(source.bodyHeight) ??
-      getPositiveNumber(source.rowHeightBody) ??
-      (!rowHeightSource ? getPositiveNumber(source.rowHeight) : null) ??
-      getPositiveNumber((rowHeightSource as any)?.body) ??
-      40;
-
-    const columnTypesBase: string[] =
-      Array.isArray(source.columnTypes) ? source.columnTypes.map((t: any) => String(t)) :
-      (rawColumns ? rawColumns.map((c: any) => String(c?.type || 'Text')) : headers.map(() => 'Text'));
-    const columnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase);
-    const columnWidths: number[] =
-      Array.isArray(source.columnWidths) ? source.columnWidths.map((w: any) => Number(w)) :
-      (rawColumns ? rawColumns.map((c: any) => Number(c?.width || 0)) : headers.map(() => 0));
-
-    const hasPagination = source.pagination === undefined ? true : Boolean(source.pagination);
-    const hasFilter = Boolean(source.filters);
-    const hasTabs = Boolean(source.hasTabs || source.tabs);
-    const hasButtonGroup = Boolean(source.hasButtonGroup || source.buttonGroup);
-    const buttonGroup = isObject(source.buttonGroup) ? source.buttonGroup : null;
-    const primaryButtonText =
-      source.primaryButtonText ?? buttonGroup?.primaryText ?? buttonGroup?.primary ?? buttonGroup?.primaryLabel;
-    const secondaryButtonText =
-      source.secondaryButtonText ?? buttonGroup?.secondaryText ?? buttonGroup?.secondary ?? buttonGroup?.secondaryLabel;
-    const filterTexts = Array.isArray(source.filters)
-      ? source.filters.join(',')
-      : (typeof source.filters === 'string' ? source.filters : '');
-    const rowActionRaw =
-      source.rowAction ??
-      source.rowSelection ??
-      source.selection ??
-      source.selectionMode;
-    const rowActionText =
-      rowActionRaw === undefined || rowActionRaw === null ? '' : String(rowActionRaw).trim();
-    const rowAction = rowActionText ? rowActionText : undefined;
-
-    const children = headers.map((header, colIndex) => {
-      const type = columnTypes[colIndex] || 'Text';
-      const cellComponentId = tableTypeToComponentId(type);
-      const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
-      const widthRaw = Number(columnWidths[colIndex]);
-      const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;
-      const width = hasWidth ? widthRaw : undefined;
-      const tagColumnKind: TagColumnKind | null =
-        cellComponentId === 'table-cell-tag' ? resolveTagColumnKind(type, header) : null;
-      const headerText = isActionColumn ? '操作' : header;
-
-      const columnChildren: any[] = [
-        {
-          componentId: 'table-header-cell',
-          params: {
-            text: headerText,
-            ...(hasWidth && !isActionColumn ? { width } : {}),
-            height: headerHeight
-          }
-        }
-      ];
-
-      rows.forEach((row, rowIdx) => {
-        const rawValue = row[colIndex];
-        const value = extractCellText(rawValue);
-        if (cellComponentId === 'table-cell-tag') {
-          const columnKind = tagColumnKind || 'status';
-          const tagPayload = extractTagCellPayload(rawValue, columnKind);
-          const kind = tagPayload.kind || columnKind;
-          const isStatus = kind === 'status';
-          const fallbackToken = isStatus ? 'lib-data-display-status-tag' : 'lib-data-display-tag';
-          const componentToken = tagPayload.componentToken || fallbackToken;
-          const tagText = tagPayload.text || value || 'Tag';
-          const baseParams: any = {
-            height: bodyHeight,
-            componentToken,
-            tagKind: kind,
-            tagText,
-            text: tagText,
-            tagColor: tagPayload.tagColor,
-            ...(hasWidth && !isActionColumn ? { width } : {})
-          };
-
-          if (isStatus) {
-            baseParams.statusType = tagPayload.statusType || 'L2 二级标签';
-            baseParams.statusTheme = tagPayload.statusTheme || 'Success 成功';
-            if (tagPayload.statusState) baseParams.statusState = tagPayload.statusState;
-          } else {
-            baseParams.tagType = tagPayload.tagType || 'Outline 线型标签';
-          }
-
-          columnChildren.push({
-            componentId: 'table-cell-tag',
-            params: baseParams
-          });
-          return;
-        }
-        if (cellComponentId === 'table-cell-avatar') {
-          columnChildren.push({
-            componentId: 'table-cell-avatar',
-            params: {
-              height: bodyHeight,
-              text: value || 'User',
-              ...(hasWidth && !isActionColumn ? { width } : {})
-            }
-          });
-          return;
-        }
-        if (cellComponentId === 'table-cell-input') {
-          columnChildren.push({
-            componentId: 'table-cell-input',
-            params: {
-              height: bodyHeight,
-              value,
-              ...(hasWidth && !isActionColumn ? { width } : {})
-            }
-          });
-          return;
-        }
-        if (cellComponentId === 'table-cell-action-text') {
-          const actionText = (value || '编辑 删除 …').replace(/\s*[|｜／\/]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
-          columnChildren.push({
-            componentId: 'table-cell-action-text',
-            params: {
-              height: bodyHeight,
-              text: actionText
-            }
-          });
-          return;
-        }
-        if (cellComponentId === 'table-cell-action-icon') {
-          columnChildren.push({
-            componentId: 'table-cell-action-icon',
-            params: {
-              height: bodyHeight,
-              text: value
-            }
-          });
-          return;
-        }
-        columnChildren.push({
-          componentId: 'table-cell',
-          params: {
-            height: bodyHeight,
-            text: value,
-            ...(hasWidth && !isActionColumn ? { width } : {})
-          }
-        });
-      });
-
-      return {
-        componentId: 'table-column',
-        params: {
-          headerText,
-          rowCount: rows.length,
-          ...(hasWidth && !isActionColumn ? { width } : {}),
-          ...(isActionColumn ? { columnWidthMode: 'HUG' } : {}),
-          headerHeight,
-          bodyHeight
-        },
-        children: columnChildren
-      };
-    });
-
-    return {
-      componentId: 'table',
-      params: {
-        columnCount: headers.length,
-        rowCount: rows.length,
-        headerHeight,
-        bodyHeight,
-        hasPagination,
-        hasFilter,
-        hasButtonGroup,
-        hasTabs,
-        filterTexts,
-        primaryButtonText,
-        secondaryButtonText,
-        ...(rowAction ? { rowAction } : {})
-      },
-      children
-    };
-  };
-
   const buildTableRowCellsFromPayload = (
     headers: string[],
     row: any[],
@@ -4083,7 +3466,7 @@ StepD:
     columnWidths: number[],
     rowHeight?: { header?: number; body?: number }
   ): any[] => {
-    const rowComponent = buildTableComponentFromPayload(
+    const rowComponent = buildTableComponentFromPayloadSkill(
       {
         headers,
         rows: [row],
@@ -4101,7 +3484,7 @@ StepD:
     payload: any,
     tableId: string
   ): { root: any; columnNodeIds: string[] } | null => {
-    const tableComponent = buildTableComponentFromPayload(payload, { minRowCount: 1 });
+    const tableComponent = buildTableComponentFromPayloadSkill(payload, { minRowCount: 1 });
     if (!tableComponent || !Array.isArray(tableComponent.children)) return null;
     const columnNodeIds: string[] = [];
     const columns = tableComponent.children.map((col: any, colIndex: number) => {
@@ -4303,7 +3686,7 @@ StepD:
       : isObject(source.table)
         ? source.table
         : body;
-    const tableComponent = buildTableComponentFromPayload(tablePayload);
+    const tableComponent = buildTableComponentFromPayloadSkill(tablePayload);
     if (!tableComponent) return null;
 
     const blockChildren: any[] = [];
@@ -5514,8 +4897,8 @@ StepD:
         isActionColumn
           ? '操作'
           : (
-              toCellString(colProps.headerText || colProps.header || colProps.title) ||
-              toCellString(headerNodeProps.text) ||
+              extractCellText(colProps.headerText || colProps.header || colProps.title) ||
+              extractCellText(headerNodeProps.text) ||
               `列${colIndex + 1}`
             );
       headers.push(headerText);
@@ -5530,12 +4913,12 @@ StepD:
             ? node.params
             : {};
         if (node.componentId === 'table-cell-tag') {
-          return toCellString(nodeProps.tagText ?? nodeProps.text);
+          return extractCellText(nodeProps.tagText ?? nodeProps.text);
         }
         if (node.componentId === 'table-cell-input') {
-          return toCellString(nodeProps.value ?? nodeProps.text);
+          return extractCellText(nodeProps.value ?? nodeProps.text);
         }
-        return toCellString(nodeProps.text ?? nodeProps.value);
+        return extractCellText(nodeProps.text ?? nodeProps.value);
       });
 
       columnsData.push(values);
@@ -5562,7 +4945,7 @@ StepD:
 
     // legacy create schema for table
     if (String(payload.intent || '').toLowerCase() === 'create' && isObject(payload.schema)) {
-      const tableTree = buildTableComponentFromPayload(payload);
+      const tableTree = buildTableComponentFromPayloadSkill(payload);
       if (!tableTree) return null;
       return {
         version: '1.0',
@@ -5591,6 +4974,15 @@ StepD:
       ...payload,
       version: payload.version || '1.0'
     };
+
+    // 自动推断 intent：有 patch.operations → edit，有 scene.root → create
+    if (!withVersion.intent) {
+      if (isObject(withVersion.patch) && Array.isArray((withVersion.patch as any).operations)) {
+        withVersion.intent = 'edit';
+      } else if (isObject(withVersion.scene) && isObject((withVersion.scene as any).root)) {
+        withVersion.intent = 'create';
+      }
+    }
 
     let nodeCounter = 0;
     const normalizeNode = (node: any, prefix: string): any => {
@@ -6897,12 +6289,12 @@ StepD:
   const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
-    30000
+    60000
   );
   const LLM_STREAM_CHUNK_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
-    30000
+    60000
   );
   const UI_SHOW_ACTION_JSON = readBooleanConfig(
     '__FIGMA_AGENT_SHOW_ACTION_JSON__',
@@ -7123,7 +6515,9 @@ StepD:
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
         const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         const maxRetries = 10;
+        const maxTimeoutRetries = 2;
         let attempt = 0;
+        let timeoutRetries = 0;
 
         while (attempt < maxRetries) {
             try {
@@ -7156,14 +6550,42 @@ StepD:
                     if (abortController.signal.aborted) {
                         throw new DOMException('Aborted', 'AbortError');
                     }
+                    if (fetchTimedOut && timeoutRetries < maxTimeoutRetries) {
+                        timeoutRetries++;
+                        console.log(`Fetch timeout, auto-retry ${timeoutRetries}/${maxTimeoutRetries}...`);
+                        setLlmRetryState({
+                            attempt: timeoutRetries,
+                            maxRetries: maxTimeoutRetries,
+                            waitMs: 1000,
+                            message: '连接超时，自动重试中'
+                        });
+                        await sleep(1000);
+                        continue;
+                    }
                     if (fetchTimedOut) {
                         throw new Error(`LLM 请求超时：${Math.ceil(LLM_FETCH_TIMEOUT_MS / 1000)} 秒内未连通代理服务`);
+                    }
+                    // 网络错误也自动重试
+                    if (timeoutRetries < maxTimeoutRetries) {
+                        timeoutRetries++;
+                        console.log(`Network error, auto-retry ${timeoutRetries}/${maxTimeoutRetries}:`, error);
+                        setLlmRetryState({
+                            attempt: timeoutRetries,
+                            maxRetries: maxTimeoutRetries,
+                            waitMs: 2000,
+                            message: '网络异常，自动重试中'
+                        });
+                        await sleep(2000);
+                        continue;
                     }
                     throw error;
                 } finally {
                     window.clearTimeout(fetchTimeoutId);
                     abortController.signal.removeEventListener('abort', forwardAbort);
                 }
+                // fetch 成功拿到响应头后立即取消超时计时器，避免中断正在读取的流
+                window.clearTimeout(fetchTimeoutId);
+                setLlmRetryState(null);
 
                 if (res.status === 429) {
                     // Try to parse error body for more info
@@ -7280,16 +6702,27 @@ StepD:
                 if (abortController.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
                     throw error;
                 }
-                if (
-                    error instanceof Error &&
-                    (
-                        error.message.includes('LLM 请求超时') ||
-                        error.message.includes('LLM 响应超时') ||
-                        error.message.includes('Failed to fetch') ||
-                        error.message.includes('NetworkError')
-                    )
-                ) {
-                    throw new Error(`模型请求失败：${error.message}。请检查代理服务或网络连通性。`);
+                const isTimeout = error instanceof Error && (
+                    error.message.includes('LLM 请求超时') ||
+                    error.message.includes('LLM 响应超时') ||
+                    error.message.includes('Failed to fetch') ||
+                    error.message.includes('NetworkError')
+                );
+                if (isTimeout && timeoutRetries < maxTimeoutRetries) {
+                    timeoutRetries++;
+                    console.log(`Stream/network error, auto-retry ${timeoutRetries}/${maxTimeoutRetries}:`, error);
+                    setLlmRetryState({
+                        attempt: timeoutRetries,
+                        maxRetries: maxTimeoutRetries,
+                        waitMs: 2000,
+                        message: '请求异常，自动重试中'
+                    });
+                    await sleep(2000);
+                    attempt++;
+                    continue;
+                }
+                if (isTimeout) {
+                    throw new Error(`模型请求失败：${(error as Error).message}。请检查代理服务或网络连通性。`);
                 }
                 if (attempt === maxRetries - 1) throw error;
                 attempt++;
@@ -7400,30 +6833,9 @@ StepD:
      }
 7. 当你只需要创建一个简单节点时，也可以调用 create_node(componentId, params, parentId?, children?)。
 8. 只有当必须依赖父节点 ID 且无法一次性构建时，才分步执行。
-9. 当任务包含多区块下钻（如：页面 + 表格区 + 图表区 + 表单区），必须先建立外部计划队列：
-   - set_plan(payload): 初始化任务清单（pending/in_progress/done/failed）。
-   - plan_next(payload): 让系统返回下一个可执行任务（考虑 dependsOn）。
-   - update_plan(payload): 更新任务状态，可追加新下钻任务。
-     - 状态更新：payload.updates=[{taskId,status,notes?}] 或 payload.{taskId,status,notes?}
-     - 追加任务：payload.addTasks=[...]（兼容 appendTasks / tasks）
-   - 执行中的动作尽量带 taskId（action.taskId 或 action.payload.taskId），便于系统自动回写状态。
-10. 不要依赖你自己的记忆来追踪待办，下钻待办以系统计划队列为准。
-11. 系统在复杂请求时可能自动初始化计划队列（auto plan）。你应基于最新 PlanState 执行，而不是重新创建冲突计划。
-12. 对于已知任务类型，优先调用 execute_task(payload)（或 run_task）让系统按 task.type 执行，减少自由 JSON 拼装错误。
-    - 仅支持 task.type: create_shell / expand_table_block / expand_form_block / expand_chart_block / expand_tabs_block。
-    - 禁止使用未实现类型（如 expand_header_block / expand_actions_block），否则会直接失败。
-    - 若任务已完成，系统会默认跳过；如需重跑请传 payload.force=true。
-    - **表格+筛选器/分页器请求（单区块）不要 set_plan**，直接 draw_tabl 并带上 filters/pagination 参数。
-    - 建议统一 payload 形态：payload.block.container/header/body/footer（旧字段继续兼容）。
-    - expand_table_block 支持 header.tabs/actions + body.filters.items + body.table + footer.pagination。
-    - expand_chart_block 支持 header.tabs/actions + body.charts[] + footer.notes。
-      body.charts[] 每个 item 结构：{ "componentId": "chart-pie", "props": { "类型 Type": "环形图 DonutChart", "分类数量 Item": "5", "数值标注 Data Annotation": "On" } }
-      componentId 必须是注册的 chart 组件 ID（chart-toplist / chart-pie / chart-line / chart-bar / chart-area），props 属性名必须与 Figma variant propertyName 完全一致（含空格和中英文混排）。
-      示例（折线图）：{ "componentId": "chart-line", "props": { "线数量": "3", "类型 Type": "默认 default", "Show Legend": true } }
-      示例（柱状图）：{ "componentId": "chart-bar", "props": { "数量 #of lines": "3", "类型 type": "基础/分组柱 default" } }
-      ⚠️ 注意：body.charts[].props 中的属性名必须从 registry params 或 figmaPropertySnapshot 中取，不要自造属性名。
-    - expand_form_block 支持 body.rows[][] / body.fields[] + footer.actions。
-    - expand_tabs_block 支持 body.tabs[] + header.actions + footer.actions/notes。
+9. **禁止使用 set_plan / init_plan / update_plan / plan_next / execute_task / run_task。** 直接用 draw_table / draw_form / create_node 完成。
+10. **你无法看到画布结果。** draw_table / draw_form / create_node 成功后立即 finish。禁止"重新绘制"、"修正匹配"、"精准匹配图片"等重复操作——你看不到画布，无法判断是否匹配。
+11. apply_scene 失败后不要重试，直接 finish。
 13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
    - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
    - 若消息里出现 "表格结构(JSON)"，优先使用其中的 headers/rows 生成表格，不要忽略已上传表格。
@@ -7442,7 +6854,7 @@ StepD:
 
 表格专用示例（固定链路）:
 Step1:
-{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["姓名","年龄","城市"],"rows":[["陈默","28","北京"],["林晓","32","上海"]],"columnTypes":["Text","Text","Text"]}}}
+{"thought":"画表格","action":{"type":"draw_tabl","payload":{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}}}
 Step2:
 {"thought":"结束","action":{"type":"finish"}}
 
@@ -7512,12 +6924,37 @@ StepB:\n`;
                 if (displayDelta) {
                     currentStreamedResponse += displayDelta;
                 }
-                // Always show the latest streamed content (including incomplete lines in buffer)
+                // 实时提取 thought 让用户尽早看到模型意图，并显示数据生成进度
                 const liveText = currentStreamedResponse + streamLineBuffer;
                 if (liveText) {
+                    let streamDisplay = `[Streaming]: ${liveText}`;
+                    const thoughtMatch = liveText.match(/"thought"\s*:\s*"([^"]+)"/);
+                    if (thoughtMatch) {
+                        const thoughtLine = `[AI]: ${thoughtMatch[1]}`;
+                        // 检测是否在生成表格/表单数据，给出进度提示
+                        const actionTypeMatch = liveText.match(/"type"\s*:\s*"(draw_table|draw_form|create_node)"/);
+                        // 只统计 "rows" 数组中的行数（到 "columnTypes" 或结尾为止）
+                        const rowsIdx = liveText.indexOf('"rows"');
+                        let rowSection = rowsIdx >= 0 ? liveText.slice(rowsIdx) : '';
+                        // 截掉 rows 之后的 columnTypes 等字段，避免多算
+                        const colTypesIdx = rowSection.indexOf('"columnTypes"');
+                        if (colTypesIdx > 0) rowSection = rowSection.slice(0, colTypesIdx);
+                        const rowMatches = rowSection.match(/\[\s*"/g);
+                        // 减 1 是因为 "rows":[ 本身的外层 [ 不算
+                        const rowCount = rowMatches ? Math.max(rowMatches.length - 1, 0) : 0;
+                        let progressHint = '';
+                        if (actionTypeMatch) {
+                            const actionLabel = actionTypeMatch[1] === 'draw_table' ? '表格'
+                              : actionTypeMatch[1] === 'draw_form' ? '表单' : '组件';
+                            progressHint = rowCount > 2
+                              ? `\n[System]: 正在生成${actionLabel}数据（${rowCount} 行）…`
+                              : `\n[System]: 正在生成${actionLabel}数据…`;
+                        }
+                        streamDisplay = thoughtLine + progressHint + `\n\n[Streaming]: ${liveText}`;
+                    }
                     setResponse(
                       accumulatedLog + (accumulatedLog ? '\n\n' : '') +
-                      `[Streaming]: ${liveText}`
+                      streamDisplay
                     );
                 }
             });
@@ -8127,7 +7564,7 @@ StepB:\n`;
                     : (isCreateIntent && isObject(rawEnvelope?.schema) ? rawEnvelope : null);
 
                 if (tablePayloadForDirectDraw) {
-                    const tableComponent = buildTableComponentFromPayload(tablePayloadForDirectDraw);
+                    const tableComponent = buildTableComponentFromPayloadSkill(tablePayloadForDirectDraw);
                     if (tableComponent) {
                         try {
                             const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
@@ -8249,8 +7686,8 @@ StepB:\n`;
                 );
                 const tablePayload = payload?.table ?? payload;
                 const tableComponent =
-                    buildTableComponentFromPayload(tablePayload, { minRowCount: 10 }) ||
-                    buildTableComponentFromPayload(buildDefaultTablePayload(), { minRowCount: 10 });
+                    buildTableComponentFromPayloadSkill(tablePayload, { minRowCount: 10 }) ||
+                    buildTableComponentFromPayloadSkill(buildDefaultTablePayload(), { minRowCount: 10 });
 
                 if (!tableComponent) {
                     const invalidMsg = `[System]: 表格参数无效。`;
@@ -8356,7 +7793,7 @@ StepB:\n`;
                         const tablePayloadSource = hasChildren
                             ? extractTablePayloadFromSceneRoot({ componentId, params, children })
                             : params;
-                        const tableComponent = buildTableComponentFromPayload(tablePayloadSource, { minRowCount: 10 });
+                        const tableComponent = buildTableComponentFromPayloadSkill(tablePayloadSource, { minRowCount: 10 });
                         if (tableComponent) {
                             try {
                                 const rootNodeId = await createComponentNode(tableComponent, resolvedParentId);
