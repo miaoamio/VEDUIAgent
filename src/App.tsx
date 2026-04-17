@@ -1552,6 +1552,43 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+// 压缩图片：限制最大边长 + JPEG 质量压缩，减少 base64 体积以避免 LLM 请求超时
+const IMAGE_COMPRESS_MAX_SIDE = 1024;
+const IMAGE_COMPRESS_QUALITY = 0.7;
+
+async function compressImageDataUrl(dataUrl: string): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        // 已经很小就不压了
+        if (width <= IMAGE_COMPRESS_MAX_SIDE && height <= IMAGE_COMPRESS_MAX_SIDE && dataUrl.length < 200_000) {
+          resolve(dataUrl);
+          return;
+        }
+        if (width > IMAGE_COMPRESS_MAX_SIDE || height > IMAGE_COMPRESS_MAX_SIDE) {
+          const scale = IMAGE_COMPRESS_MAX_SIDE / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', IMAGE_COMPRESS_QUALITY);
+        resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => reject(new Error('图片加载失败，无法压缩'));
+    img.src = dataUrl;
+  });
+}
+
 async function readFileAsText(file: File): Promise<string> {
   if (typeof file.text === 'function') {
     return await file.text();
@@ -2372,6 +2409,12 @@ function App() {
       if (!pluginMessage || typeof pluginMessage !== 'object') return;
       const { type, message, data } = pluginMessage as any;
       
+      if (type === 'current-user-info') {
+        if (data?.userId) {
+          (globalThis as any).__FIGMA_USER_ID__ = data.userId;
+        }
+        return;
+      }
       if (type === 'selection-update') {
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
@@ -2655,7 +2698,8 @@ function App() {
     const nextImages: UploadedImageAttachment[] = [];
     for (const file of incomingImageFiles.slice(0, remainingSlots)) {
       try {
-        const dataUrl = await readFileAsDataUrl(file);
+        const rawDataUrl = await readFileAsDataUrl(file);
+        const dataUrl = await compressImageDataUrl(rawDataUrl);
         nextImages.push({
           id: createLocalAttachmentId(),
           name: file.name || `image-${nextImages.length + 1}.png`,
@@ -2732,7 +2776,8 @@ function App() {
     const nextImages: UploadedImageAttachment[] = [];
     for (const file of imageFiles.slice(0, remainingSlots)) {
       try {
-        const dataUrl = await readFileAsDataUrl(file);
+        const rawDataUrl = await readFileAsDataUrl(file);
+        const dataUrl = await compressImageDataUrl(rawDataUrl);
         nextImages.push({
           id: createLocalAttachmentId(),
           name: file.name || `pasted-image-${nextImages.length + 1}.png`,
@@ -6852,12 +6897,12 @@ StepD:
   const LLM_FETCH_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_FETCH_TIMEOUT_MS',
-    15000
+    30000
   );
   const LLM_STREAM_CHUNK_TIMEOUT_MS = readTimeoutConfig(
     '__FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS__',
     'VITE_FIGMA_AGENT_LLM_STREAM_CHUNK_TIMEOUT_MS',
-    20000
+    30000
   );
   const UI_SHOW_ACTION_JSON = readBooleanConfig(
     '__FIGMA_AGENT_SHOW_ACTION_JSON__',
@@ -6887,7 +6932,7 @@ StepD:
     // 记录对话发起埋点
     trackEvent("chat_start", {
         sessionCount: 1,
-        details: JSON.stringify({ messageLength: userInput.length })
+        details: JSON.stringify({ messageLength: userInput.length, userMessage: userInput.slice(0, 500) })
     });
 
     // Developer commands — bypass AI, run directly
@@ -7042,7 +7087,7 @@ StepD:
     // Track AI Generation attempt
     trackEvent("ai_generation", {
         genCount: 1,
-        details: JSON.stringify({ promptLength: currentTurnText.length, hasImages: turnImages.length > 0, hasTables: turnTables.length > 0 })
+        details: JSON.stringify({ promptLength: currentTurnText.length, hasImages: turnImages.length > 0, hasTables: turnTables.length > 0, userMessage: turnInput.slice(0, 500) })
     });
 
     // After sending, clear composer state for the next round.
@@ -7102,7 +7147,8 @@ StepD:
                             model: "ep-20260129104027-mzlwg", 
                             messages: msgs,
                             stream: true,
-                            stream_options: { include_usage: true }
+                            stream_options: { include_usage: true },
+                            thinking: { type: "disabled" }
                         }),
                         signal: attemptController.signal
                     });
@@ -10609,11 +10655,10 @@ StepB:\n`;
                                   if (!UI_SHOW_RAW_LINES) return null;
                                   return null;
                                 }
-                                return (
-                                  <div key={`text_${itemIndex}`} className="ai-text-line">
-                                    {item.text}
-                                  </div>
-                                );
+                                // 无前缀的纯文本行通常是长 JSON 溢出的残留，不应直接展示
+                                if (item.kind === 'text') {
+                                  return null;
+                                }
                               })}
                             </>
                           );

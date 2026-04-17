@@ -104,6 +104,7 @@ export default {
         const totalResult = await env.DB.prepare(`
           SELECT 
             COUNT(*) as total_events,
+            COUNT(DISTINCT user_id) as total_uv,
             SUM(session_count) as total_sessions,
             SUM(gen_count) as total_generations,
             SUM(token_count) as total_tokens,
@@ -116,6 +117,7 @@ export default {
         const dailyResult = await env.DB.prepare(`
           SELECT 
             date(datetime(created_at / 1000, 'unixepoch')) as date,
+            COUNT(DISTINCT user_id) as daily_uv,
             SUM(session_count) as daily_sessions,
             SUM(gen_count) as daily_generations,
             SUM(token_count) as daily_tokens,
@@ -222,7 +224,7 @@ export default {
     }
 
     // ── 解析请求体 ──
-    let body: { messages?: unknown; model?: string; stream?: boolean };
+    let body: { messages?: unknown; model?: string; stream?: boolean; thinking?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -245,6 +247,7 @@ export default {
       messages: body.messages,
       stream: body.stream !== false, // 默认 stream
       stream_options: body.stream !== false ? { include_usage: true } : undefined,
+      ...(body.thinking ? { thinking: body.thinking } : {}),
     };
 
     const arkResponse = await fetch(env.ARK_BASE_URL, {

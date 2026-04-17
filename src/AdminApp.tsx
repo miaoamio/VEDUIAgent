@@ -1443,11 +1443,39 @@ function MetricsView() {
         <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', paddingRight: '24px' }}>
           <div style={{ fontSize: '14px', color: '#1d2129', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '4px', height: '16px', background: '#1d2129', borderRadius: '2px' }}></div>
-            调用总量tokens
+            UV（独立用户数）
           </div>
           <div style={{ fontSize: '48px', fontWeight: 600, color: '#1d2129', lineHeight: 1 }}>
+            {(data.totals.total_uv || 0).toLocaleString()}
+          </div>
+        </div>
+
+        <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', padding: '0 24px' }}>
+          <div style={{ fontSize: '14px', color: '#4e5969', marginBottom: '12px' }}>
+            调用总量tokens
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
             {(data.totals.total_tokens || 0).toLocaleString()}
           </div>
+          {data.daily && data.daily.length > 0 && (() => {
+            const days = data.daily.length;
+            const totalTokens = data.daily.reduce((sum: number, d: any) => sum + (d.daily_tokens || 0), 0);
+            if (days < 7) {
+              const dailyAvg = Math.round(totalTokens / days);
+              return (
+                <div style={{ fontSize: '12px', color: '#86909c', marginTop: '8px' }}>
+                  日均 {dailyAvg.toLocaleString()} tokens（近 {days} 天）
+                </div>
+              );
+            }
+            const weeks = days / 7;
+            const weeklyAvg = Math.round(totalTokens / weeks);
+            return (
+              <div style={{ fontSize: '12px', color: '#86909c', marginTop: '8px' }}>
+                周均 {weeklyAvg.toLocaleString()} tokens（近 {days} 天）
+              </div>
+            );
+          })()}
         </div>
         
         <div style={{ flex: '1', borderRight: '1px solid #e5e6eb', padding: '0 24px' }}>
@@ -1493,6 +1521,7 @@ function MetricsView() {
           <thead>
             <tr>
               <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>日期</th>
+              <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>UV</th>
               <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>对话数</th>
               <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>生成数</th>
               <th style={{ background: '#f7f8fa', padding: '12px 16px', fontWeight: 500, color: '#4e5969' }}>消耗 Token</th>
@@ -1502,13 +1531,14 @@ function MetricsView() {
             {data.daily.map((day: any) => (
               <tr key={day.date} style={{ borderBottom: '1px solid #f2f3f5' }}>
                 <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.date}</td>
+                <td style={{ padding: '12px 16px', color: '#1664ff', fontWeight: 500 }}>{day.daily_uv || 0}</td>
                 <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_sessions}</td>
                 <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_generations}</td>
                 <td style={{ padding: '12px 16px', color: '#1d2129' }}>{day.daily_tokens.toLocaleString()}</td>
               </tr>
             ))}
             {data.daily.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#86909c' }}>暂无数据</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#86909c' }}>暂无数据</td></tr>
             )}
           </tbody>
         </table>
@@ -1522,11 +1552,18 @@ function MetricsView() {
               <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>时间</th>
               <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>用户</th>
               <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>事件类型</th>
+              <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb', minWidth: '200px' }}>用户消息</th>
               <th style={{ padding: '12px 16px', fontWeight: 500, color: '#4e5969', borderBottom: '1px solid #e5e6eb' }}>详情 (JSON)</th>
             </tr>
           </thead>
           <tbody>
-            {data.recent.map((item: any) => (
+            {data.recent.map((item: any) => {
+              let userMessage = '';
+              try {
+                const parsed = JSON.parse(item.details || '{}');
+                userMessage = parsed.userMessage || '';
+              } catch {}
+              return (
               <tr key={item.id} style={{ borderBottom: '1px solid #f2f3f5' }}>
                 <td style={{ whiteSpace: 'nowrap', padding: '12px 16px', color: '#86909c', fontSize: '13px' }}>
                   {new Date(item.created_at).toLocaleString()}
@@ -1542,6 +1579,25 @@ function MetricsView() {
                   }}>
                     {item.event_type}
                   </span>
+                </td>
+                <td style={{ padding: '12px 16px', maxWidth: '300px' }}>
+                  {userMessage ? (
+                    <div style={{
+                      background: '#fffbe6',
+                      padding: '6px 10px',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: '#1d2129',
+                      maxHeight: '60px',
+                      overflowY: 'auto',
+                      lineHeight: '1.5',
+                      wordBreak: 'break-all'
+                    }}>
+                      {userMessage}
+                    </div>
+                  ) : (
+                    <span style={{ color: '#c9cdd4', fontSize: '13px' }}>—</span>
+                  )}
                 </td>
                 <td style={{ padding: '12px 16px' }}>
                   <div style={{ 
@@ -1559,9 +1615,10 @@ function MetricsView() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {data.recent.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: '#86909c' }}>暂无事件记录</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: '#86909c' }}>暂无事件记录</td></tr>
             )}
           </tbody>
         </table>
