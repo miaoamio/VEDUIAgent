@@ -2334,13 +2334,33 @@ function App() {
       }).catch(err => console.error("Track error:", err));
   }, [trackUrl]);
 
-  const [planPanelClosed, setPlanPanelClosed] = React.useState(false);
-  const [selectedComponent, setSelectedComponent] = React.useState<{ 
-    componentId: string; 
+  type SelectedComponentState = {
+    componentId: string;
     params: any;
     childComponentId?: string; // For columns, this stores the type of cells inside
     nodeName?: string;
-  } | null>(null);
+    tableContext?: {
+      headers: string[];
+      data: string[][];
+      selectedColumnIndex?: number;
+      selectionKind: string;
+      selectionLabel: string;
+      tableNodeId: string;
+    };
+  } | null;
+
+  const isTableSelectionLike = (value: SelectedComponentState) =>
+    Boolean(
+      value?.tableContext ||
+      (value?.componentId &&
+        (value.componentId === 'table' ||
+          value.componentId === 'table-column' ||
+          value.componentId.startsWith('table-')))
+    );
+
+  const [planPanelClosed, setPlanPanelClosed] = React.useState(false);
+  const [selectedComponent, setSelectedComponent] = React.useState<SelectedComponentState>(null);
+  const lastTableSelectionRef = React.useRef<SelectedComponentState>(null);
   const [selectionVersion, setSelectionVersion] = React.useState(0);
   const [formFieldTextMode, setFormFieldTextMode] = React.useState<'value' | 'placeholder'>('placeholder');
   const [controlWidthDraft, setControlWidthDraft] = React.useState<string>('240');
@@ -2448,6 +2468,19 @@ function App() {
         }
         if (data.componentId) {
           setSelectedComponent(data);
+          if (isTableSelectionLike(data)) {
+            // 保留 selectedColumnIndex：edit_table 后 Figma 可能自动重选整表（无列索引），
+            // 不要覆盖之前用户选列时保存的 selectedColumnIndex
+            const prevColIdx = lastTableSelectionRef.current?.tableContext?.selectedColumnIndex;
+            if (data.tableContext && typeof data.tableContext.selectedColumnIndex !== 'number' && typeof prevColIdx === 'number') {
+              lastTableSelectionRef.current = {
+                ...data,
+                tableContext: { ...data.tableContext, selectedColumnIndex: prevColIdx }
+              };
+            } else {
+              lastTableSelectionRef.current = data;
+            }
+          }
           setSelectionVersion((prev) => prev + 1);
         }
         // 仅当覆盖层已打开且新选择仍是图表时保持打开；否则不自动打开并关闭覆盖层，避免绘制后自动弹出与闪烁。
@@ -3110,6 +3143,14 @@ function App() {
 - 用户要求画表格就直接 draw_table，要求画表单就直接 draw_form，不要包裹在页面容器里。
 - **draw_table / draw_form 成功后立即 finish，禁止反复重画。** 不要尝试"匹配图片"、"修正内容"、"精准匹配"等二次绘制。一次 draw 就是最终结果。
 - apply_scene 失败后不要重试，直接 finish。
+- **表格编辑规则**：当用户消息中包含 [EDIT_TABLE_CONTEXT]，必须使用 edit_table，**禁止 draw_table**。
+  - tableNodeId 和 columnIndex 已在上下文中给出，**原样复制**，禁止修改、翻译或自行编造。
+  - texts 数组：[表头, 第1行数据, 第2行数据, ...]，长度必须与上下文中 currentColumnTexts 一致。
+  - 如果 [EDIT_TABLE_CONTEXT] 中同时给出了 selectedColumnIndex 和 currentColumnTexts，说明上下文已经完整，**本轮第一步必须直接输出 edit_table**。
+  - 这种完整上下文下，**禁止输出 finish，禁止提问，禁止索要列索引，禁止任何解释性过渡语**。
+  - edit_table 成功后立即 finish。
+  - **严格 JSON 格式**：edit_table 的输出必须是完整可解析的 JSON，不允许省略号、注释、尾逗号。
+  - 示例：{"thought":"编辑列","action":{"type":"edit_table","payload":{"tableNodeId":"1:234","updates":[{"columnIndex":2,"texts":["Header","Row1","Row2"]}]}}}
 - 每次只执行一个动作。
 - "thought" 只保留当前动作意图，越短越好。
 - 如果所有步骤都已完成，调用 { "type": "finish" }。
@@ -5509,6 +5550,64 @@ function App() {
     });
   };
 
+  // 主动从 Figma 端获取当前选中表格的上下文（不依赖 selectionchange 事件）
+  const requestTableContext = (): Promise<{
+    headers: string[];
+    data: string[][];
+    selectedColumnIndex?: number;
+    selectionKind: string;
+    selectionLabel: string;
+    tableNodeId: string;
+  } | null> => {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve(null);
+      }, 3000);
+      const handler = (event: MessageEvent) => {
+        const data = event.data.pluginMessage || {};
+        if (data.type === 'table-context-result') {
+          clearTimeout(timeout);
+          window.removeEventListener('message', handler);
+          resolve(data.tableContext ?? null);
+        }
+      };
+      window.addEventListener('message', handler);
+      window.parent.postMessage({ pluginMessage: { type: 'request-table-context' } }, '*');
+    });
+  };
+
+  // 直接编辑表格单元格文本（不经过 apply_scene）
+  const editTableCells = (
+    tableNodeId: string,
+    updates: { columnIndex: number; texts: string[] }[]
+  ): Promise<{ ok: boolean; modifiedCount?: number; error?: string }> => {
+    return new Promise((resolve, reject) => {
+      const abortSignal = llmAbortRef.current?.signal;
+      const handler = (event: MessageEvent) => {
+        const data = event.data.pluginMessage || {};
+        if (data.type === 'edit-table-cells-result') {
+          window.removeEventListener('message', handler);
+          abortSignal?.removeEventListener('abort', onAbort);
+          resolve(data);
+        }
+      };
+      const onAbort = () => {
+        window.removeEventListener('message', handler);
+        abortSignal?.removeEventListener('abort', onAbort);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      window.addEventListener('message', handler);
+      if (abortSignal) {
+        if (abortSignal.aborted) { onAbort(); return; }
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
+      window.parent.postMessage({
+        pluginMessage: { type: 'edit-table-cells', tableNodeId, updates }
+      }, '*');
+    });
+  };
+
   const handleStreamTableEvent = async (event: StreamTableEvent, plan: AgentPlanState | null) => {
     if (event.event === 'table_start') {
       const normalized = normalizeStreamTablePayload(event);
@@ -6503,13 +6602,94 @@ function App() {
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (tableInputRef.current) tableInputRef.current.value = '';
 
+    const isLikelySelectedTableEdit =
+      turnImages.length === 0 &&
+      turnTables.length === 0 &&
+      /((修改|替换|改成|改为|翻译|更新).*(这一列|这列|当前列|选中列|列|表格))|((这一列|这列|当前列|选中列).*(修改|替换|改成|改为|翻译|更新))|英文列|列改成英文|列改为英文/i.test(turnInput);
+
+    // Build selection context for table editing
+    // 只在“明显是编辑当前选中表格”的场景下注入，避免旧选区劫持图片/表单任务
+    let selectionContext = '';
+    let requiresDirectEditTable = false;
+    let tc: { headers: string[]; data: string[][]; selectedColumnIndex?: number; selectionKind: string; selectionLabel: string; tableNodeId: string } | null = null;
+    if (isLikelySelectedTableEdit) {
+      // 从缓存中提取 selectedColumnIndex（用户选列后保存的）
+      const cachedColIdx = [
+        selectedComponent?.tableContext,
+        lastTableSelectionRef.current?.tableContext,
+      ].find(c => c && typeof c.selectedColumnIndex === 'number')?.selectedColumnIndex;
+
+      // 总是向 code.ts 请求最新数据（读取实际 Figma 节点，拿到全部行）
+      const freshTc = await requestTableContext();
+      if (freshTc) {
+        // 如果 code.ts 返回的数据没有 selectedColumnIndex，用缓存补上
+        if (typeof freshTc.selectedColumnIndex !== 'number' && typeof cachedColIdx === 'number') {
+          freshTc.selectedColumnIndex = cachedColIdx;
+        }
+        tc = freshTc;
+      } else {
+        // code.ts 请求失败，回退到缓存
+        const candidates = [
+          selectedComponent?.tableContext ?? null,
+          lastTableSelectionRef.current?.tableContext ?? null,
+        ];
+        tc = candidates.find(c => c && typeof c.selectedColumnIndex === 'number') ?? null;
+        if (!tc) tc = candidates.find(c => c) ?? null;
+      }
+    }
+    // 如果获取成功，更新 UI 端缓存
+    if (tc) {
+      lastTableSelectionRef.current = {
+        componentId: selectedComponent?.componentId || lastTableSelectionRef.current?.componentId || 'table',
+        params: selectedComponent?.params || lastTableSelectionRef.current?.params || {},
+        tableContext: tc
+      };
+    }
+    if (tc) {
+      const colIdx = tc.selectedColumnIndex;
+      if (typeof colIdx === 'number') {
+        requiresDirectEditTable = true;
+        const colTexts = [tc.headers[colIdx], ...tc.data.map(row => row[colIdx])];
+        selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\ntableNodeId="${tc.tableNodeId}"\nselectedColumnIndex=${colIdx}\nselectedColumnHeader="${tc.headers[colIdx]}"\ncurrentColumnTexts=${JSON.stringify(colTexts)}\n\n这是完整可执行的表格列编辑上下文，信息已经足够，不需要任何澄清。\n你必须在本轮第一步直接输出 edit_table。\n禁止输出 finish。\n禁止询问列索引。\n禁止说“请明确”“请提供”“无法判断”等澄清语。\n禁止输出“我会帮你完成...”这类解释性过渡语。\n禁止新增、删除或改写 tableNodeId / columnIndex，只允许替换 texts 内容。\n\n请直接输出以下 JSON（只需替换 texts 内容）：\n{"thought":"编辑表格列","action":{"type":"edit_table","payload":{"tableNodeId":"${tc.tableNodeId}","updates":[{"columnIndex":${colIdx},"texts":${JSON.stringify(colTexts)}}]}}}\ntexts 数组长度固定为 ${colTexts.length}（1个表头 + ${tc.data.length}行数据），按用户要求修改内容。`;
+      } else {
+        const allHeaders = JSON.stringify(tc.headers);
+        const previewRows = tc.data.slice(0, 3);
+        selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\ntableNodeId="${tc.tableNodeId}"\nheaders=${allHeaders}\ndata(前${previewRows.length}行)=${JSON.stringify(previewRows)}\n\n请直接输出以下格式 JSON：\n{"thought":"编辑表格","action":{"type":"edit_table","payload":{"tableNodeId":"${tc.tableNodeId}","updates":[{"columnIndex":列索引,"texts":["表头","第1行","第2行",...]}]}}}\n可以同时修改多列。`;
+      }
+    } else if (selectedComponent?.componentId && (selectedComponent.componentId === 'table' || selectedComponent.componentId === 'table-column' || selectedComponent.componentId.startsWith('table-'))) {
+      selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\n当前选中了表格组件（componentId: ${selectedComponent.componentId}），但缺少详细数据。请使用 edit_table 编辑。`;
+    } else if (lastTableSelectionRef.current?.componentId && (lastTableSelectionRef.current.componentId === 'table' || lastTableSelectionRef.current.componentId === 'table-column' || lastTableSelectionRef.current.componentId.startsWith('table-'))) {
+      selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\n当前选中了表格组件（componentId: ${lastTableSelectionRef.current.componentId}），但缺少详细数据。请使用 edit_table 编辑。`;
+    }
+
     // Initial message history
     let messages = [
       { role: "system", content: generateMasterPrompt() },
       ...chatHistory,
-      { role: "user", content: currentTurnText }
+      { role: "user", content: currentTurnText + selectionContext }
     ];
     let runtimePlan: AgentPlanState | null = null;
+    const allowedActionTypes = new Set([
+      'read_specs',
+      'discover_component_props',
+      'inspect_component_props',
+      'crawl_component_props',
+      'inspect_component_structure',
+      'discover_component_structure',
+      'create_node',
+      'apply_scene',
+      'draw_table',
+      'draw_tabl',
+      'draw_form',
+      'edit_table',
+      'finish',
+      'set_plan',
+      'init_plan',
+      'plan_next',
+      'next_task',
+      'update_plan',
+      'plan_update'
+    ]);
 
     // Helper to call LLM with streaming support
     const callLLM = async (msgs: any[], onStream?: (chunk: string) => void) => {
@@ -6834,7 +7014,7 @@ function App() {
 7. 当你只需要创建一个简单节点时，也可以调用 create_node(componentId, params, parentId?, children?)。
 8. 只有当必须依赖父节点 ID 且无法一次性构建时，才分步执行。
 9. **禁止使用 set_plan / init_plan / update_plan / plan_next / execute_task / run_task。** 直接用 draw_table / draw_form / create_node 完成。
-10. **你无法看到画布结果。** draw_table / draw_form / create_node 成功后立即 finish。禁止"重新绘制"、"修正匹配"、"精准匹配图片"等重复操作——你看不到画布，无法判断是否匹配。
+10. **你无法看到画布结果。** draw_table / draw_form / create_node / edit_table 成功后立即 finish。禁止"重新绘制"、"修正匹配"、"精准匹配图片"等重复操作——你看不到画布，无法判断是否匹配。
 11. apply_scene 失败后不要重试，直接 finish。
 13. 用户当前轮消息可能包含“用户提供内容”摘要、表格结构(JSON)和图片附件。
    - 若当前 user.content 是图文数组，说明同轮附带了图片；你必须结合图片和文本一起判断。
@@ -6848,6 +7028,9 @@ function App() {
 - 不要复述用户需求，不要写“首先/现在/已获取/成功/需要”等空话。
 - 用动作短语即可，例如：读input spec / 建基础input / 结束。
 - 优先输出紧凑 JSON；不要使用 Markdown code block，不要输出 JSON 之外的解释。
+- **JSON 必须完整可解析**：禁止省略号(...)、注释(//)、尾逗号、未闭合括号。每个字符串值都必须是具体内容。
+- **只使用已定义的 action type**：read_specs / discover_component_props / inspect_component_props / crawl_component_props / inspect_component_structure / discover_component_structure / create_node / apply_scene / draw_table / draw_tabl / draw_form / edit_table / finish。禁止编造其他 type（如 message_ask_user 等不存在）。
+- 如果用户需求不明确，用 finish 结束并在 thought 中简述疑问，**不要编造不存在的 action**。
 
 示例 (Example):
 {"thought":"读button spec","action":{"type":"read_specs","payload":{"ids":["button"]}}}
@@ -6982,29 +7165,6 @@ StepB:\n`;
             try {
                 const sanitizedContent = stripStreamTableLines(content);
                 actionData = parseAgentActionJson(sanitizedContent);
-                
-                // Build the log entry for this turn
-                let turnLog = '';
-                if (actionData.thought) {
-                    turnLog += `[AI]: ${actionData.thought}`;
-                }
-                const compactActionJson = JSON.stringify(actionData);
-                turnLog += (turnLog ? '\n' : '') + `[JSON]: ${compactActionJson}`;
-                // Preserve the raw LLM output as a streaming line so the UI keeps it visible
-                const sanitizedForLog = stripStreamTableLines(content).trim();
-                if (sanitizedForLog) {
-                    turnLog += '\n' + `[LLMRaw]: ${sanitizedForLog}`;
-                }
-
-
-                // Store a compact form in history to reduce future prompt tokens.
-                messages.push({ role: "assistant", content: compactActionJson });
-                
-                // Commit to accumulated log
-                accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
-                setResponse(accumulatedLog);
-
-                
             } catch (e) {
                 // If it's the last chunk and still not valid JSON, show raw
                 // But during streaming, it might be incomplete JSON, so we just wait or show partial?
@@ -7018,7 +7178,19 @@ StepB:\n`;
                 break; 
             }
 
-            if (!actionData || !actionData.action) {
+            const action = actionData?.action;
+            const actionType = typeof action?.type === 'string' ? action.type : '';
+            const hasKnownAction = Boolean(actionType) && allowedActionTypes.has(actionType);
+
+            if (requiresDirectEditTable && actionType !== 'edit_table') {
+                const retryMsg =
+                  `System: [EDIT_TABLE_CONTEXT] 已提供完整上下文。下一轮必须直接输出 edit_table，禁止 finish、禁止澄清、禁止索要列索引。`;
+                console.warn('[Agent] 完整表格编辑上下文下返回了非 edit_table 动作，已静默重试。', actionData);
+                messages.push({ role: "user", content: retryMsg });
+                continue;
+            }
+
+            if (!action || !hasKnownAction) {
                 const missingActionMsg =
                   `[System]: 未返回可执行动作。请按约定的动作协议继续输出。`;
                 accumulatedLog += (accumulatedLog ? '\n\n' : '') + missingActionMsg;
@@ -7027,7 +7199,21 @@ StepB:\n`;
                 continue;
             }
 
-            const action = actionData.action;
+            // 仅记录通过校验的动作，避免把无效首轮展示给用户
+            let turnLog = '';
+            if (actionData.thought) {
+                turnLog += `[AI]: ${actionData.thought}`;
+            }
+            const compactActionJson = JSON.stringify(actionData);
+            turnLog += (turnLog ? '\n' : '') + `[JSON]: ${compactActionJson}`;
+            const sanitizedForLog = stripStreamTableLines(content).trim();
+            if (sanitizedForLog) {
+                turnLog += '\n' + `[LLMRaw]: ${sanitizedForLog}`;
+            }
+            messages.push({ role: "assistant", content: compactActionJson });
+            accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
+            setResponse(accumulatedLog);
+
             const actionTaskId = readActionTaskId(action);
             const isPlanControlAction =
               action.type === 'set_plan' ||
@@ -7676,6 +7862,60 @@ StepB:\n`;
                 }
             }
 
+            else if (action.type === 'edit_table') {
+                const payload = action.payload;
+                const activeTableSelection = selectedComponent ?? lastTableSelectionRef.current;
+                const selectedColumnIndex = activeTableSelection?.tableContext?.selectedColumnIndex;
+                const selectedTableNodeId = activeTableSelection?.tableContext?.tableNodeId;
+                const tableNodeId = payload?.tableNodeId || selectedTableNodeId;
+                const rawUpdates = Array.isArray(payload?.updates) ? payload.updates : [];
+                const updates =
+                  typeof selectedColumnIndex === 'number'
+                    ? (() => {
+                        // 优先找 LLM 输出中匹配 selectedColumnIndex 的 update
+                        const match = rawUpdates.find((u: any) => u.columnIndex === selectedColumnIndex);
+                        const update = match || rawUpdates[0];
+                        return update ? [{ ...update, columnIndex: selectedColumnIndex }] : [];
+                      })()
+                    : rawUpdates; // [{columnIndex, texts:[header, ...dataCells]}]
+                if (!tableNodeId || updates.length === 0) {
+                    const invalidMsg = `[System]: edit_table 参数无效，需要 tableNodeId 和 updates 数组。`;
+                    accumulatedLog += '\n\n' + invalidMsg;
+                    setResponse(accumulatedLog);
+                    messages.push({ role: "user", content: invalidMsg });
+                } else {
+                    try {
+                        const result = await editTableCells(tableNodeId, updates);
+                        if (result.ok) {
+                            const targetLabel =
+                              typeof selectedColumnIndex === 'number'
+                                ? `第 ${selectedColumnIndex} 列`
+                                : '目标列';
+                            const okMsg = `[System]: edit_table 成功，已更新 ${targetLabel} 的 ${result.modifiedCount} 个单元格。`;
+                            accumulatedLog += '\n\n' + okMsg;
+                            setResponse(accumulatedLog);
+                            messages.push({ role: "user", content: okMsg });
+                        } else {
+                            const errMsg = `[System]: ❌ edit_table 失败：${result.error}`;
+                            accumulatedLog += '\n\n' + errMsg;
+                            setResponse(accumulatedLog);
+                            messages.push({ role: "user", content: errMsg });
+                        }
+                        if (runtimePlan && actionTaskId) {
+                            runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, result.ok ? 'done' : 'failed', result.ok ? `修改 ${result.modifiedCount} 个单元格` : result.error);
+                        }
+                    } catch (e: any) {
+                        const errMsg = `[System]: ❌ edit_table 异常：${String(e?.message || e)}`;
+                        accumulatedLog += '\n\n' + errMsg;
+                        setResponse(accumulatedLog);
+                        messages.push({ role: "user", content: errMsg });
+                        if (runtimePlan && actionTaskId) {
+                            runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
+                        }
+                    }
+                }
+            }
+
             else if (action.type === 'draw_table' || action.type === 'draw_tabl') {
                 const payload = action.payload;
 
@@ -7866,14 +8106,15 @@ StepB:\n`;
                 }
             }
             else {
-
-                const unknownMsg = `[System]: 未知动作类型：${String(action.type)}。`;
-                accumulatedLog += '\n\n' + unknownMsg;
+                // 未知 action → 自动当作 finish 处理，不暴露给用户
+                console.warn(`[Agent] 未知动作类型 "${String(action.type)}"，自动转为 finish`);
+                const finishMsg = `已完成。`;
+                accumulatedLog += '\n\n' + finishMsg;
                 setResponse(accumulatedLog);
-                messages.push({ role: "user", content: unknownMsg });
                 if (runtimePlan && actionTaskId) {
-                    runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', unknownMsg);
+                    runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done', 'auto-finish');
                 }
+                break;
             }
 
             const continueActions = new Set([

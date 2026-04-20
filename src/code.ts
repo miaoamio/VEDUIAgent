@@ -475,6 +475,27 @@ function findAiComponentNode(node: SceneNode | null): SceneNode | null {
   return null;
 }
 
+function extractFirstTextContent(node: SceneNode): string {
+  if (node.type === 'TEXT') return (node as TextNode).characters || '';
+  if ('children' in node) {
+    for (const child of (node as any).children) {
+      const text = extractFirstTextContent(child);
+      if (text) return text;
+    }
+  }
+  return '';
+}
+
+// 缓存最近一次有效的表格上下文，用于用户点击输入框导致选区清空时兜底
+let lastTableContextCache: {
+  headers: string[];
+  data: string[][];
+  selectedColumnIndex?: number;
+  selectionKind: string;
+  selectionLabel: string;
+  tableNodeId: string;
+} | null = null;
+
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
 let selectionUpdateSuppressed = false;
@@ -580,6 +601,118 @@ async function checkSelection() {
           normalizedParams.hasPagination = actualState.hasPagination;
         }
 
+        // Build tableContext for table-related selections
+        let tableContext: {
+          headers: string[];
+          data: string[][];
+          selectedColumnIndex?: number;
+          selectionKind: string;
+          selectionLabel: string;
+          tableNodeId: string;
+        } | undefined;
+
+        if (componentId === 'table' || componentId === 'table-column' || isTableCellComponentId(componentId)) {
+          try {
+          let tableFrame: FrameNode | null = null;
+          let selectedColIdx: number | undefined;
+
+          if (componentId === 'table' && effectiveTarget.type === 'FRAME') {
+            tableFrame = effectiveTarget as FrameNode;
+          } else {
+            tableFrame = findTableFrameFromNode(effectiveTarget);
+          }
+
+          if (tableFrame) {
+            const columns = getTableColumns(tableFrame);
+            const headers: string[] = [];
+            const rows: string[][] = [];
+            let maxRows = 0;
+
+            for (let ci = 0; ci < columns.length; ci++) {
+              const col = columns[ci];
+              if (componentId === 'table-column' && effectiveTarget.id === col.id) {
+                selectedColIdx = ci;
+              }
+              if (isTableCellComponentId(componentId)) {
+                const cellColumn = findTableColumnFromNode(effectiveTarget);
+                if (cellColumn && cellColumn.id === col.id) {
+                  selectedColIdx = ci;
+                }
+              }
+
+              if (col.children.length > 0) {
+                headers.push(extractFirstTextContent(col.children[0]));
+                const dataCellCount = col.children.length - 1;
+                if (dataCellCount > maxRows) maxRows = dataCellCount;
+              }
+            }
+
+            for (let ri = 0; ri < maxRows; ri++) {
+              const row: string[] = [];
+              for (const col of columns) {
+                const cellIndex = ri + 1;
+                if (cellIndex < col.children.length) {
+                  row.push(extractFirstTextContent(col.children[cellIndex]));
+                } else {
+                  row.push('');
+                }
+              }
+              rows.push(row);
+            }
+
+            let selKind = 'table';
+            let selLabel = '当前选中：表格';
+            if (typeof selectedColIdx === 'number') {
+              if (isTableCellComponentId(componentId)) {
+                selKind = 'cell';
+                selLabel = `当前选中：${headers[selectedColIdx] || '列' + selectedColIdx} 列的单元格`;
+              } else {
+                selKind = 'column';
+                selLabel = `当前选中：${headers[selectedColIdx] || '列' + selectedColIdx} 列`;
+              }
+            }
+
+            tableContext = {
+              headers,
+              data: rows,
+              selectedColumnIndex: selectedColIdx,
+              selectionKind: selKind,
+              selectionLabel: selLabel,
+              tableNodeId: tableFrame.id
+            };
+          } else {
+            // tableFrame 未找到，提供基础上下文
+            tableContext = {
+              headers: [],
+              data: [],
+              selectionKind: componentId === 'table-column' ? 'column' : 'table',
+              selectionLabel: `当前选中：${effectiveTarget.name}`,
+              tableNodeId: effectiveTarget.parent?.type === 'FRAME' ? effectiveTarget.parent.id : effectiveTarget.id
+            };
+          }
+          } catch (e) {
+            console.error('[tableContext] Failed to build tableContext:', e);
+            // 即使出错也提供基础上下文
+            tableContext = {
+              headers: [],
+              data: [],
+              selectionKind: componentId === 'table-column' ? 'column' : 'table',
+              selectionLabel: `当前选中：${effectiveTarget.name}`,
+              tableNodeId: effectiveTarget.parent?.type === 'FRAME' ? effectiveTarget.parent.id : effectiveTarget.id
+            };
+          }
+        }
+
+        // 缓存有效的表格上下文，供 handleRequestTableContext 在选区清空时兜底
+        // 保留 selectedColumnIndex：edit_table 后 Figma 可能自动重选整表（无列索引），不覆盖之前的列索引
+        if (tableContext && tableContext.headers.length > 0) {
+          if (typeof lastTableContextCache?.selectedColumnIndex === 'number' &&
+              typeof tableContext.selectedColumnIndex !== 'number') {
+            tableContext.selectedColumnIndex = lastTableContextCache.selectedColumnIndex;
+          }
+          lastTableContextCache = tableContext;
+        }
+
         figma.ui.postMessage({
           type: 'selection-update',
           data: {
@@ -588,7 +721,8 @@ async function checkSelection() {
             componentId,
             params: normalizedParams,
             childComponentId, // Optional: for columns
-            nodeName: effectiveTarget.name
+            nodeName: effectiveTarget.name,
+            tableContext
           }
         });
 
@@ -5096,6 +5230,219 @@ async function handleSwapComponent(msg: any) {
     }
 }
 
+// ── request-table-context handler ────────────────────────────────────
+// 主动从当前选区读取表格上下文，不依赖 selectionchange 事件。
+async function handleRequestTableContext() {
+  try {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+      // 选区已清空（用户点击了输入框），使用缓存兜底
+      figma.ui.postMessage({ type: 'table-context-result', tableContext: lastTableContextCache });
+      return;
+    }
+
+    // 从选中节点向上找表格
+    let tableFrame: FrameNode | null = null;
+    let selectedColIdx: number | undefined;
+    let selectionKind = 'table';
+
+    // 遍历选中节点，找到第一个表格相关节点
+    for (const node of selection) {
+      // 先尝试当前节点本身
+      let current: BaseNode | null = node;
+      while (current && current.type !== 'PAGE') {
+        if ('getPluginData' in current) {
+          const cid = (current as SceneNode).getPluginData('component-id');
+          if (cid === 'table' && current.type === 'FRAME') {
+            tableFrame = current as FrameNode;
+            break;
+          }
+          if (cid === 'table-column' && !tableFrame) {
+            // 找到列，继续向上找表格
+            const tf = findTableFrameFromNode(current as SceneNode);
+            if (tf) {
+              tableFrame = tf;
+              // 确定列索引
+              const columns = getTableColumns(tf);
+              for (let ci = 0; ci < columns.length; ci++) {
+                if (columns[ci].id === current.id) {
+                  selectedColIdx = ci;
+                  selectionKind = 'column';
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          if (isTableCellComponentId(cid)) {
+            const tf = findTableFrameFromNode(current as SceneNode);
+            if (tf) {
+              tableFrame = tf;
+              selectionKind = 'cell';
+              const col = findTableColumnFromNode(current as SceneNode);
+              if (col) {
+                const columns = getTableColumns(tf);
+                for (let ci = 0; ci < columns.length; ci++) {
+                  if (columns[ci].id === col.id) {
+                    selectedColIdx = ci;
+                    break;
+                  }
+                }
+              }
+              break;
+            }
+          }
+        }
+        current = current.parent;
+      }
+      if (tableFrame) break;
+    }
+
+    if (!tableFrame) {
+      // 选区中找不到表格，使用缓存兜底
+      figma.ui.postMessage({ type: 'table-context-result', tableContext: lastTableContextCache });
+      return;
+    }
+
+    // 读取表格数据
+    const columns = getTableColumns(tableFrame);
+    const headers: string[] = [];
+    const rows: string[][] = [];
+    let maxRows = 0;
+
+    for (const col of columns) {
+      if (col.children.length > 0) {
+        headers.push(extractFirstTextContent(col.children[0]));
+        const dataCellCount = col.children.length - 1;
+        if (dataCellCount > maxRows) maxRows = dataCellCount;
+      } else {
+        headers.push('');
+      }
+    }
+
+    for (let ri = 0; ri < maxRows; ri++) {
+      const row: string[] = [];
+      for (const col of columns) {
+        const cellIndex = ri + 1;
+        if (cellIndex < col.children.length) {
+          row.push(extractFirstTextContent(col.children[cellIndex]));
+        } else {
+          row.push('');
+        }
+      }
+      rows.push(row);
+    }
+
+    let selLabel = '当前选中：表格';
+    if (typeof selectedColIdx === 'number') {
+      selLabel = selectionKind === 'cell'
+        ? `当前选中：${headers[selectedColIdx] || '列' + selectedColIdx} 列的单元格`
+        : `当前选中：${headers[selectedColIdx] || '列' + selectedColIdx} 列`;
+    }
+
+    const resultContext = {
+        headers,
+        data: rows,
+        selectedColumnIndex: selectedColIdx,
+        selectionKind,
+        selectionLabel: selLabel,
+        tableNodeId: tableFrame.id
+    };
+    // 保留 selectedColumnIndex：如果当前结果没有列索引但缓存有，继承缓存的列索引
+    if (typeof resultContext.selectedColumnIndex !== 'number' &&
+        typeof lastTableContextCache?.selectedColumnIndex === 'number') {
+      resultContext.selectedColumnIndex = lastTableContextCache.selectedColumnIndex;
+    }
+    // 更新缓存
+    lastTableContextCache = resultContext;
+    figma.ui.postMessage({
+      type: 'table-context-result',
+      tableContext: resultContext
+    });
+  } catch (e) {
+    console.error('[request-table-context] Error:', e);
+    // 出错时也用缓存兜底
+    figma.ui.postMessage({ type: 'table-context-result', tableContext: lastTableContextCache });
+  }
+}
+
+// ── edit-table-cells handler ────────────────────────────────────────
+// 直接修改现有表格的单元格文本，不经过 apply_scene。
+// msg: { type:'edit-table-cells', tableNodeId: string, updates: { columnIndex:number, texts:string[] }[] }
+async function handleEditTableCells(msg: any) {
+  try {
+    const { tableNodeId, updates } = msg;
+    const tableNode = await figma.getNodeByIdAsync(tableNodeId);
+    if (!tableNode || tableNode.removed || tableNode.type !== 'FRAME') {
+      figma.ui.postMessage({ type: 'edit-table-cells-result', ok: false, error: `表格节点 ${tableNodeId} 不存在或已被删除` });
+      return;
+    }
+    const columns = getTableColumns(tableNode as FrameNode);
+    if (columns.length === 0) {
+      figma.ui.postMessage({ type: 'edit-table-cells-result', ok: false, error: '未找到表格列' });
+      return;
+    }
+
+    let modifiedCount = 0;
+
+    for (const update of updates) {
+      const { columnIndex, texts } = update;
+      if (columnIndex < 0 || columnIndex >= columns.length) continue;
+      const col = columns[columnIndex];
+
+      // texts[0] = 表头, texts[1..] = 数据行
+      // 如果 LLM 只给了部分行，自动循环填充到列的全部行
+      const totalCells = col.children.length; // 表头 + 数据行
+
+      // 先写表头
+      if (totalCells > 0 && texts.length > 0) {
+        const headerCell = col.children[0];
+        if (headerCell && !headerCell.removed) {
+          const replaced = await replaceAllTextInNode(headerCell, texts[0]);
+          if (replaced) modifiedCount++;
+        }
+      }
+
+      // 数据行：用 texts[1..] 循环填充所有剩余行
+      const dataTexts = texts.slice(1);
+      if (dataTexts.length > 0) {
+        for (let ri = 1; ri < totalCells; ri++) {
+          const cell = col.children[ri];
+          if (!cell || cell.removed) continue;
+          const dataIdx = (ri - 1) % dataTexts.length;
+          const replaced = await replaceAllTextInNode(cell, dataTexts[dataIdx]);
+          if (replaced) modifiedCount++;
+        }
+      }
+    }
+
+    figma.ui.postMessage({
+      type: 'edit-table-cells-result',
+      ok: true,
+      modifiedCount
+    });
+  } catch (e: any) {
+    figma.ui.postMessage({ type: 'edit-table-cells-result', ok: false, error: String(e?.message || e) });
+  }
+}
+
+// 递归替换节点内第一个 TEXT 节点的文本
+async function replaceAllTextInNode(node: SceneNode, newText: string): Promise<boolean> {
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode;
+    await figma.loadFontAsync(textNode.fontName as FontName);
+    textNode.characters = newText;
+    return true;
+  }
+  if ('children' in node) {
+    for (const child of (node as any).children) {
+      const ok = await replaceAllTextInNode(child, newText);
+      if (ok) return true;
+    }
+  }
+  return false;
+}
+
 // ── Thin message dispatcher ─────────────────────────────────────────
 figma.ui.onmessage = async (msg) => {
   const handlers: Record<string, (m: any) => Promise<void> | void> = {
@@ -5112,6 +5459,8 @@ figma.ui.onmessage = async (msg) => {
     'update-component': handleUpdateComponent,
     'apply-column-settings': handleApplyColumnSettings,
     'swap-component': handleSwapComponent,
+    'edit-table-cells': handleEditTableCells,
+    'request-table-context': handleRequestTableContext,
   };
   const handler = handlers[msg.type];
   if (handler) await handler(msg);
