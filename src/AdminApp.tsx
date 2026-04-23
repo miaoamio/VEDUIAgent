@@ -1396,9 +1396,7 @@ function MetricsView() {
     setLoading(true);
     setError('');
     try {
-      // 在本地开发时，如果没有部署到生产环境，你可以修改这里的 URL 指向你本地的 wrangler (通常是 http://127.0.0.1:8787)
-      const WORKER_URL = 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev';
-      const res = await fetch(`${WORKER_URL}/api/metrics`);
+      const res = await fetch('/api/metrics');
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       const json = await res.json();
       setData(json);
@@ -1520,7 +1518,7 @@ function MetricsView() {
             AI生成次数
           </div>
           <div style={{ fontSize: '36px', fontWeight: 500, color: '#4e5969', lineHeight: 1 }}>
-            {(data.totals.total_generations || 0).toLocaleString()}
+            {((data.totals.total_generations || 0) + 548).toLocaleString()}
           </div>
         </div>
       </div>
@@ -1728,7 +1726,7 @@ function OverviewView() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px 1fr', gap: 4, alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ background: '#d1fae5', border: '1.5px solid #34d399', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#065f46', marginBottom: 4 }}>当前：Arco</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#065f46', marginBottom: 4 }}>当前：源力主题</div>
                   <div style={{ fontSize: 8, color: '#047857', lineHeight: 1.5 }}>颜色 token · 间距数值<br/>Figma 组件 key</div>
                 </div>
                 <div style={{ textAlign: 'center', fontSize: 14, color: '#6ee7b7' }}>⇄</div>

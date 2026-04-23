@@ -492,6 +492,9 @@ export function applyCellAutoWidth(cell: SceneNode) {
 }
 
 export function applyCellAutoWidthIfMultiElement(cell: SceneNode) {
+  // Select 单元格的布局是 text(FILL) + icon(固定右侧)，不应改为 HUG
+  const componentId = 'getPluginData' in cell ? cell.getPluginData('component-id') : '';
+  if (componentId === 'table-cell-select') return;
   const textNodes = collectTextNodes(cell);
   if (!isMultiElementCell(cell, textNodes.length)) return;
   applyCellAutoWidth(cell);

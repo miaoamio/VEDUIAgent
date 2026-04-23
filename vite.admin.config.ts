@@ -11,6 +11,13 @@ export default defineConfig({
     port: 3001,
     open: '/admin.html',
     host: true,
+    proxy: {
+      '/api': {
+        target: 'https://figma-ui-agent-proxy.uhimiao-thu.workers.dev',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
   build: {
     target: 'esnext',

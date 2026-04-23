@@ -5381,8 +5381,6 @@ function App() {
   };
 
   const inferInitialPlanFromUserInput = (input: string): AgentPlanState | null => {
-    // Disable auto plan for now as it is not mature enough.
-    return null;
     const text = String(input || '').trim();
     if (!text) return null;
     const lower = text.toLowerCase();
@@ -5409,8 +5407,14 @@ function App() {
       pushUnique({ id: 'tabs', title: '下钻标签切换区', type: 'expand_tabs_block' });
     }
 
-    const shouldCreatePlan = hasPageIntent || blockCandidates.length >= 2;
-    if (!shouldCreatePlan) return null;
+    // Only enable auto-plan for full page generation scenarios
+    if (!hasPageIntent) return null;
+
+    // 通用页面请求没有提到具体区块时，自动补充默认区块
+    if (blockCandidates.length === 0) {
+      pushUnique({ id: 'chart', title: '下钻图表区', type: 'expand_chart_block' });
+      pushUnique({ id: 'list', title: '下钻列表/表格区', type: 'expand_table_block' });
+    }
 
     const tasks: PlanTask[] = [
       {
@@ -7214,7 +7218,7 @@ StepB:\n`;
             accumulatedLog += (accumulatedLog ? '\n\n' : '') + turnLog;
             setResponse(accumulatedLog);
 
-            const actionTaskId = readActionTaskId(action);
+            let actionTaskId = readActionTaskId(action);
             const isPlanControlAction =
               action.type === 'set_plan' ||
               action.type === 'init_plan' ||
@@ -7222,6 +7226,15 @@ StepB:\n`;
               action.type === 'next_task' ||
               action.type === 'update_plan' ||
               action.type === 'plan_update';
+
+            // 当 AI 没带 taskId 但存在 plan 时，自动推断关联的任务
+            if (!actionTaskId && runtimePlan && !isPlanControlAction) {
+                const inProgressTask = runtimePlan.tasks.find(t => t.status === 'in_progress');
+                const inferredTask = inProgressTask || getNextExecutableTask(runtimePlan);
+                if (inferredTask) {
+                    actionTaskId = inferredTask.taskId;
+                }
+            }
 
             if (runtimePlan && actionTaskId && !isPlanControlAction) {
                 runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'in_progress');
@@ -8092,16 +8105,31 @@ StepB:\n`;
                     });
                     if (runtimePlan && actionTaskId) {
                         runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'done');
+                        runtimePlan = updateTaskTargetNodeId(runtimePlan, actionTaskId, rootNodeId);
+                        setAgentPlan(runtimePlan);
                     }
 
                 } catch (e) {
 
-                    const errorMsg = `[System]: 组件创建失败：${e}`;
+                    const errStr = String(e);
+                    let errorMsg = `[System]: 组件创建失败：${e}`;
+
+                    // 当 token 找不到 componentKey 时，注入可用 token 列表帮助 AI 纠正
+                    if (errStr.includes('Missing component key for token')) {
+                        const availableTokens = Object.entries(BASE_COMPONENT_TOKEN_PACK)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([token, base]) => `${token} (${(base as any)?.displayName || token})`)
+                          .join(', ');
+                        errorMsg += `\n[System]: 可用的 componentToken 列表：${availableTokens}\n请从上述列表中选择正确的 token 重试。`;
+                    }
+
                     accumulatedLog += '\n\n' + errorMsg;
                     setResponse(accumulatedLog);
                     messages.push({ role: "user", content: errorMsg });
                     if (runtimePlan && actionTaskId) {
-                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, 'failed', String(e));
+                        // token 找不到时保持 in_progress 让 AI 用正确 token 重试
+                        const nextStatus = errStr.includes('Missing component key for token') ? 'in_progress' : 'failed';
+                        runtimePlan = updateTaskStatus(runtimePlan, actionTaskId, nextStatus, errStr);
                     }
                 }
             }

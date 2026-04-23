@@ -55,6 +55,16 @@ function normalizeFigmaComponentKey(raw: string): string {
   return FIGMA_COMPONENT_KEY_ALIASES[normalized] || trimmed;
 }
 
+// AI 常见的错误 token → 正确 token 映射
+const TOKEN_FUZZY_ALIASES: Record<string, string> = {
+  'lib-button-default': 'lib-basic-button',
+  'lib-button': 'lib-basic-button',
+  'lib-button-primary': 'lib-basic-button',
+  'lib-button-secondary': 'lib-basic-button',
+  'lib-component-button': 'lib-basic-button',
+  'button': 'lib-basic-button',
+};
+
 export function resolveComponentKeyFromToken(token: string): string {
   const normalized = String(token || '').trim();
   if (!normalized) return '';
@@ -64,7 +74,14 @@ export function resolveComponentKeyFromToken(token: string): string {
   const kebabKey = activeTheme.components?.[kebab];
   if (kebabKey) return normalizeFigmaComponentKey(kebabKey);
   const profileKey = resolveComponentTokenProfile(normalized)?.profile.componentKey || '';
-  return profileKey ? normalizeFigmaComponentKey(profileKey) : '';
+  if (profileKey) return normalizeFigmaComponentKey(profileKey);
+  // fuzzy fallback：AI 常见错误 token 纠正
+  const alias = TOKEN_FUZZY_ALIASES[normalized] || TOKEN_FUZZY_ALIASES[kebab];
+  if (alias) {
+    const aliasKey = activeTheme.components?.[alias];
+    if (aliasKey) return normalizeFigmaComponentKey(aliasKey);
+  }
+  return '';
 }
 
 export function normalizeInputSize(value: unknown): 'mini' | 'small' | 'default' | 'large' {

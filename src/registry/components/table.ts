@@ -1557,7 +1557,7 @@ export const tableComponents: ComponentRegistry["components"] = {
       },
       "cornerRadius": {
         "type": "number",
-        "default": 8,
+        "default": 4,
         "description": "表格圆角"
       }
     },
@@ -1593,28 +1593,28 @@ export const tableComponents: ComponentRegistry["components"] = {
           "paddingX": 12,
           "paddingY": 8,
           "fontSize": 13,
-          "cornerRadius": 8
+          "cornerRadius": 4
         },
         "default": {
           "height": 40,
           "paddingX": 12,
           "paddingY": 8,
           "fontSize": 13,
-          "cornerRadius": 8
+          "cornerRadius": 4
         },
         "medium": {
           "height": 48,
           "paddingX": 12,
           "paddingY": 8,
           "fontSize": 13,
-          "cornerRadius": 8
+          "cornerRadius": 4
         },
         "large": {
           "height": 56,
           "paddingX": 12,
           "paddingY": 8,
           "fontSize": 13,
-          "cornerRadius": 8
+          "cornerRadius": 4
         }
       },
       "spacing": {
