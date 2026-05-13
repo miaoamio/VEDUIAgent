@@ -546,7 +546,8 @@ export const tableComponents: ComponentRegistry["components"] = {
     },
     "runtime": {
       "spacing": {
-        "avatarSize": 20
+        "avatarSize": 20,
+        "avatarTextGap": 4
       }
     },
     "colorVariableBindings": {

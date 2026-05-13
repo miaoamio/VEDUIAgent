@@ -3702,11 +3702,17 @@ async function renderComponent(
     else if (instance.componentId === 'table-cell-avatar') {
         const displayText = params.text || params.name || params.label || 'User';
         const initial = resolveAvatarInitialFromName(displayText);
+        const avatarCellRuntime = COMPONENT_DEFS['table-cell-avatar']?.runtime as
+          | { spacing?: { avatarSize?: number; avatarTextGap?: number } }
+          | undefined;
+        const avatarSize = avatarCellRuntime?.spacing?.avatarSize ?? 20;
+        const avatarTextGap = avatarCellRuntime?.spacing?.avatarTextGap ?? 4;
         let avatarInstance: SceneNode | null = null;
+        frame.itemSpacing = avatarTextGap;
         try {
             avatarInstance = await renderFigmaComponentInstance({
                 componentToken: 'lib-data-display-avataricon',
-                variantCriteria: { 'Size 尺寸': 'Default 20' }
+                variantCriteria: { 'Size 尺寸': `Default ${avatarSize}` }
             });
         } catch (e) {
             console.warn('[AvatarCell] render figma component failed', e);
@@ -3715,7 +3721,7 @@ async function renderComponent(
         if (avatarInstance) {
             frame.appendChild(avatarInstance);
         } else {
-            frame.appendChild(await createCenteredAvatarFallback(initial, 20));
+            frame.appendChild(await createCenteredAvatarFallback(initial, avatarSize));
         }
 
         const textNode = figma.createText();
