@@ -93,6 +93,64 @@ const columnHasStatusText = (values: unknown[]): boolean => {
   });
 };
 
+const NUMERIC_HEADER_HINTS = [
+  '数量', '数值', '金额', '价格', '单价', '总价', '费用', '成本', '收入', '支出', '利润', '毛利', '净利',
+  '额度', '余额', '占比', '比例', '百分比', '比率', '同比', '环比', '排名', '得分', '评分', '分数',
+  '年龄', '时长', '耗时', '次数', '浏览量', '访问量', '点击量', '下载量', '订单量', '销量',
+  'count', 'amount', 'price', 'total', 'sum', 'avg', 'average', 'rate', 'ratio', 'percent',
+  'percentage', 'qty', 'quantity', 'score', 'rank', 'ranking', 'age', 'duration', 'cost',
+  'revenue', 'profit', 'balance'
+];
+
+const NON_NUMERIC_HEADER_HINTS = [
+  '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编'
+];
+
+const isDateLikeText = (text: string): boolean => {
+  const normalized = text.trim();
+  return (
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(normalized) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(normalized) ||
+    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalized)
+  );
+};
+
+const isNumericLikeText = (value: unknown): boolean => {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean' || value === null || value === undefined) return false;
+
+  const raw = extractCellText(value).trim();
+  if (!raw || isDateLikeText(raw)) return false;
+
+  let normalized = raw
+    .replace(/\s+/g, '')
+    .replace(/^[¥￥$€£]/, '')
+    .replace(/^[+-]?\(/, '-')
+    .replace(/\)$/, '')
+    .replace(/,/g, '');
+
+  normalized = normalized.replace(
+    /(万元|亿元|万|亿|元|%|‰|bp|bps|个|人|次|件|台|天|小时|分钟|分|秒|年|月|周|kwh|kw|w|ms|s|kb|mb|gb|tb|cny|rmb|usd)$/i,
+    ''
+  );
+
+  return /^[+-]?\d+(?:\.\d+)?$/.test(normalized);
+};
+
+const isNumericTextColumn = (header: string, values: unknown[]): boolean => {
+  const nonEmptyValues = values.filter((value) => String(extractCellText(value) || '').trim() !== '');
+  if (nonEmptyValues.length === 0) return false;
+
+  const numericCount = nonEmptyValues.filter((value) => isNumericLikeText(value)).length;
+  const numericRatio = numericCount / nonEmptyValues.length;
+  const hasNumericHeaderHint = headerIncludes(header, NUMERIC_HEADER_HINTS);
+  const hasNonNumericHeaderHint = headerIncludes(header, NON_NUMERIC_HEADER_HINTS);
+
+  if (hasNonNumericHeaderHint && !hasNumericHeaderHint) return false;
+  if (hasNumericHeaderHint && numericCount > 0) return true;
+  return numericCount >= 2 && numericRatio >= 0.7;
+};
+
 export const resolveTagColumnKind = (columnType: unknown, headerText: string): TagColumnKind => {
   const normalized = String(columnType || '')
     .trim()
@@ -432,12 +490,17 @@ export const buildTableComponentFromPayload = (
     const type = columnTypes[colIndex] || 'Text';
     const cellComponentId = tableTypeToComponentId(type);
     const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
+    const columnValues = rows.map((row) => row[colIndex]);
     const widthRaw = Number(columnWidths[colIndex]);
     const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;
     const width = hasWidth ? widthRaw : undefined;
     const tagColumnKind: TagColumnKind | null =
       cellComponentId === 'table-cell-tag' ? resolveTagColumnKind(type, header) : null;
     const headerText = isActionColumn ? '操作' : header;
+    const textAlign =
+      cellComponentId === 'table-cell' && isNumericTextColumn(header, columnValues)
+        ? 'right'
+        : undefined;
 
     const columnChildren: any[] = [
       {
@@ -445,7 +508,8 @@ export const buildTableComponentFromPayload = (
         params: {
           text: headerText,
           ...(hasWidth && !isActionColumn ? { width } : {}),
-          height: headerHeight
+          height: headerHeight,
+          ...(textAlign ? { textAlign } : {})
         }
       }
     ];
@@ -522,7 +586,12 @@ export const buildTableComponentFromPayload = (
       }
       columnChildren.push({
         componentId: 'table-cell',
-        params: { height: bodyHeight, text: value, ...(hasWidth && !isActionColumn ? { width } : {}) }
+        params: {
+          height: bodyHeight,
+          text: value,
+          ...(hasWidth && !isActionColumn ? { width } : {}),
+          ...(textAlign ? { textAlign } : {})
+        }
       });
     });
 
@@ -533,6 +602,7 @@ export const buildTableComponentFromPayload = (
         rowCount: rows.length,
         ...(hasWidth && !isActionColumn ? { width } : {}),
         ...(isActionColumn ? { columnWidthMode: 'HUG' } : {}),
+        ...(textAlign ? { textAlign } : {}),
         headerHeight,
         bodyHeight
       },
