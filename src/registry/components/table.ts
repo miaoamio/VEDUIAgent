@@ -879,6 +879,198 @@ export const tableComponents: ComponentRegistry["components"] = {
     },
     "renderNotes": tableCellRenderNotes
   },
+  "table-cell-number-unit": {
+    "id": "table-cell-number-unit",
+    "name": "Number(unit) 数值单位",
+    "category": "Table",
+    "description": "数值与单位拆分展示的表格单元格，默认右对齐。",
+    "schemaVersion": "2.0.0",
+    "family": "table-cell",
+    "prompts": {
+      "description": "数值与单位拆分展示的表格单元格，默认右对齐。",
+      "usage": "用于数值+单位列。优先传结构化参数：`value` 为数值文本，`unit` 为单位文本；也兼容仅传 `text`，例如 `\"123ms\"` 或 `\"12.5 %\"`。默认右对齐，可切换为左对齐。",
+      "examples": [
+        "带单位单元格: { \"componentId\": \"table-cell-number-unit\", \"params\": { \"value\": \"123\", \"unit\": \"ms\", \"width\": 0 } }"
+      ]
+    },
+    "params": {
+      "text": {
+        "type": "string",
+        "default": "123ms",
+        "description": "完整文本（兼容输入，优先按 value + unit 渲染）"
+      },
+      "value": {
+        "type": "string",
+        "default": "123",
+        "description": "数值文本"
+      },
+      "unit": {
+        "type": "string",
+        "default": "ms",
+        "description": "单位文本"
+      },
+      "width": {
+        "type": "number",
+        "default": 0,
+        "description": "宽度 (0为自适应)"
+      },
+      "height": {
+        "type": "number",
+        "default": 40,
+        "description": "单元格高度"
+      },
+      "paddingTop": {
+        "type": "number",
+        "default": 0,
+        "description": "上内边距"
+      },
+      "paddingBottom": {
+        "type": "number",
+        "default": 0,
+        "description": "下内边距"
+      },
+      "paddingLeft": {
+        "type": "number",
+        "default": 16,
+        "description": "左内边距"
+      },
+      "paddingRight": {
+        "type": "number",
+        "default": 16,
+        "description": "右内边距"
+      },
+      "textAlign": {
+        "type": "select",
+        "default": "right",
+        "description": "对齐方式",
+        "enumValues": [
+          "left",
+          "right"
+        ]
+      },
+      "textDisplay": {
+        "type": "select",
+        "default": "ellipsis",
+        "description": "文本显示",
+        "enumValues": [
+          "ellipsis",
+          "lineBreak"
+        ]
+      },
+      "backgroundColor": {
+        "type": "color",
+        "default": "#FFFFFF",
+        "description": "背景颜色"
+      },
+      "borderColor": {
+        "type": "color",
+        "default": "#EAEDF1",
+        "description": "边框颜色"
+      },
+      "borderWidth": {
+        "type": "number",
+        "default": 1,
+        "description": "边框宽度"
+      },
+      "borderBottomOnly": {
+        "type": "boolean",
+        "default": true,
+        "description": "仅显示下边框"
+      }
+    },
+    "capabilities": {
+      "allowChildren": false,
+      "allowSwapVariant": false,
+      "allowSetProps": true,
+      "allowSetLayout": true,
+      "allowSetStyle": true,
+      "allowBindData": false,
+      "allowRemove": true
+    },
+    "figmaBinding": {
+      "nodeType": "FRAME",
+      "preferredLayoutMode": "VERTICAL",
+      "renderKey": "table-cell-number-unit"
+    },
+    "runtime": {
+      "spacing": {
+        "numberUnitGap": 0
+      }
+    },
+    "colorVariableBindings": {
+      "table-cell-bg-key": {
+        "enabled": true,
+        "token": "table.cell.bg",
+        "variableRef": "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780",
+        "keyCandidates": [
+          "3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042"
+        ],
+        "idCandidates": [
+          "VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780"
+        ],
+        "nameCandidates": [
+          "color-bg-1",
+          "fill/输入类组件填充 @color-bg-white",
+          "@color-bg-white"
+        ]
+      },
+      "table-border-key": {
+        "enabled": true,
+        "token": "table.border",
+        "nameCandidates": [
+          "border-2",
+          "color-border-2",
+          "@border-2",
+          "@color-border-2"
+        ]
+      },
+      "table-cell-text-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "variableRef": "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560",
+        "keyCandidates": [
+          "178115a8c3bc7983da5bc10e637208895750dbfd"
+        ],
+        "idCandidates": [
+          "VariableID:178115a8c3bc7983da5bc10e637208895750dbfd/174345:560"
+        ]
+      },
+      "table-cell-unit-text-key": {
+        "enabled": true,
+        "token": "text-3",
+        "variableRef": "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276",
+        "keyCandidates": [
+          "98bdfd58bdd60974e1fe50bb12cd2c24661e8ded"
+        ],
+        "idCandidates": [
+          "VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276"
+        ],
+        "nameCandidates": [
+          "text/次要信息 @color-text-3",
+          "@color-text-3"
+        ]
+      }
+    },
+    "typographyBindings": {
+      "table-cell-text-style-key": {
+        "enabled": true,
+        "token": "table.cell.text",
+        "textStyleRef": "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2",
+        "keyCandidates": [
+          "ac8ef12de2cc499e51922d6b5239c26b3645a05a"
+        ],
+        "idCandidates": [
+          "S:ac8ef12de2cc499e51922d6b5239c26b3645a05a,131052:2"
+        ],
+        "nameCandidates": [
+          "Body",
+          "正文",
+          "Text/Body"
+        ]
+      }
+    },
+    "renderNotes": tableCellRenderNotes
+  },
   "table-cell-action-text": {
     "id": "table-cell-action-text",
     "name": "ActionText 操作文字",
@@ -1432,6 +1624,7 @@ export const tableComponents: ComponentRegistry["components"] = {
           "table-cell-avatar",
           "table-cell-input",
           "table-cell-select",
+          "table-cell-number-unit",
           "table-cell-action-text",
           "table-cell-action-icon"
         ],

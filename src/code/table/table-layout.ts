@@ -538,6 +538,7 @@ export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBr
     componentId === 'table-cell-avatar' ||
     componentId === 'table-cell-input' ||
     componentId === 'table-cell-select' ||
+    componentId === 'table-cell-number-unit' ||
     componentId === 'table-cell-action-text' ||
     componentId === 'table-cell-action-icon';
   const useAutoWidth = componentId === 'table-cell' || componentId === 'table-header-cell' || isMixedContentCell;

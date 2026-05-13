@@ -248,6 +248,15 @@ export const extractTagCellPayload = (
 
 export const tableTypeToComponentId = (type?: string): string => {
   const normalized = (type || 'Text').toLowerCase();
+  if (
+    normalized.includes('number(unit)') ||
+    normalized.includes('number-unit') ||
+    normalized.includes('number_unit') ||
+    normalized.includes('num(unit)') ||
+    normalized.includes('数值单位')
+  ) {
+    return 'table-cell-number-unit';
+  }
   if (normalized.includes('actionicon') || normalized.includes('action-icon') || normalized.includes('action_icon') || normalized.includes('操作图标')) {
     return 'table-cell-action-icon';
   }
@@ -281,6 +290,27 @@ const inferColumnType = (header: string, values: unknown[]): string => {
   }
 
   return 'Text';
+};
+
+const parseNumberUnitCell = (rawValue: unknown): { value: string; unit: string } => {
+  if (isObject(rawValue)) {
+    const obj = rawValue as any;
+    const explicitValue = extractCellText(obj.value ?? obj.number ?? obj.num ?? obj.amount);
+    const explicitUnit = extractCellText(obj.unit ?? obj.suffix);
+    if (explicitValue || explicitUnit) {
+      return { value: explicitValue || '0', unit: explicitUnit };
+    }
+    const fallbackText = extractCellText(obj.text ?? obj.label ?? obj.content);
+    rawValue = fallbackText;
+  }
+
+  const text = extractCellText(rawValue).trim();
+  if (!text) return { value: '0', unit: '' };
+  const match = text.match(/^([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
+  if (!match) return { value: text, unit: '' };
+  const value = (match[1] || '').trim() || text;
+  const unit = (match[2] || '').trim();
+  return { value, unit };
 };
 
 export const inferColumnTypesFromRows = (
@@ -498,9 +528,11 @@ export const buildTableComponentFromPayload = (
       cellComponentId === 'table-cell-tag' ? resolveTagColumnKind(type, header) : null;
     const headerText = isActionColumn ? '操作' : header;
     const textAlign =
-      cellComponentId === 'table-cell' && isNumericTextColumn(header, columnValues)
+      cellComponentId === 'table-cell-number-unit'
         ? 'right'
-        : undefined;
+        : cellComponentId === 'table-cell' && isNumericTextColumn(header, columnValues)
+          ? 'right'
+          : undefined;
 
     const columnChildren: any[] = [
       {
@@ -581,6 +613,21 @@ export const buildTableComponentFromPayload = (
         columnChildren.push({
           componentId: 'table-cell-action-icon',
           params: { height: bodyHeight, text: value }
+        });
+        return;
+      }
+      if (cellComponentId === 'table-cell-number-unit') {
+        const parsed = parseNumberUnitCell(rawValue);
+        columnChildren.push({
+          componentId: 'table-cell-number-unit',
+          params: {
+            height: bodyHeight,
+            value: parsed.value,
+            unit: parsed.unit,
+            text: `${parsed.value}${parsed.unit ? ` ${parsed.unit}` : ''}`,
+            ...(hasWidth && !isActionColumn ? { width } : {}),
+            ...(textAlign ? { textAlign } : {})
+          }
         });
         return;
       }

@@ -3621,6 +3621,7 @@ async function renderComponent(
            instance.componentId === 'table-cell-avatar' ||
            instance.componentId === 'table-cell-input' ||
            instance.componentId === 'table-cell-select' ||
+           instance.componentId === 'table-cell-number-unit' ||
            instance.componentId === 'table-cell-action-text' ||
            instance.componentId === 'table-cell-action-icon') {
     const isHeader = instance.componentId === 'table-header-cell';
@@ -3794,7 +3795,70 @@ async function renderComponent(
             frame.appendChild(selectFrame);
         }
     }
-    // 4. Action Text Cell
+    // 4. Number + Unit Cell
+    else if (instance.componentId === 'table-cell-number-unit') {
+        const rawValue = params.value ?? params.number ?? params.num;
+        const rawUnit = params.unit ?? params.suffix;
+        const rawText = params.text ?? params.label ?? params.content;
+        const normalizedText =
+          rawText === undefined || rawText === null ? '' : String(rawText).trim();
+        let valueText =
+          rawValue === undefined || rawValue === null ? '' : String(rawValue).trim();
+        let unitText =
+          rawUnit === undefined || rawUnit === null ? '' : String(rawUnit).trim();
+
+        if (!valueText && normalizedText) {
+            const match = normalizedText.match(/^([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
+            if (match) {
+                valueText = (match[1] || '').trim();
+                unitText = unitText || (match[2] || '').trim();
+            } else {
+                valueText = normalizedText;
+            }
+        }
+
+        if (!valueText) {
+            valueText = '0';
+        }
+
+        const numberUnitRuntime = COMPONENT_DEFS['table-cell-number-unit']?.runtime as
+          | { spacing?: { numberUnitGap?: number } }
+          | undefined;
+        frame.itemSpacing = numberUnitRuntime?.spacing?.numberUnitGap ?? 0;
+
+        const valueFrame = figma.createFrame();
+        valueFrame.layoutMode = 'HORIZONTAL';
+        valueFrame.primaryAxisSizingMode = 'AUTO';
+        valueFrame.counterAxisSizingMode = 'AUTO';
+        valueFrame.fills = [];
+        valueFrame.itemSpacing = 0;
+        valueFrame.counterAxisAlignItems = 'CENTER';
+
+        const unitFrame = figma.createFrame();
+        unitFrame.layoutMode = 'HORIZONTAL';
+        unitFrame.primaryAxisSizingMode = 'AUTO';
+        unitFrame.counterAxisSizingMode = 'AUTO';
+        unitFrame.fills = [];
+        unitFrame.itemSpacing = 0;
+        unitFrame.counterAxisAlignItems = 'CENTER';
+
+        const valueNode = figma.createText();
+        await applyTextStyleBinding(valueNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
+        valueNode.characters = valueText;
+        await applyColorVariable(valueNode, 'table-cell-text-key', '#0C0D0E');
+        valueFrame.appendChild(valueNode);
+        frame.appendChild(valueFrame);
+
+        if (unitText) {
+            const unitNode = figma.createText();
+            await applyTextStyleBinding(unitNode, 'table-cell-text-style-key', { family: 'Inter', style: 'Regular', size: 13 });
+            unitNode.characters = unitText;
+            await applyColorVariable(unitNode, 'table-cell-unit-text-key', '#737A87');
+            unitFrame.appendChild(unitNode);
+            frame.appendChild(unitFrame);
+        }
+    }
+    // 5. Action Text Cell
     else if (instance.componentId === 'table-cell-action-text') {
         const rawText = String(params.text || '').trim() || '编辑 删除 …';
         const parts = rawText
@@ -3868,7 +3932,7 @@ async function renderComponent(
             }
         }
     }
-    // 5. Action Icon Cell
+    // 6. Action Icon Cell
     else if (instance.componentId === 'table-cell-action-icon') {
         frame.itemSpacing = 24;
 
@@ -3907,7 +3971,7 @@ async function renderComponent(
             frame.appendChild(placeholder);
         }
     }
-    // 6. Standard Cell (Text)
+    // 7. Standard Cell (Text)
     else {
         const textNode = figma.createText();
         const typographyKey = isHeader ? 'table-header-text-style-key' : 'table-cell-text-style-key';

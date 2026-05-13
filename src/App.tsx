@@ -3134,8 +3134,8 @@ function App() {
 - 创建新表格时优先 draw_table，避免输出冗长 table 子树。
 - 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
 - draw_table payload 必须使用 headers + rows 格式，示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串。禁止使用 columns 字段代替 headers。
-- columnTypes 可选值：Text（普通文本）、StatusTag（状态标签，单元格用对象 {"text":"xxx","statusTheme":"Success 成功"}）、Avatar（头像+姓名）、ActionText（操作按钮文字）、ActionIcon（操作图标）。创建人/负责人列用 Avatar，状态列用 StatusTag，操作列用 ActionText。
-- 所有单元格值必须是字符串（StatusTag 列除外）。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
+- columnTypes 可选值：Text（普通文本）、Number(unit)（数值+单位，支持 {"value":"123","unit":"ms"} 或 "123ms"）、StatusTag（状态标签，单元格用对象 {"text":"xxx","statusTheme":"Success 成功"}）、Avatar（头像+姓名）、ActionText（操作按钮文字）、ActionIcon（操作图标）。创建人/负责人列用 Avatar，状态列用 StatusTag，操作列用 ActionText。
+- 所有单元格值必须是字符串；StatusTag 和 Number(unit) 列可用对象。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
 - 人名禁止使用张三、李四等占位名，使用自然姓名如：林晓然、周思远、苏瑾瑶、赵桐宇、沈清和、韩冬梅、方远哲、叶舟行、卢皓宇、陈默涵。
 - 日期时间统一使用 2026 年，如 2026-03-15 14:30:00。
 - **禁止使用 set_plan / init_plan / update_plan / plan_next / execute_task / run_task**。不要创建页面外壳，不要走多区块工作流。
@@ -3461,6 +3461,7 @@ function App() {
     }
     if (componentId === 'table-cell-avatar') return 'Avatar';
     if (componentId === 'table-cell-input') return 'Input';
+    if (componentId === 'table-cell-number-unit') return 'Number(unit)';
     if (componentId === 'table-cell-action-text') return 'ActionText';
     if (componentId === 'table-cell-action-icon') return 'ActionIcon';
     return 'Text';
@@ -4958,6 +4959,12 @@ function App() {
         }
         if (node.componentId === 'table-cell-input') {
           return extractCellText(nodeProps.value ?? nodeProps.text);
+        }
+        if (node.componentId === 'table-cell-number-unit') {
+          return extractCellText(
+            nodeProps.text ??
+            `${extractCellText(nodeProps.value)}${nodeProps.unit ? ` ${extractCellText(nodeProps.unit)}` : ''}`
+          );
         }
         return extractCellText(nodeProps.text ?? nodeProps.value);
       });
