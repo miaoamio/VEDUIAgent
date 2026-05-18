@@ -85,13 +85,14 @@ export const normalizeMergesInput = (source: any): NormalizedTableMergeSpec[] =>
   return source.merges
     .filter((item) => isObject(item))
     .map((item: any, index: number) => {
-      const row = toNonNegativeInteger(item.row);
-      const col = toNonNegativeInteger(item.col);
+      // 保留所有 merge 项（即使 row/col 非法），让 validateMergeBounds 在验证阶段统一报告 OUT_OF_BOUNDS。
+      // 非法的 row/col 用 -1 兜底，触发 validateMergeBounds 内部 `merge.row < 0 || merge.col < 0` 的越界判定。
+      const row = toNonNegativeInteger(item.row) ?? -1;
+      const col = toNonNegativeInteger(item.col) ?? -1;
       const rowspan = toPositiveInteger(item.rowspan) ?? 1;
       const colspan = toPositiveInteger(item.colspan) ?? 1;
       const rawSection = String(item.section || '').trim().toLowerCase();
       const section: TableMergeSection = rawSection === 'header' ? 'header' : 'body';
-      if (row === null || col === null) return null;
       const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `merge-${section}-${index + 1}`;
       const sourceValue = typeof item.source === 'string' && item.source.trim() ? item.source.trim() : undefined;
       return {
@@ -105,8 +106,7 @@ export const normalizeMergesInput = (source: any): NormalizedTableMergeSpec[] =>
         ...(item.locked === true ? { locked: true } : {}),
         ...(item.groupBoundary === true ? { groupBoundary: true } : {})
       };
-    })
-    .filter(Boolean) as NormalizedTableMergeSpec[];
+    }) as NormalizedTableMergeSpec[];
 };
 
 export const normalizeAutoMergeRulesInput = (source: any): NormalizedAutoMergeRule[] => {

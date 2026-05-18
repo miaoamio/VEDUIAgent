@@ -10,7 +10,6 @@ export interface TableMergeValidationError {
     | 'INVALID_SPAN'
     | 'OUT_OF_BOUNDS'
     | 'OVERLAP'
-    | 'BODY_COLSPAN_UNSUPPORTED'
     | 'SPECIAL_CELL_HORIZONTAL_MERGE'
     | 'AUTO_RULE_INVALID_COLUMN';
   message: string;

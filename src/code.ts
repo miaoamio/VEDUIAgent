@@ -3753,10 +3753,25 @@ async function renderComponent(
           const anchorList = bodyCells.filter(
               (c: any) => c.isMergeAnchor && Number(c.rowspan || 1) > 1
           );
-          // 用于跳过被合并覆盖的位置
+          // 用于跳过被合并覆盖的位置：bodyCells 已过滤掉 covered cell（render-grid 不会输出它们），
+          // 因此根据 anchor 的 rowspan/colspan 自行重建被覆盖位置集合
+          const coveredCellKeys = new Set<string>();
+          for (const c of bodyCells) {
+              if (!c?.isMergeAnchor) continue;
+              const rs = Number(c.rowspan || 1);
+              const cs = Number(c.colspan || 1);
+              if (rs <= 1 && cs <= 1) continue;
+              const r0 = Number(c.row ?? 0);
+              const c0 = Number(c.col ?? 0);
+              for (let dr = 0; dr < rs; dr += 1) {
+                  for (let dc = 0; dc < cs; dc += 1) {
+                      if (dr === 0 && dc === 0) continue;
+                      coveredCellKeys.add(`${r0 + dr}:${c0 + dc}`);
+                  }
+              }
+          }
           const isCovered = (row: number, col: number): boolean => {
-              const cell = cellByKey.get(`${row}:${col}`);
-              return Boolean(cell?.isCovered);
+              return coveredCellKeys.has(`${row}:${col}`);
           };
 
           const bodyFrame = figma.createFrame();
