@@ -27,22 +27,42 @@ export function resolveTableSizeHeight(params: Record<string, any>): number | nu
 }
 
 export function resolveTableHeaderHeight(params: Record<string, any>): number {
-    return resolveTableSizeHeight(params)
-        ?? toPositiveNumber(params.height)
-        ?? toPositiveNumber(params.headerHeight)
-        ?? toPositiveNumber(getRegistrySizeMetrics('table', params.size)?.height)
-        ?? toPositiveNumber(TABLE_DEFAULT_PARAMS.headerHeight)
-        ?? 0;
+    const explicitHeaderHeight = toPositiveNumber(params.headerHeight);
+    if (explicitHeaderHeight) return explicitHeaderHeight;
+    const explicitHeight = toPositiveNumber(params.height);
+    if (explicitHeight) return explicitHeight;
+    const bodyHeight =
+        resolveTableSizeHeight(params)
+        ?? explicitHeight
+        ?? toPositiveNumber(getRegistrySizeMetrics('table', params.size)?.height);
+    if (bodyHeight) {
+        return bodyHeight <= 32 ? 32 : 40;
+    }
+    return toPositiveNumber(TABLE_DEFAULT_PARAMS.headerHeight) ?? 0;
 }
 
 export function resolveTableBodyHeight(params: Record<string, any>): number {
-    return resolveTableSizeHeight(params)
-        ?? toPositiveNumber(params.height)
-        ?? toPositiveNumber(params.bodyHeight)
+    const explicitHeight = toPositiveNumber(params.height);
+    if (explicitHeight) return explicitHeight;
+    return toPositiveNumber(params.bodyHeight)
         ?? toPositiveNumber(params.rowHeight)
+        ?? resolveTableSizeHeight(params)
         ?? toPositiveNumber(getRegistrySizeMetrics('table', params.size)?.height)
         ?? toPositiveNumber(TABLE_DEFAULT_PARAMS.bodyHeight)
         ?? 0;
+}
+
+export function getTableHeaderDepthFromParams(params: Record<string, any>): number {
+    const planDepth = Number((params as any)?.tableRenderPlan?.headerDepth);
+    if (Number.isInteger(planDepth) && planDepth > 0) return planDepth;
+    if (Array.isArray((params as any)?.headerRows) && (params as any).headerRows.length > 0) {
+        return (params as any).headerRows.length;
+    }
+    return 1;
+}
+
+export function hasMultiLevelTableHeaderParams(params: Record<string, any>): boolean {
+    return getTableHeaderDepthFromParams(params) > 1;
 }
 
 export function normalizeTableHeaderElementType(value: unknown): TableHeaderElementType {

@@ -3133,7 +3133,7 @@ function App() {
 - ⚠️ **环形图是饼图（chart-pie）的变体，必须设置 "类型 Type":"环形图 DonutChart"。属性名必须完整包含英文后缀：分类数量 Item / 数值标注 Data Annotation / 总数值 Sum / 类型 Type。**
 - 创建新表格时优先 draw_table，避免输出冗长 table 子树。
 - 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
-- draw_table payload 必须使用 headers + rows 格式，示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串。禁止使用 columns 字段代替 headers。
+- draw_table payload 必须使用紧凑结构。单层表头优先使用 headers + rows；若存在多级表头或合并单元格，优先使用 headerRows + rows + merges。示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。普通表格下 rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串；但合并单元格表格中，被 merges 覆盖的占位单元格允许使用空字符串。禁止使用 columns 字段代替 headers。merges 每项使用 { "section":"header|body", "row":0, "col":0, "rowspan":2, "colspan":1 }；支持 Header Colspan / Header Rowspan / Body Rowspan / Body Colspan（如订单表最后一行"合计"横向合并前 4 列）。Body Colspan 示例：表格最后追加"合计行"时，rows 末尾追加一行 ["合计","","","","¥12,345"]，并加 merges: [{"section":"body","row":<最后一行索引>,"col":0,"rowspan":1,"colspan":4}]。**只要用户提到"追加合计行/小计行/总计行/在最后一行合并/合并前 N 列为合计"，必须同时满足三件事：① rows 末尾真实追加一行（首格写"合计/小计/总计"，被合并的中间格留空字符串，最后一格写汇总值）；② merges 数组里加一条对应的 body colspan；③ 不要让 rowCount 把这一行覆盖掉，rowCount 应等于真实 rows.length。**
 - columnTypes 可选值：Text（普通文本）、Number(unit)（数值+单位，支持 {"value":"123","unit":"ms"} 或 "123ms"）、StatusTag（状态标签，单元格用对象 {"text":"xxx","statusTheme":"Success 成功"}）、Avatar（头像+姓名）、ActionText（操作按钮文字）、ActionIcon（操作图标）。创建人/负责人列用 Avatar，状态列用 StatusTag，操作列用 ActionText。
 - 所有单元格值必须是字符串；StatusTag 和 Number(unit) 列可用对象。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
 - 人名禁止使用张三、李四等占位名，使用自然姓名如：林晓然、周思远、苏瑾瑶、赵桐宇、沈清和、韩冬梅、方远哲、叶舟行、卢皓宇、陈默涵。
@@ -3237,8 +3237,8 @@ function App() {
      - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
      - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
      - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
-   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行样本数据，插件会自动循环复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。**rows 不能为空数组**，必须至少提供 2 行数据，且每个单元格都必须填入贴合业务场景的具体内容（人名、日期、状态词、金额等），不能是空字符串。如果 rows 为空，表格会全部显示占位符。
-   - payload 使用紧凑结构即可，例如：
+   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行样本数据，插件会自动循环复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。普通表格下 **rows 不能为空数组**，必须至少提供 2 行数据，且每个单元格都必须填入贴合业务场景的具体内容（人名、日期、状态词、金额等），不能是空字符串。如果 rows 为空，表格会全部显示占位符。**但合并单元格表格中，被 merges 覆盖的占位单元格允许保留空字符串，不要自动补成 "-"、"—" 或其他占位内容。**
+   - payload 使用紧凑结构即可。单层表头优先用 headers；多级表头或合并单元格优先用 headerRows + merges，例如：
      {
        "headers": ["名称", "状态", "负责人", "创建时间", "操作"],
        "rowCount": 10,
@@ -3253,10 +3253,17 @@ function App() {
        "pagination": true,
        "rowHeight": { "header": 40, "body": 40 }
     }
-   - ⚠️ **rows 中每行必须是一个完整数组，包含与 headers 等长的元素。** 当单元格值是对象（如 StatusTag）时，对象必须在行数组内部，不要提前关闭 ]。正确：["A",{"text":"运行中"},  "B"]，错误：["A",{"text":"运行中"}],"B"。
+   - 若使用多级表头，可传：
+    {
+      "headerRows": [["业务","VRegion","在线计算","","","","",""],["","","TCE(Cores)","TCE(内存GB)","FaaS(Cores)","FaaS(内存GB)","CronJob(Cores)","CronJob(内存GB)"]],
+      "rows": [["推荐","China-East","1,305.25万","1,305.25万","1,305","4,046","11","6"],["","China-North","1,305.25万","8,905.25万","20.38万","42.25万","4,400","6871.65"]],
+      "merges": [{"section":"header","row":0,"col":0,"rowspan":2,"colspan":1},{"section":"header","row":0,"col":1,"rowspan":2,"colspan":1},{"section":"header","row":0,"col":2,"rowspan":1,"colspan":6},{"section":"body","row":0,"col":0,"rowspan":2,"colspan":1}]
+    }
+   - ⚠️ **rows 中每行必须是一个完整数组，包含与 leaf headers 等长的元素。** 当单元格值是对象（如 StatusTag）时，对象必须在行数组内部，不要提前关闭 ]。正确：["A",{"text":"运行中"},  "B"]，错误：["A",{"text":"运行中"}],"B"。
    - 若表格存在“多选/勾选/选择列”（如左侧复选框列），在 payload 顶层加入 "rowAction": "multiple"。
    - 单选列请使用 "rowAction": "single"。
    - 不要把勾选列写进 headers/rows/columnTypes。
+   - 不要跨 rowAction 列声明 merges；若使用 merges，优先同时提供 headerRows。
    - 标签列（Tag）请显式区分两类：
      - StatusTag：状态标签（默认使用状态标签的 L2 二级标签）。单元格建议用对象表示状态文案+颜色/主题，例如：
        { "text": "启用", "statusTheme": "Success 成功" } 或 { "statusText": "禁用", "statusColor": "red" }
@@ -7945,9 +7952,8 @@ StepB:\n`;
                   typeof payload?.parentId === 'string' ? payload.parentId : undefined
                 );
                 const tablePayload = payload?.table ?? payload;
-                const tableComponent =
-                    buildTableComponentFromPayloadSkill(tablePayload, { minRowCount: 10 }) ||
-                    buildTableComponentFromPayloadSkill(buildDefaultTablePayload(), { minRowCount: 10 });
+                // 直接调用 skill；不再静默兜底成默认 demo（防止真实 payload 异常被吞）
+                const tableComponent = buildTableComponentFromPayloadSkill(tablePayload, { minRowCount: 10 });
 
                 if (!tableComponent) {
                     const invalidMsg = `[System]: 表格参数无效。`;

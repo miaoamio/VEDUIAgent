@@ -10,6 +10,16 @@
 
 import { isObject } from './block.helpers';
 import { normalizeStatusTagThemeInput, resolveStatusTagThemeFromSemantic } from '../../statusTagSemantic';
+import {
+  buildNormalizedTableGrid,
+  inferImplicitBodyMerges,
+  inferLeafHeadersFromHeaderRows,
+  normalizeAutoMergeRulesInput,
+  normalizeHeaderRowsInput,
+  normalizeMergesInput,
+} from '../../code/table/table-merge-model';
+import { validateNormalizedTableGrid } from '../../code/table/table-merge-validate';
+import { buildTableRenderPlan } from '../../code/table/table-render-grid';
 
 // ─── Utils：table 专属工具函数 ────────────────────────────────────────────────
 
@@ -434,8 +444,12 @@ export const buildTableComponentFromPayload = (
   const rawHeaders =
     Array.isArray(source.headers) ? source.headers :
     (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
-
-  let headers = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
+  const fallbackHeaders = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
+  let headerRows = normalizeHeaderRowsInput(source, fallbackHeaders);
+  let headers = inferLeafHeadersFromHeaderRows(headerRows);
+  if (headers.length === 0) {
+    headers = fallbackHeaders;
+  }
 
   // Extract column keys (key/dataIndex) for object-row lookup
   const columnKeys: string[] = rawColumns
@@ -453,14 +467,65 @@ export const buildTableComponentFromPayload = (
   }
 
   if (!headers || headers.length === 0) return null;
+  if (headerRows.length === 0) {
+    headerRows = [headers];
+  }
+  const explicitMergesInput = normalizeMergesInput(source);
+  const inferredBodyMerges = inferImplicitBodyMerges({
+    headerRows,
+    rows,
+    merges: explicitMergesInput,
+  });
+  // 兜底推断：最后一行首列出现 合计/小计/总计/Total 且后续单元格为空时，
+  // 视为"合计行"，自动生成 body colspan merge（横跨"空"段直到非空单元格停下）
+  const inferTotalRowMerges = (): Array<{ section: 'body'; row: number; col: number; rowspan: number; colspan: number }> => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const lastRowIndex = rows.length - 1;
+    const lastRow = rows[lastRowIndex];
+    if (!Array.isArray(lastRow) || lastRow.length === 0) return [];
+    const firstCellRaw = (lastRow[0] as any);
+    const firstCellText = typeof firstCellRaw === 'string'
+      ? firstCellRaw
+      : typeof firstCellRaw === 'object' && firstCellRaw !== null
+        ? String((firstCellRaw as any).text ?? (firstCellRaw as any).value ?? '')
+        : String(firstCellRaw ?? '');
+    const normalized = firstCellText.trim().toLowerCase();
+    if (!/^(合计|小计|总计|总和|合\s*计|小\s*计|总\s*计|total|subtotal|sum)$/i.test(normalized)) return [];
+    // 已被显式 merge 覆盖则跳过
+    const alreadyExplicit = [...explicitMergesInput, ...inferredBodyMerges].some(
+      (m: any) => m.section === 'body' && Number(m.row) === lastRowIndex && Number(m.col) === 0
+    );
+    if (alreadyExplicit) return [];
+    let span = 1;
+    while (span < lastRow.length) {
+      const nextCell = lastRow[span];
+      const nextText = typeof nextCell === 'string'
+        ? nextCell
+        : typeof nextCell === 'object' && nextCell !== null
+          ? String((nextCell as any).text ?? (nextCell as any).value ?? '')
+          : String(nextCell ?? '');
+      if (nextText.trim() === '') {
+        span += 1;
+      } else {
+        break;
+      }
+    }
+    if (span <= 1) return [];
+    return [{ section: 'body', row: lastRowIndex, col: 0, rowspan: 1, colspan: span }];
+  };
+  const totalRowMerges = inferTotalRowMerges();
+  const mergesInput = [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges];
+  const autoMergeRulesInput = normalizeAutoMergeRulesInput(source);
+  const isMergeTable = mergesInput.length > 0 || headerRows.length > 1;
 
   // Support explicit rowCount from payload (LLM can output fewer rows + rowCount to save tokens).
   const explicitRowCount = getPositiveNumber(source.rowCount);
   const minRowCount = typeof options?.minRowCount === 'number' ? options.minRowCount : 10;
+  const effectiveMinRowCount = isMergeTable ? 0 : minRowCount;
   const targetRowCount = Math.max(
     explicitRowCount ?? rows.length,
     rows.length,
-    minRowCount > 0 ? minRowCount : 0
+    effectiveMinRowCount > 0 ? effectiveMinRowCount : 0
   );
   if (rows.length < targetRowCount) {
     if (rows.length === 0) {
@@ -493,12 +558,11 @@ export const buildTableComponentFromPayload = (
   const columnTypesBase: string[] =
     Array.isArray(source.columnTypes) ? source.columnTypes.map((t: any) => String(t)) :
     (rawColumns ? rawColumns.map((c: any) => String(c?.type || 'Text')) : headers.map(() => 'Text'));
-  const columnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase);
-  const columnWidths: number[] =
+  const inferredColumnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase);
+  const inferredColumnWidths: number[] =
     Array.isArray(source.columnWidths) ? source.columnWidths.map((w: any) => Number(w)) :
     (rawColumns ? rawColumns.map((c: any) => Number(c?.width || 0)) : headers.map(() => 0));
-
-  const hasPagination = source.pagination === undefined ? true : Boolean(source.pagination);
+  const hasPagination = source.pagination === undefined ? !isMergeTable : Boolean(source.pagination);
   const hasFilter = Boolean(source.filters);
   const hasTabs = Boolean(source.hasTabs || source.tabs);
   const hasButtonGroup = Boolean(source.hasButtonGroup || source.buttonGroup);
@@ -515,6 +579,25 @@ export const buildTableComponentFromPayload = (
   const rowActionText =
     rowActionRaw === undefined || rowActionRaw === null ? '' : String(rowActionRaw).trim();
   const rowAction = rowActionText ? rowActionText : undefined;
+  const normalizedGrid = buildNormalizedTableGrid({
+    headerRows,
+    rows,
+    columnTypes: inferredColumnTypes,
+    columnWidths: inferredColumnWidths,
+    ...(rowAction ? { rowAction } : {}),
+    merges: mergesInput,
+    autoMergeRules: autoMergeRulesInput,
+  });
+  const mergeValidationErrors = validateNormalizedTableGrid(normalizedGrid);
+  if (mergeValidationErrors.length > 0) return null;
+  const tableRenderPlan = buildTableRenderPlan(normalizedGrid);
+  headerRows = normalizedGrid.headerRows;
+  headers = normalizedGrid.leafHeaders;
+  rows = normalizedGrid.bodyRows as unknown[][];
+  const columnTypes = normalizedGrid.columnTypes;
+  const columnWidths = normalizedGrid.columnWidths;
+  const merges = normalizedGrid.merges;
+  const autoMergeRules = normalizedGrid.autoMergeRules;
 
   const children = headers.map((header, colIndex) => {
     const type = columnTypes[colIndex] || 'Text';
@@ -662,6 +745,11 @@ export const buildTableComponentFromPayload = (
     params: {
       columnCount: headers.length,
       rowCount: rows.length,
+      headers,
+      headerRows,
+      merges,
+      autoMergeRules,
+      tableRenderPlan,
       headerHeight,
       bodyHeight,
       hasPagination,

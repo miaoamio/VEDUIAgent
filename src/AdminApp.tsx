@@ -1002,7 +1002,7 @@ const SKILLS_DEFS: SkillDef[] = [
     name: 'buildTableComponentFromPayload',
     signature: 'buildTableComponentFromPayload(payload: any, options?: { minRowCount?: number }): any | null',
     file: 'engine/skills/table.skill.ts',
-    description: 'draw_tabl 完整执行逻辑。解析 headers、rows、columnTypes（自动推断 StatusTag/Avatar/ActionText 等）、pagination/filter/tabs/buttonGroup 参数，构建 table scene 树（抽象结构，不调用 Figma API）。被 App.tsx 的 draw_tabl case handler 调用。',
+    description: 'draw_tabl 完整执行逻辑。解析 headers/headerRows、rows、columnTypes、merges、pagination/filter/tabs/buttonGroup 参数，构建 table scene 树（抽象结构，不调用 Figma API）。被 App.tsx 的 draw_tabl case handler 调用。',
     relatedComponents: ['table', 'table-column', 'table-header-cell', 'table-cell', 'table-cell-tag', 'table-cell-avatar', 'table-cell-action-text'],
   },
   {
@@ -1923,7 +1923,7 @@ const PROMPT_SECTIONS = [
     id: 'table',
     title: 'draw_table 详细规则',
     color: '#7c3aed',
-    content: `payload 使用紧凑结构，例如：
+    content: `payload 使用紧凑结构。单层表头优先使用 headers + rows；多级表头或合并单元格优先使用 headerRows + rows + merges，例如：
 {
   "headers": ["姓名", "年龄", "城市"],
   "rows": [["陈默", "28", "北京"], ["林晓", "32", "上海"]],
@@ -1935,9 +1935,23 @@ const PROMPT_SECTIONS = [
   "rowHeight": { "header": 40, "body": 40 }
 }
 
+- 若存在多级表头或显式合并，可传：
+{
+  "headerRows": [["业务", "VRegion", "在线计算", "", "", "", "", ""], ["", "", "TCE(Cores)", "TCE(内存GB)", "FaaS(Cores)", "FaaS(内存GB)", "CronJob(Cores)", "CronJob(内存GB)"]],
+  "rows": [["推荐", "China-East", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6"], ["", "China-North", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65"]],
+  "merges": [
+    { "section": "header", "row": 0, "col": 0, "rowspan": 2, "colspan": 1 },
+    { "section": "header", "row": 0, "col": 1, "rowspan": 2, "colspan": 1 },
+    { "section": "header", "row": 0, "col": 2, "rowspan": 1, "colspan": 6 },
+    { "section": "body", "row": 0, "col": 0, "rowspan": 2, "colspan": 1 }
+  ]
+}
+
 - 若表格存在"多选/勾选/选择列"，在 payload 顶层加入 "rowAction": "multiple"。
 - 单选列请使用 "rowAction": "single"。
 - 不要把勾选列写进 headers/rows/columnTypes。
+- merges 每项使用 { "section": "header|body", "row": 0, "col": 0, "rowspan": 2, "colspan": 1 }。
+- 第一版支持 Header Colspan、Header Rowspan、Body Rowspan、Body Colspan（如订单合计行将前 N 列横向合并）。
 - 标签列（Tag）分为 StatusTag（状态）和 TypeTag（类型/分类）。
   - StatusTag 示例: { "text": "启用", "statusTheme": "Success 成功" }
   - TypeTag 示例: { "text": "企业", "tagType": "Outline 线型标签" }

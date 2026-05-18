@@ -1,0 +1,37 @@
+{
+  "size": "default",
+  "headerRows": [
+    ["业务", "VRegion", "在线计算", "", "", "", "", "", "在线队列", "", "", "", "", ""],
+    ["", "", "TCE(Cores)", "TCE(内存GB)", "FaaS(Cores)", "FaaS(内存GB)", "CronJob(Cores)", "CronJob(内存GB)", "TCE(Cores)", "TCE(内存GB)", "FaaS(Cores)", "FaaS(内存GB)", "CronJob(Cores)", "CronJob(内存GB)"]
+  ],
+  "rows": [
+    ["推荐", "China-East", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6"],
+    ["", "China-North", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65"],
+    ["广告", "China-East", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6"],
+    ["", "China-North", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65"],
+    ["生活服务", "China-East", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6", "1,305.25万", "1,305.25万", "1,305", "4,046", "11", "6"],
+    ["", "China-North", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65"],
+    ["", "China-Northq", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65", "1,305.25万", "8,905.25万", "20.38万", "42.25万", "4,400", "6871.65"]
+  ],
+  "columnWidths": [132, 193, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128],
+  "columnTypes": ["Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text", "Text"],
+  "merges": [
+    { "id": "header-business", "section": "header", "row": 0, "col": 0, "rowspan": 2, "colspan": 1, "source": "fixture" },
+    { "id": "header-vregion", "section": "header", "row": 0, "col": 1, "rowspan": 2, "colspan": 1, "source": "fixture" },
+    { "id": "header-online-calc", "section": "header", "row": 0, "col": 2, "rowspan": 1, "colspan": 6, "source": "fixture" },
+    { "id": "header-online-queue", "section": "header", "row": 0, "col": 8, "rowspan": 1, "colspan": 6, "source": "fixture" },
+    { "id": "body-business-recommend", "section": "body", "row": 0, "col": 0, "rowspan": 2, "colspan": 1, "source": "fixture" },
+    { "id": "body-business-ads", "section": "body", "row": 2, "col": 0, "rowspan": 2, "colspan": 1, "source": "fixture" },
+    { "id": "body-business-life", "section": "body", "row": 4, "col": 0, "rowspan": 3, "colspan": 1, "source": "fixture" }
+  ],
+  "pagination": false,
+  "meta": {
+    "fixtureName": "case-2-multi-group-merge",
+    "referenceImage": ".figma/image/screenshot_10_9937.png",
+    "notes": [
+      "双组一级表头：在线计算、在线队列",
+      "业务列在表体中存在纵向合并",
+      "需要显示组边界竖线"
+    ]
+  }
+}

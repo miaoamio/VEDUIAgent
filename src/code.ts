@@ -3342,155 +3342,766 @@ async function renderComponent(
                         width: 150
                     }
                 }));
+      const tableRenderPlan = params.tableRenderPlan && typeof params.tableRenderPlan === 'object'
+        ? params.tableRenderPlan as any
+        : null;
+      const wantsMergedRender = Boolean(
+        tableRenderPlan && (
+          tableRenderPlan.hasMultiLevelHeader ||
+          (Array.isArray(params.merges) && params.merges.length > 0)
+        )
+      );
 
-      const columnDef = COMPONENT_DEFS['table-column'];
-      const columnData = tableColumnInstances.map((colInstance) => {
-          const mergedParams: Record<string, any> = {
-              ...getDefaultParams('table-column'),
-              ...(colInstance.params || {}),
-              headerHeight: toPositiveNumber(colInstance.params?.headerHeight) ?? headerHeight,
-              bodyHeight: toPositiveNumber(colInstance.params?.bodyHeight) ?? bodyHeight
-          };
-          const columnWidth = toPositiveNumber(mergedParams.width) ?? 150;
-          const frameNode = figma.createFrame();
-          frameNode.layoutMode = 'VERTICAL';
-          frameNode.primaryAxisSizingMode = 'AUTO';
-          frameNode.counterAxisSizingMode = 'FIXED';
-          frameNode.layoutGrow = 1;
-          frameNode.resize(columnWidth, 100);
-          frameNode.fills = [];
-          frameNode.clipsContent = false;
-          if (columnDef) {
-              frameNode.name = columnDef.name;
-          }
-          frameNode.setPluginData('is-ai-component', 'true');
-          frameNode.setPluginData('component-id', 'table-column');
-          frameNode.setPluginData('params', JSON.stringify(mergedParams));
-          const normalizedInstance: ComponentInstance = {
-              ...colInstance,
-              componentId: 'table-column',
-              params: mergedParams
-          };
-          if (shouldStoreComponentInstance(normalizedInstance)) {
-              writeComponentInstanceSnapshot(frameNode, normalizedInstance);
-          }
-          frame.appendChild(frameNode);
-          return {
-              frameNode,
-              mergedParams,
-              columnWidth,
-              autoHeightMode:
-                  mergedParams.textDisplay === 'lineBreak' ||
-                  mergedParams.height === 0 ||
-                  mergedParams.height === 'auto' ||
-                  mergedParams.height === 'AUTO' ||
-                  mergedParams.rowHeight === 0 ||
-                  mergedParams.rowHeight === 'auto' ||
-                  mergedParams.rowHeight === 'AUTO' ||
-                  mergedParams.headerHeight === 0 ||
-                  mergedParams.headerHeight === 'auto' ||
-                  mergedParams.headerHeight === 'AUTO' ||
-                  mergedParams.bodyHeight === 0 ||
-                  mergedParams.bodyHeight === 'auto' ||
-                  mergedParams.bodyHeight === 'AUTO',
-              widthMode:
-                  typeof mergedParams.columnWidthMode === 'string'
-                      ? mergedParams.columnWidthMode
-                      : 'FILL',
-              headerChild:
-                  Array.isArray(colInstance.children)
-                      ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
-                      : undefined,
-              bodyChildren:
-                  Array.isArray(colInstance.children)
-                      ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
-                      : []
-          };
-      });
+      if (wantsMergedRender) {
+          frame.layoutMode = 'VERTICAL';
+          frame.primaryAxisSizingMode = 'AUTO';
+          frame.counterAxisSizingMode = 'FIXED';
+          try { (frame as any).layoutSizingVertical = 'HUG'; } catch {}
+          frame.itemSpacing = 0;
+          frame.clipsContent = false;
+          const mergedBorderWidth = Number(params.borderWidth ?? 1);
+          const mergedBorderColor = String(params.borderColor || '#EAEDF1');
 
-      for (const col of columnData) {
-        const headerChild = col.headerChild;
-          const headerWidthParam = (headerChild?.params as any)?.width;
-          const headerExplicitHugWidth = headerWidthParam === 0 || headerWidthParam === '0';
-          const headerNode = await renderComponent(
-              headerChild
-                  ? {
-                        ...headerChild,
-                        params: {
-                            ...(headerChild.params || {}),
-                            width: headerExplicitHugWidth ? 0 : (toPositiveNumber(headerWidthParam) ?? col.columnWidth),
-                            height: col.autoHeightMode ? 0 : (toPositiveNumber(headerChild.params?.height) ?? headerHeight),
-                            paddingTop: headerChild.params?.paddingTop ?? 0,
-                            paddingBottom: headerChild.params?.paddingBottom ?? 0
-                        }
-                    }
-                  : {
-                        id: 'header',
-                        componentId: 'table-header-cell',
-                        params: {
-                            text: col.mergedParams.headerText || 'Header',
-                            width: col.columnWidth,
-                            height: col.autoHeightMode ? 0 : headerHeight
-                        }
-                    },
-              { isRoot: false }
+          const mergedColumnDef = COMPONENT_DEFS['table-column'];
+          const lightweightColumnData = tableColumnInstances.map((colInstance) => {
+              const mergedParams: Record<string, any> = {
+                  ...getDefaultParams('table-column'),
+                  ...(colInstance.params || {}),
+                  headerHeight: toPositiveNumber(colInstance.params?.headerHeight) ?? headerHeight,
+                  bodyHeight: toPositiveNumber(colInstance.params?.bodyHeight) ?? bodyHeight
+              };
+              const columnWidth = toPositiveNumber(mergedParams.width) ?? 150;
+              return {
+                  colInstance,
+                  mergedParams,
+                  columnWidth,
+                  widthMode:
+                      typeof mergedParams.columnWidthMode === 'string'
+                          ? mergedParams.columnWidthMode
+                          : 'FILL',
+                  headerChild:
+                      Array.isArray(colInstance.children)
+                          ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
+                          : undefined,
+                  bodyChildren:
+                      Array.isArray(colInstance.children)
+                          ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
+                          : []
+              };
+          });
+
+          const effectiveColumnWidths = lightweightColumnData.map((col) => col.columnWidth);
+          const contentWidth = effectiveColumnWidths.reduce((sum, width) => sum + width, 0) || (params.width || 1176);
+          frame.resize(contentWidth, 1);
+          const topLevelSegments = Array.isArray(tableRenderPlan.topLevelSegments) ? tableRenderPlan.topLevelSegments : [];
+          const groupedSegments = topLevelSegments.filter((segment: any) => Number(segment.colspan || 1) > 1);
+          const groupBoundaryStartCols = new Set<number>(
+              groupedSegments.length > 1
+                  ? groupedSegments
+                        .map((segment: any) => Number(segment.startCol))
+                        .filter((value: number) => Number.isInteger(value) && value > 0)
+                  : []
           );
-          col.frameNode.appendChild(headerNode);
-        await applyTableHeaderElementToHeaderCellOp(buildTableOpCtx(), headerNode, col.mergedParams.headerType);
-      }
+          const resolveColumnX = (colIndex: number) =>
+              effectiveColumnWidths.slice(0, colIndex).reduce((sum, width) => sum + width, 0);
+          const resolveSpanWidth = (startCol: number, colspan: number) =>
+              effectiveColumnWidths.slice(startCol, startCol + colspan).reduce((sum, width) => sum + width, 0);
+          const applyMergedCellBorders = async (
+              node: SceneNode,
+              options: { leftBoundary?: boolean; bottom?: boolean }
+          ) => {
+              if (node.type !== 'FRAME') return;
+              if (!Number.isFinite(mergedBorderWidth) || mergedBorderWidth <= 0) {
+                  clearNodeStrokes(node);
+                  return;
+              }
+              await applyStrokeColorVariable(node, 'table-border-key', mergedBorderColor);
+              node.strokeWeight = 0;
+              node.strokeTopWeight = 0;
+              node.strokeRightWeight = 0;
+              node.strokeLeftWeight = options.leftBoundary ? mergedBorderWidth : 0;
+              node.strokeBottomWeight = options.bottom === false ? 0 : mergedBorderWidth;
+          };
 
-      const maxRowCount = columnData.reduce((count, col) => {
-          const columnRowCount =
-              col.bodyChildren.length > 0 ? col.bodyChildren.length : (col.mergedParams.rowCount || 10);
-          return Math.max(count, columnRowCount);
-      }, 0);
+          const headerFrame = figma.createFrame();
+          headerFrame.name = 'Table Header Grid';
+          headerFrame.layoutMode = 'HORIZONTAL';
+          headerFrame.primaryAxisSizingMode = 'FIXED';
+          headerFrame.counterAxisSizingMode = 'FIXED';
+          headerFrame.itemSpacing = 0;
+          headerFrame.fills = [];
+          headerFrame.clipsContent = false;
+          headerFrame.setPluginData('table-role', 'table-header-grid');
+          const headerDepth = Number(tableRenderPlan.headerDepth || 1);
+          const headerFrameHeight = Math.max(1, headerDepth * headerHeight);
+          headerFrame.resize(contentWidth, headerFrameHeight);
+          frame.appendChild(headerFrame);
 
-      for (let rowIndex = 0; rowIndex < maxRowCount; rowIndex++) {
-          for (const col of columnData) {
-              const hasCustomRows = col.bodyChildren.length > 0;
-              const bodyChild = col.bodyChildren[rowIndex];
-              if (hasCustomRows && !bodyChild) {
+          const headerCells = Array.isArray(tableRenderPlan.headerCells) ? tableRenderPlan.headerCells : [];
+
+          const renderSingleHeaderCell = async (cell: any, opts: { width: number; height: number; vertical: 'fixed' | 'fill'; center?: boolean }) => {
+              const colspan = Number(cell.colspan || 1);
+              const shouldCenterHeader = opts.center ?? colspan > 1;
+              // 取 skill 已构造好的 headerChild（含 textAlign='right' 等），仅在 colspan===1 的叶子表头才用
+              const leafColForHeader = Number(cell.col ?? 0);
+              const reachedLeaf = colspan === 1 && Boolean(cell.reachesLeaf);
+              const headerChild = reachedLeaf ? lightweightColumnData[leafColForHeader]?.headerChild : undefined;
+              const headerChildParams: any = headerChild ? { ...(headerChild.params || {}) } : {};
+              const finalTextAlign = shouldCenterHeader ? 'center' : (headerChildParams.textAlign as any);
+              const node = await renderComponent(
+                  {
+                      id: String(cell.key || `header-${cell.row}-${cell.col}`),
+                      componentId: 'table-header-cell',
+                      params: {
+                          ...headerChildParams,
+                          text: String(cell.text || headerChildParams.text || ''),
+                          width: opts.width,
+                          height: opts.height,
+                          disableStretch: true,
+                          ...(finalTextAlign ? { textAlign: finalTextAlign } : {}),
+                          borderBottomOnly: true,
+                          borderWidth: mergedBorderWidth,
+                          borderColor: mergedBorderColor,
+                          paddingTop: 0,
+                          paddingBottom: 0
+                      }
+                  },
+                  { isRoot: false }
+              );
+              try {
+                  if ('layoutPositioning' in node) {
+                      (node as any).layoutPositioning = 'AUTO';
+                  }
+                  (node as any).layoutGrow = 0;
+                  if ('layoutSizingHorizontal' in node) {
+                      (node as any).layoutSizingHorizontal = 'FIXED';
+                  }
+                  if (opts.vertical === 'fill') {
+                      (node as any).layoutAlign = 'STRETCH';
+                      if ('layoutSizingVertical' in node) {
+                          (node as any).layoutSizingVertical = 'FILL';
+                      }
+                  } else {
+                      (node as any).layoutAlign = 'INHERIT';
+                      if ('layoutSizingVertical' in node) {
+                          (node as any).layoutSizingVertical = 'FIXED';
+                      }
+                  }
+              } catch {}
+              const leafColumnStart = Number(cell.leafColumnStart ?? cell.col ?? 0);
+              await applyMergedCellBorders(node, {
+                  leftBoundary: groupBoundaryStartCols.has(leafColumnStart),
+                  bottom: true
+              });
+
+              const leafColIndex = Number(cell.col ?? 0);
+              const shouldApplyHeaderElement = colspan === 1 && Boolean(cell.reachesLeaf);
+              if (shouldApplyHeaderElement && lightweightColumnData[leafColIndex]) {
+                  await applyTableHeaderElementToHeaderCellOp(
+                      buildTableOpCtx(),
+                      node,
+                      lightweightColumnData[leafColIndex].mergedParams.headerType
+                  );
+              }
+              return node;
+          };
+
+          // 收集 row=0 的 anchor cells，按 leafColumnStart 排序作为顶层段落
+          const topRowCells = headerCells
+              .filter((c: any) => Number(c.row ?? 0) === 0)
+              .sort((a: any, b: any) => Number(a.leafColumnStart ?? a.col ?? 0) - Number(b.leafColumnStart ?? b.col ?? 0));
+
+          for (const topCell of topRowCells) {
+              const colspan = Number(topCell.colspan || 1);
+              const rowspan = Number(topCell.rowspan || 1);
+              const leafStart = Number(topCell.leafColumnStart ?? topCell.col ?? 0);
+              const leafEnd = leafStart + colspan - 1;
+              const groupWidth = resolveSpanWidth(leafStart, colspan);
+
+              if (colspan === 1) {
+                  // 普通单列表头：vertical FILL，撑满 Table Header Grid 高度
+                  const node = await renderSingleHeaderCell(topCell, {
+                      width: groupWidth,
+                      height: headerFrameHeight,
+                      vertical: 'fill'
+                  });
+                  headerFrame.appendChild(node);
                   continue;
               }
+
+              // 复合表头组：Vertical AL → [顶层 anchor cell, 下层 Horizontal AL（子表头）]
+              const groupFrame = figma.createFrame();
+              groupFrame.name = 'merged_header_group';
+              groupFrame.layoutMode = 'VERTICAL';
+              groupFrame.primaryAxisSizingMode = 'FIXED';
+              groupFrame.counterAxisSizingMode = 'FIXED';
+              groupFrame.itemSpacing = 0;
+              groupFrame.fills = [];
+              groupFrame.clipsContent = false;
+              groupFrame.setPluginData('table-role', 'merged-header-group');
+              groupFrame.resize(groupWidth, headerFrameHeight);
+              try { (groupFrame as any).layoutAlign = 'INHERIT'; } catch {}
+
+              // 上层：在线计算 anchor，宽 = group 宽，高 = rowspan * headerHeight
+              const topNode = await renderSingleHeaderCell(topCell, {
+                  width: groupWidth,
+                  height: Math.max(1, rowspan * headerHeight),
+                  vertical: 'fixed',
+                  center: true
+              });
+              groupFrame.appendChild(topNode);
+
+              // 下层：从 row = rowspan 开始，找在 [leafStart, leafEnd] 范围内的 cells
+              const childRowsCount = headerDepth - rowspan;
+              if (childRowsCount > 0) {
+                  const subFrame = figma.createFrame();
+                  subFrame.name = 'merged_header_sub_row';
+                  subFrame.layoutMode = 'HORIZONTAL';
+                  subFrame.primaryAxisSizingMode = 'FIXED';
+                  subFrame.counterAxisSizingMode = 'FIXED';
+                  subFrame.itemSpacing = 0;
+                  subFrame.fills = [];
+                  subFrame.clipsContent = false;
+                  subFrame.setPluginData('table-role', 'merged-header-sub-row');
+                  subFrame.resize(groupWidth, Math.max(1, childRowsCount * headerHeight));
+                  try { (subFrame as any).layoutAlign = 'INHERIT'; } catch {}
+
+                  const childCells = headerCells
+                      .filter((c: any) => {
+                          const r = Number(c.row ?? 0);
+                          const ls = Number(c.leafColumnStart ?? c.col ?? 0);
+                          return r >= rowspan && ls >= leafStart && ls <= leafEnd;
+                      })
+                      .sort((a: any, b: any) => Number(a.leafColumnStart ?? a.col ?? 0) - Number(b.leafColumnStart ?? b.col ?? 0));
+
+                  for (const cc of childCells) {
+                      const cs = Number(cc.colspan || 1);
+                      const rs = Number(cc.rowspan || 1);
+                      const ls = Number(cc.leafColumnStart ?? cc.col ?? 0);
+                      const w = resolveSpanWidth(ls, cs);
+                      const h = Math.max(1, rs * headerHeight);
+                      const childNode = await renderSingleHeaderCell(cc, {
+                          width: w,
+                          height: h,
+                          vertical: rs >= childRowsCount ? 'fill' : 'fixed'
+                      });
+                      subFrame.appendChild(childNode);
+                  }
+                  groupFrame.appendChild(subFrame);
+              }
+
+              headerFrame.appendChild(groupFrame);
+          }
+
+          const bodyCells = Array.isArray(tableRenderPlan.bodyCells) ? tableRenderPlan.bodyCells : [];
+          const columnCount = lightweightColumnData.length;
+          const bodyRowCount = bodyCells.reduce((max: number, cell: any) => {
+              const row = Number(cell.row ?? 0);
+              const rowspan = Number(cell.rowspan || 1);
+              return Math.max(max, row + rowspan);
+          }, Math.max(0, Number(params.rowCount || 0)));
+
+          // 合计行/汇总行检测：当某 body 行存在 colspan>1 的 anchor 且首格文案为 合计/小计/总计/Total/Sum 等，
+          // 则该行整行（被合并段 + 右侧汇总值单元格）都使用 color-bg-3 作为底色。
+          const TOTAL_ROW_REGEX = /^(合计|小计|总计|总和|合\s*计|小\s*计|总\s*计|total|subtotal|sum)$/i;
+          const TOTAL_ROW_BG_HEX = '#F7F8FA';
+          const totalRowSet = new Set<number>();
+          const extractCellText = (cellLike: any): string => {
+              if (cellLike == null) return '';
+              if (typeof cellLike === 'string') return cellLike;
+              if (typeof cellLike === 'number' || typeof cellLike === 'boolean') return String(cellLike);
+              if (typeof cellLike === 'object') {
+                  return String(
+                      (cellLike as any).text ??
+                          (cellLike as any).value ??
+                          (cellLike as any).label ??
+                          (cellLike as any).content ??
+                          ''
+                  );
+              }
+              return String(cellLike);
+          };
+          for (const c of bodyCells) {
+              if (!c?.isMergeAnchor) continue;
+              const colspan = Number(c.colspan || 1);
+              if (colspan <= 1) continue;
+              const valueText = extractCellText(c.value).trim();
+              if (TOTAL_ROW_REGEX.test(valueText)) {
+                  totalRowSet.add(Number(c.row ?? 0));
+              }
+          }
+          try {
+              if (totalRowSet.size > 0) {
+                  figma.notify(`[total row] highlight rows: ${Array.from(totalRowSet).join(',')}`, { timeout: 2500 });
+              }
+          } catch {}
+
+          // 单个 body cell 渲染 helper：保持 cell 的最小约束（fixed 宽 + 高=bodyHeight*rowspan 或 FILL）。
+          // 不再使用绝对定位；母体 cell 通过 vertical='fill' 让 Auto Layout 自动撑开。
+          const renderBodyCellNode = async (
+              cell: any,
+              options: { vertical?: 'fixed' | 'fill' }
+          ): Promise<{ node: SceneNode; cellWidth: number; cellHeight: number }> => {
+              const colIndex = Number(cell.col ?? 0);
+              const col = lightweightColumnData[colIndex];
+              const rowIndex = Number(cell.row ?? 0);
+              const bodyChild = col?.bodyChildren[rowIndex];
+              const leafColumnStart = Number(cell.leafColumnStart ?? colIndex);
+              const rowspan = Number(cell.rowspan || 1);
+              const colspan = Number(cell.colspan || 1);
+              const cellWidth = resolveSpanWidth(leafColumnStart, colspan);
+              const cellHeight = Math.max(1, bodyHeight * rowspan);
               const widthParam = (bodyChild?.params as any)?.width;
               const explicitHugWidth = widthParam === 0 || widthParam === '0';
-              const cellNode = await renderComponent(
-                  bodyChild
+              const isMerged = rowspan > 1 || colspan > 1;
+              // 关键：尽量保留 skill 已推断好的 cellComponentId（table-cell-number-unit / table-cell-avatar / table-cell-tag / table-cell-action-* 等）
+              // bodyChild 不存在时再回退到 table-cell。
+              const baseComponentId = bodyChild?.componentId || 'table-cell';
+              const baseParams: any = bodyChild ? { ...(bodyChild.params || {}) } : {};
+              if (!bodyChild) {
+                  baseParams.text = String(cell.value ?? '');
+                  if (col?.mergedParams.textAlign) baseParams.textAlign = col.mergedParams.textAlign;
+              }
+              // 合并母体（rowspan>1 或 colspan>1）：覆盖宽高，并让宽高都是 fixed
+              if (isMerged) {
+                  baseParams.width = cellWidth;
+                  baseParams.height = cellHeight;
+              } else {
+                  baseParams.width = explicitHugWidth ? 0 : cellWidth;
+                  baseParams.height = bodyHeight;
+              }
+              baseParams.disableStretch = true;
+              baseParams.borderBottomOnly = true;
+              baseParams.borderWidth = mergedBorderWidth;
+              baseParams.borderColor = mergedBorderColor;
+              if (baseParams.paddingTop === undefined) baseParams.paddingTop = 0;
+              if (baseParams.paddingBottom === undefined) baseParams.paddingBottom = 0;
+              // 合计/汇总行：整行底色改为 color-bg-3
+              if (totalRowSet.has(rowIndex)) {
+                  baseParams.backgroundColor = TOTAL_ROW_BG_HEX;
+              }
+
+              const node = await renderComponent(
+                  {
+                      id: bodyChild?.id || (isMerged ? `merged-cell-${rowIndex}-${colIndex}` : `cell-${rowIndex}-${colIndex}`),
+                      componentId: baseComponentId,
+                      params: baseParams,
+                      ...(bodyChild?.children ? { children: bodyChild.children } : {})
+                  } as any,
+                  { isRoot: false }
+              );
+              try {
+                  if ('layoutPositioning' in node) {
+                      (node as any).layoutPositioning = 'AUTO';
+                  }
+                  (node as any).layoutGrow = 0;
+                  if ('layoutSizingHorizontal' in node) {
+                      (node as any).layoutSizingHorizontal = 'FIXED';
+                  }
+                  if (options.vertical === 'fill') {
+                      // 母体 cell：在 Horizontal Auto Layout 父节点中，Vertical Resizing = FILL
+                      (node as any).layoutAlign = 'STRETCH';
+                      if ('layoutSizingVertical' in node) {
+                          (node as any).layoutSizingVertical = 'FILL';
+                      }
+                  } else {
+                      (node as any).layoutAlign = 'INHERIT';
+                      if ('layoutSizingVertical' in node) {
+                          (node as any).layoutSizingVertical = 'FIXED';
+                      }
+                  }
+              } catch {}
+              await applyMergedCellBorders(node, {
+                  leftBoundary: groupBoundaryStartCols.has(leafColumnStart),
+                  bottom: true
+              });
+              // 合计行：强制覆盖 fills 为 color-bg-3 hex，避免被 cell painter 内的 variable bind 覆盖回白色
+              if (totalRowSet.has(rowIndex)) {
+                  try {
+                      (node as any).fills = [{ type: 'SOLID', color: { r: 247 / 255, g: 248 / 255, b: 250 / 255 } }];
+                  } catch {}
+              }
+              try {
+                  node.setPluginData('table-cell-column-index', String(colIndex));
+                  if (col?.colInstance?.id) {
+                      node.setPluginData('table-cell-column-id', String(col.colInstance.id));
+                  }
+              } catch {}
+              return { node, cellWidth, cellHeight };
+          };
+
+          const createRowFrame = (rowWidth: number, rowHeight: number): FrameNode => {
+              const rowFrame = figma.createFrame();
+              rowFrame.name = 'Table Body Row';
+              rowFrame.layoutMode = 'HORIZONTAL';
+              rowFrame.primaryAxisSizingMode = 'FIXED';
+              rowFrame.counterAxisSizingMode = 'FIXED';
+              rowFrame.itemSpacing = 0;
+              rowFrame.fills = [];
+              rowFrame.clipsContent = false;
+              rowFrame.setPluginData('table-role', 'table-body-row');
+              rowFrame.resize(Math.max(1, rowWidth), Math.max(1, rowHeight));
+              return rowFrame;
+          };
+
+          // 切分行段：当某行存在 rowspan>1 的 anchor 时，整段一起渲染为 merged_block
+          const cellByKey: Map<string, any> = new Map();
+          for (const c of bodyCells) {
+              cellByKey.set(`${Number(c.row ?? 0)}:${Number(c.col ?? 0)}`, c);
+          }
+          // 仅处理纵向合并（rowspan>1）作为段切分；横向合并（colspan>1, rowspan=1）在普通行里直接吃掉宽度
+          const anchorList = bodyCells.filter(
+              (c: any) => c.isMergeAnchor && Number(c.rowspan || 1) > 1
+          );
+          // 用于跳过被合并覆盖的位置
+          const isCovered = (row: number, col: number): boolean => {
+              const cell = cellByKey.get(`${row}:${col}`);
+              return Boolean(cell?.isCovered);
+          };
+
+          const bodyFrame = figma.createFrame();
+          bodyFrame.name = 'Table Body';
+          bodyFrame.layoutMode = 'VERTICAL';
+          bodyFrame.primaryAxisSizingMode = 'AUTO';
+          bodyFrame.counterAxisSizingMode = 'FIXED';
+          bodyFrame.itemSpacing = 0;
+          bodyFrame.fills = [];
+          bodyFrame.clipsContent = false;
+          bodyFrame.setPluginData('table-role', 'table-body');
+          bodyFrame.resize(contentWidth, 1);
+          frame.appendChild(bodyFrame);
+          try { (bodyFrame as any).layoutSizingVertical = 'HUG'; } catch {}
+
+          // 范围宽度计算
+          const resolveRangeWidth = (colStart: number, colEnd: number) =>
+              effectiveColumnWidths
+                  .slice(colStart, colEnd + 1)
+                  .reduce((sum, w) => sum + w, 0);
+
+          // 在 [rowStart, rowEnd] × [colStart, colEnd] 范围内切分行段
+          // 段定义：该段内存在 rowspan>1 的 anchor，整段被纵向合并覆盖
+          const computeRowSegments = (rowStart: number, rowEnd: number, colStart: number, colEnd: number) => {
+              const segments: Array<{ startRow: number; endRow: number; hasMerge: boolean }> = [];
+              let r = rowStart;
+              while (r <= rowEnd) {
+                  // 找到从 r 开始、col 在 [colStart, colEnd] 的 anchors
+                  let maxRowspan = 0;
+                  for (const a of anchorList) {
+                      const ar = Number(a.row ?? 0);
+                      const ac = Number(a.col ?? 0);
+                      const aspan = Number(a.rowspan || 1);
+                      if (ar === r && ac >= colStart && ac <= colEnd) {
+                          maxRowspan = Math.max(maxRowspan, aspan);
+                      }
+                  }
+                  if (maxRowspan > 1) {
+                      let endRow = Math.min(r + maxRowspan - 1, rowEnd);
+                      // 中间行也可能有更长的 anchor，扩展段尾
+                      for (let r2 = r + 1; r2 <= endRow; r2 += 1) {
+                          for (const a of anchorList) {
+                              const ar = Number(a.row ?? 0);
+                              const ac = Number(a.col ?? 0);
+                              const aspan = Number(a.rowspan || 1);
+                              if (ar === r2 && ac >= colStart && ac <= colEnd) {
+                                  endRow = Math.max(endRow, Math.min(r2 + aspan - 1, rowEnd));
+                              }
+                          }
+                      }
+                      segments.push({ startRow: r, endRow, hasMerge: true });
+                      r = endRow + 1;
+                  } else {
+                      segments.push({ startRow: r, endRow: r, hasMerge: false });
+                      r += 1;
+                  }
+              }
+              return segments;
+          };
+
+          // 普通行：把 [colStart, colEnd] 的 cell 装成一个 Table Body Row
+          // 支持横向合并（colspan>1, rowspan=1）：anchor cell 吃掉合并范围内的总宽度，covered cell 跳过
+          const buildPlainRow = async (rowIndex: number, colStart: number, colEnd: number): Promise<FrameNode> => {
+              const rowWidth = resolveRangeWidth(colStart, colEnd);
+              const rowFrame = createRowFrame(rowWidth, bodyHeight);
+              for (let col = colStart; col <= colEnd; col += 1) {
+                  if (isCovered(rowIndex, col)) continue;
+                  const cell = cellByKey.get(`${rowIndex}:${col}`);
+                  if (!cell) continue;
+                  const { node } = await renderBodyCellNode(cell, {});
+                  rowFrame.appendChild(node);
+              }
+              try { (rowFrame as any).layoutAlign = 'INHERIT'; } catch {}
+              return rowFrame;
+          };
+
+          // 递归构建任意 [rowStart, rowEnd] × [colStart, colEnd] 矩形区域
+          // 返回单个 Frame，会自动按需切分为 Vertical AL（多段）或单 merged_block / Table Body Row
+          const buildRange = async (rowStart: number, rowEnd: number, colStart: number, colEnd: number): Promise<FrameNode> => {
+              const segments = computeRowSegments(rowStart, rowEnd, colStart, colEnd);
+
+              // 把多个段聚合到一个 Vertical AL（right_side_content）下
+              if (segments.length > 1) {
+                  const vFrame = figma.createFrame();
+                  vFrame.name = 'right_side_content';
+                  vFrame.layoutMode = 'VERTICAL';
+                  vFrame.primaryAxisSizingMode = 'AUTO';
+                  vFrame.counterAxisSizingMode = 'FIXED';
+                  vFrame.itemSpacing = 0;
+                  vFrame.fills = [];
+                  vFrame.clipsContent = false;
+                  vFrame.setPluginData('table-role', 'right-side-content');
+                  vFrame.resize(Math.max(1, resolveRangeWidth(colStart, colEnd)), 1);
+                  try { (vFrame as any).layoutSizingVertical = 'HUG'; } catch {}
+                  try { (vFrame as any).layoutAlign = 'INHERIT'; } catch {}
+                  for (const seg of segments) {
+                      const child = await buildSegment(seg.startRow, seg.endRow, colStart, colEnd);
+                      vFrame.appendChild(child);
+                  }
+                  return vFrame;
+              }
+
+              // 单段
+              const seg = segments[0];
+              return await buildSegment(seg.startRow, seg.endRow, colStart, colEnd);
+          };
+
+          // 单个段（连续行 + 列范围）的渲染
+          const buildSegment = async (rowStart: number, rowEnd: number, colStart: number, colEnd: number): Promise<FrameNode> => {
+              const segLen = rowEnd - rowStart + 1;
+              // 识别该段内"母体合并列"：anchor 起点在 rowStart，rowspan 等于段长度，col 在 [colStart, colEnd]
+              const mergedAnchors: Array<{ col: number; cell: any }> = [];
+              for (const a of anchorList) {
+                  const ar = Number(a.row ?? 0);
+                  const ac = Number(a.col ?? 0);
+                  const aspan = Number(a.rowspan || 1);
+                  if (ar === rowStart && aspan === segLen && ac >= colStart && ac <= colEnd) {
+                      mergedAnchors.push({ col: ac, cell: a });
+                  }
+              }
+              mergedAnchors.sort((a, b) => a.col - b.col);
+
+              // 没有合并：直接产出 Table Body Row（单行）或 Vertical AL（多行普通）
+              if (mergedAnchors.length === 0) {
+                  if (segLen === 1) {
+                      return await buildPlainRow(rowStart, colStart, colEnd);
+                  }
+                  const vFrame = figma.createFrame();
+                  vFrame.name = 'right_side_content';
+                  vFrame.layoutMode = 'VERTICAL';
+                  vFrame.primaryAxisSizingMode = 'AUTO';
+                  vFrame.counterAxisSizingMode = 'FIXED';
+                  vFrame.itemSpacing = 0;
+                  vFrame.fills = [];
+                  vFrame.clipsContent = false;
+                  vFrame.setPluginData('table-role', 'right-side-content');
+                  vFrame.resize(Math.max(1, resolveRangeWidth(colStart, colEnd)), 1);
+                  try { (vFrame as any).layoutSizingVertical = 'HUG'; } catch {}
+                  try { (vFrame as any).layoutAlign = 'INHERIT'; } catch {}
+                  for (let r = rowStart; r <= rowEnd; r += 1) {
+                      const rowFrame = await buildPlainRow(r, colStart, colEnd);
+                      vFrame.appendChild(rowFrame);
+                  }
+                  return vFrame;
+              }
+
+              // 取最左侧的合并列作为本层 merged_block 的"母体"
+              const leftMerged = mergedAnchors[0];
+              const leftCol = leftMerged.col;
+
+              const mergedBlock = figma.createFrame();
+              mergedBlock.name = 'merged_block';
+              mergedBlock.layoutMode = 'HORIZONTAL';
+              mergedBlock.primaryAxisSizingMode = 'FIXED';
+              mergedBlock.counterAxisSizingMode = 'AUTO';
+              mergedBlock.itemSpacing = 0;
+              mergedBlock.fills = [];
+              mergedBlock.clipsContent = false;
+              mergedBlock.setPluginData('table-role', 'merged-block');
+              mergedBlock.resize(resolveRangeWidth(colStart, colEnd), Math.max(1, segLen * bodyHeight));
+              try { (mergedBlock as any).layoutSizingVertical = 'HUG'; } catch {}
+              try { (mergedBlock as any).layoutAlign = 'INHERIT'; } catch {}
+
+              // 1. 母体左侧若有非合并列：递归构建一个 right_side_content（每行单独 row）
+              if (leftCol > colStart) {
+                  const leadingFrame = await buildRange(rowStart, rowEnd, colStart, leftCol - 1);
+                  mergedBlock.appendChild(leadingFrame);
+              }
+
+              // 2. 母体合并 cell（FILL 高度）
+              const { node: mergedCellNode } = await renderBodyCellNode(leftMerged.cell, { vertical: 'fill' });
+              mergedBlock.appendChild(mergedCellNode);
+
+              // 3. 母体右侧的内容：递归 buildRange，可能再次出现合并 → 嵌套 merged_block
+              if (leftCol < colEnd) {
+                  const rightFrame = await buildRange(rowStart, rowEnd, leftCol + 1, colEnd);
+                  mergedBlock.appendChild(rightFrame);
+              }
+
+              return mergedBlock;
+          };
+
+          // 顶层：构建整个 body
+          const segments = computeRowSegments(0, bodyRowCount - 1, 0, columnCount - 1);
+          for (const seg of segments) {
+              const segNode = await buildSegment(seg.startRow, seg.endRow, 0, columnCount - 1);
+              bodyFrame.appendChild(segNode);
+          }
+          try {
+              frame.primaryAxisSizingMode = 'AUTO';
+              if ('layoutSizingVertical' in frame) {
+                  (frame as any).layoutSizingVertical = 'HUG';
+              }
+              frame.resize(contentWidth, Math.max(1, headerFrame.height + bodyFrame.height));
+          } catch {}
+      } else {
+          const columnDef = COMPONENT_DEFS['table-column'];
+          const columnData = tableColumnInstances.map((colInstance) => {
+              const mergedParams: Record<string, any> = {
+                  ...getDefaultParams('table-column'),
+                  ...(colInstance.params || {}),
+                  headerHeight: toPositiveNumber(colInstance.params?.headerHeight) ?? headerHeight,
+                  bodyHeight: toPositiveNumber(colInstance.params?.bodyHeight) ?? bodyHeight
+              };
+              const columnWidth = toPositiveNumber(mergedParams.width) ?? 150;
+              const frameNode = figma.createFrame();
+              frameNode.layoutMode = 'VERTICAL';
+              frameNode.primaryAxisSizingMode = 'AUTO';
+              frameNode.counterAxisSizingMode = 'FIXED';
+              frameNode.layoutGrow = 1;
+              frameNode.resize(columnWidth, 100);
+              frameNode.fills = [];
+              frameNode.clipsContent = false;
+              if (columnDef) {
+                  frameNode.name = columnDef.name;
+              }
+              frameNode.setPluginData('is-ai-component', 'true');
+              frameNode.setPluginData('component-id', 'table-column');
+              frameNode.setPluginData('params', JSON.stringify(mergedParams));
+              const normalizedInstance: ComponentInstance = {
+                  ...colInstance,
+                  componentId: 'table-column',
+                  params: mergedParams
+              };
+              if (shouldStoreComponentInstance(normalizedInstance)) {
+                  writeComponentInstanceSnapshot(frameNode, normalizedInstance);
+              }
+              frame.appendChild(frameNode);
+              return {
+                  frameNode,
+                  mergedParams,
+                  columnWidth,
+                  autoHeightMode:
+                      mergedParams.textDisplay === 'lineBreak' ||
+                      mergedParams.height === 0 ||
+                      mergedParams.height === 'auto' ||
+                      mergedParams.height === 'AUTO' ||
+                      mergedParams.rowHeight === 0 ||
+                      mergedParams.rowHeight === 'auto' ||
+                      mergedParams.rowHeight === 'AUTO' ||
+                      mergedParams.headerHeight === 0 ||
+                      mergedParams.headerHeight === 'auto' ||
+                      mergedParams.headerHeight === 'AUTO' ||
+                      mergedParams.bodyHeight === 0 ||
+                      mergedParams.bodyHeight === 'auto' ||
+                      mergedParams.bodyHeight === 'AUTO',
+                  widthMode:
+                      typeof mergedParams.columnWidthMode === 'string'
+                          ? mergedParams.columnWidthMode
+                          : 'FILL',
+                  headerChild:
+                      Array.isArray(colInstance.children)
+                          ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
+                          : undefined,
+                  bodyChildren:
+                      Array.isArray(colInstance.children)
+                          ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
+                          : []
+              };
+          });
+
+          for (const col of columnData) {
+            const headerChild = col.headerChild;
+              const headerWidthParam = (headerChild?.params as any)?.width;
+              const headerExplicitHugWidth = headerWidthParam === 0 || headerWidthParam === '0';
+              const headerNode = await renderComponent(
+                  headerChild
                       ? {
-                            ...bodyChild,
+                            ...headerChild,
                             params: {
-                                ...(bodyChild.params || {}),
-                                width: explicitHugWidth ? 0 : (toPositiveNumber(widthParam) ?? col.columnWidth),
-                                height: col.autoHeightMode ? 0 : (toPositiveNumber(bodyChild.params?.height) ?? bodyHeight),
-                                paddingTop: bodyChild.params?.paddingTop ?? 0,
-                                paddingBottom: bodyChild.params?.paddingBottom ?? 0
+                                ...(headerChild.params || {}),
+                                width: headerExplicitHugWidth ? 0 : (toPositiveNumber(headerWidthParam) ?? col.columnWidth),
+                                height: col.autoHeightMode ? 0 : (toPositiveNumber(headerChild.params?.height) ?? headerHeight),
+                                paddingTop: headerChild.params?.paddingTop ?? 0,
+                                paddingBottom: headerChild.params?.paddingBottom ?? 0
                             }
                         }
                       : {
-                            id: `cell-${rowIndex}`,
-                            componentId: 'table-cell',
+                            id: 'header',
+                            componentId: 'table-header-cell',
                             params: {
-                                text: `Cell ${rowIndex + 1}`,
+                                text: col.mergedParams.headerText || 'Header',
                                 width: col.columnWidth,
-                                height: col.autoHeightMode ? 0 : bodyHeight
+                                height: col.autoHeightMode ? 0 : headerHeight
                             }
                         },
                   { isRoot: false }
               );
-              col.frameNode.appendChild(cellNode);
-        }
-    }
+              col.frameNode.appendChild(headerNode);
+            await applyTableHeaderElementToHeaderCellOp(buildTableOpCtx(), headerNode, col.mergedParams.headerType);
+          }
 
-      for (const col of columnData) {
-          applyColumnWidthMode(
-              col.frameNode,
-              col.widthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
-              col.columnWidth
-          );
-      }
-      alignAllTableRows(frame);
-      if (params.rowAction) {
-          await applyRowActionColumnOp(buildTableOpCtx(), frame, String(params.rowAction));
+          const maxRowCount = columnData.reduce((count, col) => {
+              const columnRowCount =
+                  col.bodyChildren.length > 0 ? col.bodyChildren.length : (col.mergedParams.rowCount || 10);
+              return Math.max(count, columnRowCount);
+          }, 0);
+
+          for (let rowIndex = 0; rowIndex < maxRowCount; rowIndex++) {
+              for (const col of columnData) {
+                  const hasCustomRows = col.bodyChildren.length > 0;
+                  const bodyChild = col.bodyChildren[rowIndex];
+                  if (hasCustomRows && !bodyChild) {
+                      continue;
+                  }
+                  const widthParam = (bodyChild?.params as any)?.width;
+                  const explicitHugWidth = widthParam === 0 || widthParam === '0';
+                  const cellNode = await renderComponent(
+                      bodyChild
+                          ? {
+                                ...bodyChild,
+                                params: {
+                                    ...(bodyChild.params || {}),
+                                    width: explicitHugWidth ? 0 : (toPositiveNumber(widthParam) ?? col.columnWidth),
+                                    height: col.autoHeightMode ? 0 : (toPositiveNumber(bodyChild.params?.height) ?? bodyHeight),
+                                    paddingTop: bodyChild.params?.paddingTop ?? 0,
+                                    paddingBottom: bodyChild.params?.paddingBottom ?? 0
+                                }
+                            }
+                          : {
+                                id: `cell-${rowIndex}`,
+                                componentId: 'table-cell',
+                                params: {
+                                    text: `Cell ${rowIndex + 1}`,
+                                    width: col.columnWidth,
+                                    height: col.autoHeightMode ? 0 : bodyHeight
+                                }
+                            },
+                      { isRoot: false }
+                  );
+                  col.frameNode.appendChild(cellNode);
+            }
+        }
+
+          for (const col of columnData) {
+              applyColumnWidthMode(
+                  col.frameNode,
+                  col.widthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL',
+                  col.columnWidth
+              );
+          }
+          alignAllTableRows(frame);
+          if (params.rowAction) {
+              await applyRowActionColumnOp(buildTableOpCtx(), frame, String(params.rowAction));
+          }
       }
       if (wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) {
           const wrapper = createTableWrapperFromTableFrame(frame, params, lockGeneratedContainerNode) || frame.parent as FrameNode;
@@ -3642,12 +4253,13 @@ async function renderComponent(
       params.bodyHeight === 'AUTO';
     const widthParam = (params as any)?.width;
     const explicitHugWidth = widthParam === 0 || widthParam === '0';
+    const disableStretch = params.disableStretch === true;
     const cellWidth = toPositiveNumber(widthParam) ?? 150;
     const frame = figma.createFrame();
     frame.layoutMode = 'HORIZONTAL';
     frame.counterAxisSizingMode = autoHeightMode ? 'AUTO' : 'FIXED';
     frame.primaryAxisSizingMode = explicitHugWidth ? 'AUTO' : 'FIXED';
-    frame.layoutAlign = 'STRETCH';
+    frame.layoutAlign = disableStretch ? 'INHERIT' : 'STRETCH';
     frame.itemSpacing = 8;
     frame.counterAxisAlignItems = 'CENTER';
     frame.paddingLeft = params.paddingLeft ?? 16;
@@ -3655,6 +4267,13 @@ async function renderComponent(
     frame.paddingTop = params.paddingTop ?? 0;
     frame.paddingBottom = params.paddingBottom ?? 0;
     frame.resize(explicitHugWidth ? 1 : cellWidth, autoHeightMode ? 1 : cellHeight);
+    if (disableStretch && 'layoutSizingHorizontal' in frame) {
+      try {
+        (frame as any).layoutSizingHorizontal = 'FIXED';
+      } catch {
+        // ignore
+      }
+    }
     if (autoHeightMode && 'layoutSizingVertical' in frame) {
       try {
         (frame as any).layoutSizingVertical = 'HUG';
@@ -5006,12 +5625,19 @@ async function handleUpdateComponent(msg: any) {
 		                }
 		            }
 
-		            if (params.size || params.headerHeight || params.bodyHeight || params.rowHeight || params.height) {
+		            const isMergedTableUpdate = Boolean(
+		                (params.tableRenderPlan && typeof params.tableRenderPlan === 'object' &&
+		                  ((params.tableRenderPlan as any).hasMultiLevelHeader ||
+		                   (Array.isArray((params.tableRenderPlan as any).bodyCells) && (params.tableRenderPlan as any).bodyCells.length > 0))) ||
+		                (Array.isArray(params.merges) && params.merges.length > 0)
+		            );
+
+		            if (!isMergedTableUpdate && (params.size || params.headerHeight || params.bodyHeight || params.rowHeight || params.height)) {
 		                const headerHeight = resolveTableHeaderHeight(params);
 		                const bodyHeight = resolveTableBodyHeight(params);
 		                applyTableSizeToCells(tableContent, headerHeight, bodyHeight);
 	            }
-	            if (params.rowCount !== undefined) {
+	            if (!isMergedTableUpdate && params.rowCount !== undefined) {
 	                const nextRowCount = Number(params.rowCount);
 	                if (Number.isFinite(nextRowCount)) {
 	                    await updateTableRowCountOp(buildTableOpCtx(), tableContent, nextRowCount);
