@@ -6674,9 +6674,9 @@ function App() {
         const previewRows = tc.data.slice(0, 3);
         selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\ntableNodeId="${tc.tableNodeId}"\nheaders=${allHeaders}\ndata(前${previewRows.length}行)=${JSON.stringify(previewRows)}\n\n请直接输出以下格式 JSON：\n{"thought":"编辑表格","action":{"type":"edit_table","payload":{"tableNodeId":"${tc.tableNodeId}","updates":[{"columnIndex":列索引,"texts":["表头","第1行","第2行",...]}]}}}\n可以同时修改多列。`;
       }
-    } else if (selectedComponent?.componentId && (selectedComponent.componentId === 'table' || selectedComponent.componentId === 'table-column' || selectedComponent.componentId.startsWith('table-'))) {
+    } else if (selectedComponent?.componentId && (selectedComponent.componentId === 'table' || selectedComponent.componentId === 'table-column' || selectedComponent.componentId.startsWith('table-')) && turnImages.length === 0 && turnTables.length === 0) {
       selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\n当前选中了表格组件（componentId: ${selectedComponent.componentId}），但缺少详细数据。请使用 edit_table 编辑。`;
-    } else if (lastTableSelectionRef.current?.componentId && (lastTableSelectionRef.current.componentId === 'table' || lastTableSelectionRef.current.componentId === 'table-column' || lastTableSelectionRef.current.componentId.startsWith('table-'))) {
+    } else if (lastTableSelectionRef.current?.componentId && (lastTableSelectionRef.current.componentId === 'table' || lastTableSelectionRef.current.componentId === 'table-column' || lastTableSelectionRef.current.componentId.startsWith('table-')) && turnImages.length === 0 && turnTables.length === 0) {
       selectionContext = `\n\n[EDIT_TABLE_CONTEXT]\n当前选中了表格组件（componentId: ${lastTableSelectionRef.current.componentId}），但缺少详细数据。请使用 edit_table 编辑。`;
     }
 
