@@ -5766,6 +5766,36 @@ function App() {
       const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
+        if (data.type === 'inspect-selection-variables-clipboard') {
+          // 把 inspect 的纯文本结果写到剪贴板（用户随后可以直接粘贴给我）
+          // Figma 插件 iframe 里 navigator.clipboard.writeText 经常因没有用户手势失败，
+          // 所以同时使用 execCommand('copy') 兜底，并把文本输出到 console 便于用户复制。
+          const text = String(data.data?.text || '');
+          if (text) {
+            // 输出到 console 方便排错
+            try { console.log('[inspect-vars]\n' + text); } catch {}
+            let copied = false;
+            // fallback：textarea + execCommand('copy')
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.top = '-9999px';
+              ta.style.left = '-9999px';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.focus();
+              ta.select();
+              copied = document.execCommand('copy');
+              document.body.removeChild(ta);
+            } catch {}
+            // 再试 navigator.clipboard.writeText（Figma 桌面端有时会成功）
+            if (!copied) {
+              try { navigator.clipboard.writeText(text).catch(() => {}); } catch {}
+            }
+          }
+          return; // 不结束 promise，等 result 消息
+        }
         if (data.type === 'inspect-selection-variables-result') {
           window.removeEventListener('message', handler);
           abortSignal?.removeEventListener('abort', onAbort);

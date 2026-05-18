@@ -17,7 +17,9 @@ const TABLE_VARIABLE_IDS = {
   'text-3': 'VariableID:98bdfd58bdd60974e1fe50bb12cd2c24661e8ded/174345:276',
   'bg-white': 'VariableID:3b36108b1612c5eeaf85b5f30ae6cb5bcf12e042/174382:780',
   'color-white': 'VariableID:6dfd5b2f49dd7c8c889305f4514144af3b9f4b1f/174345:272',
+  'color-bg-3': 'VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403',
   'color-bg-4': 'VariableID:0ad927853701159721b6bb95d53b532de24282a7/174345:586',
+  'color-border-2': 'VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410',
   'primary-6': 'VariableID:75f358d76d414f045a47f128470fcbbde49888dc/174345:300',
   'danger-6': 'VariableID:f60b03f9d134cb4ac3f68fb23b1fda9ba1304745/174345:672'
 } as const;
@@ -53,22 +55,21 @@ export const BASE_COLOR_TOKEN_PACK: Record<string, BaseColorTokenProfile> = {
   'color-bg-2': {
     token: 'color-bg-2'
   },
-  'color-bg-3': {
-    token: 'color-bg-3'
-  },
+  'color-bg-3': baseTokenWithVariableId('color-bg-3', TABLE_VARIABLE_IDS['color-bg-3'], {
+    nameCandidates: ['Background/浅 灰色hover @color-bg-3', '@color-bg-3', 'color-bg-3']
+  }),
   'color-bg-4': baseTokenWithVariableId('color-bg-4', TABLE_VARIABLE_IDS['color-bg-4'], {
     nameCandidates: ['background/深 灰底 @color-bg-4', '@color-bg-4']
   }),
   'color-border-1': {
     token: 'color-border-1'
   },
-  'color-border-2': {
-    token: 'color-border-2'
-  },
-  'border-2': {
-    token: 'border-2',
-    nameCandidates: ['border-2', 'color-border-2', '@border-2', '@color-border-2']
-  },
+  'color-border-2': baseTokenWithVariableId('color-border-2', TABLE_VARIABLE_IDS['color-border-2'], {
+    nameCandidates: ['Line/浅色描边 @color-border-2', '@color-border-2', 'color-border-2']
+  }),
+  'border-2': baseTokenWithVariableId('border-2', TABLE_VARIABLE_IDS['color-border-2'], {
+    nameCandidates: ['border-2', 'color-border-2', '@border-2', '@color-border-2', 'Line/浅色描边 @color-border-2']
+  }),
   'bg-base': baseTokenWithVariableId('bg-base', TABLE_VARIABLE_IDS['bg-white'], {
     nameCandidates: ['color-bg-1', 'fill/输入类组件填充 @color-bg-white', '@color-bg-white']
   }),

@@ -155,10 +155,34 @@ export const tableComponents: ComponentRegistry["components"] = {
           "@color-bg-white"
         ]
       },
+      "table-total-row-bg-key": {
+        "enabled": true,
+        "token": "color-bg-3",
+        "variableRef": "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403",
+        "keyCandidates": [
+          "5c33ebe6ed28778f744772f8fa1b17a0b713eab9"
+        ],
+        "idCandidates": [
+          "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403"
+        ],
+        "nameCandidates": [
+          "Background/浅 灰色hover @color-bg-3",
+          "@color-bg-3",
+          "color-bg-3"
+        ]
+      },
       "table-border-key": {
         "enabled": true,
         "token": "table.border",
+        "variableRef": "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410",
+        "keyCandidates": [
+          "8a8a07ec3b45aefd4fcd1607323b1618ea031b33"
+        ],
+        "idCandidates": [
+          "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410"
+        ],
         "nameCandidates": [
+          "Line/浅色描边 @color-border-2",
           "border-2",
           "color-border-2",
           "@border-2",
@@ -567,10 +591,34 @@ export const tableComponents: ComponentRegistry["components"] = {
           "@color-bg-white"
         ]
       },
+      "table-total-row-bg-key": {
+        "enabled": true,
+        "token": "color-bg-3",
+        "variableRef": "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403",
+        "keyCandidates": [
+          "5c33ebe6ed28778f744772f8fa1b17a0b713eab9"
+        ],
+        "idCandidates": [
+          "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403"
+        ],
+        "nameCandidates": [
+          "Background/浅 灰色hover @color-bg-3",
+          "@color-bg-3",
+          "color-bg-3"
+        ]
+      },
       "table-border-key": {
         "enabled": true,
         "token": "table.border",
+        "variableRef": "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410",
+        "keyCandidates": [
+          "8a8a07ec3b45aefd4fcd1607323b1618ea031b33"
+        ],
+        "idCandidates": [
+          "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410"
+        ],
         "nameCandidates": [
+          "Line/浅色描边 @color-border-2",
           "border-2",
           "color-border-2",
           "@border-2",
@@ -739,10 +787,34 @@ export const tableComponents: ComponentRegistry["components"] = {
           "@color-bg-white"
         ]
       },
+      "table-total-row-bg-key": {
+        "enabled": true,
+        "token": "color-bg-3",
+        "variableRef": "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403",
+        "keyCandidates": [
+          "5c33ebe6ed28778f744772f8fa1b17a0b713eab9"
+        ],
+        "idCandidates": [
+          "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403"
+        ],
+        "nameCandidates": [
+          "Background/浅 灰色hover @color-bg-3",
+          "@color-bg-3",
+          "color-bg-3"
+        ]
+      },
       "table-border-key": {
         "enabled": true,
         "token": "table.border",
+        "variableRef": "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410",
+        "keyCandidates": [
+          "8a8a07ec3b45aefd4fcd1607323b1618ea031b33"
+        ],
+        "idCandidates": [
+          "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410"
+        ],
         "nameCandidates": [
+          "Line/浅色描边 @color-border-2",
           "border-2",
           "color-border-2",
           "@border-2",
@@ -1014,10 +1086,34 @@ export const tableComponents: ComponentRegistry["components"] = {
           "@color-bg-white"
         ]
       },
+      "table-total-row-bg-key": {
+        "enabled": true,
+        "token": "color-bg-3",
+        "variableRef": "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403",
+        "keyCandidates": [
+          "5c33ebe6ed28778f744772f8fa1b17a0b713eab9"
+        ],
+        "idCandidates": [
+          "VariableID:5c33ebe6ed28778f744772f8fa1b17a0b713eab9/234212:403"
+        ],
+        "nameCandidates": [
+          "Background/浅 灰色hover @color-bg-3",
+          "@color-bg-3",
+          "color-bg-3"
+        ]
+      },
       "table-border-key": {
         "enabled": true,
         "token": "table.border",
+        "variableRef": "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410",
+        "keyCandidates": [
+          "8a8a07ec3b45aefd4fcd1607323b1618ea031b33"
+        ],
+        "idCandidates": [
+          "VariableID:8a8a07ec3b45aefd4fcd1607323b1618ea031b33/234212:410"
+        ],
         "nameCandidates": [
+          "Line/浅色描边 @color-border-2",
           "border-2",
           "color-border-2",
           "@border-2",

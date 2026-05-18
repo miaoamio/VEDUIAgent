@@ -3715,10 +3715,10 @@ async function renderComponent(
                   leftBoundary: groupBoundaryStartCols.has(leafColumnStart),
                   bottom: true
               });
-              // 合计行：强制覆盖 fills 为 color-bg-3 hex，避免被 cell painter 内的 variable bind 覆盖回白色
+              // 合计行：通过变量绑定到源力 color-bg-3，避免被 cell painter 内的 variable bind 覆盖回白色
               if (totalRowSet.has(rowIndex)) {
                   try {
-                      (node as any).fills = [{ type: 'SOLID', color: { r: 247 / 255, g: 248 / 255, b: 250 / 255 } }];
+                      await applyColorVariable(node, 'table-total-row-bg-key', TOTAL_ROW_BG_HEX);
                   } catch {}
               }
               try {
@@ -5242,6 +5242,61 @@ async function handleInspectVariables(msg: any) {
   const maxChildren = Number.isFinite(maxChildrenRaw) && maxChildrenRaw > 0 ? Math.floor(maxChildrenRaw) : 80;
   const selection = Array.from(figma.currentPage.selection);
   const result = await inspectSelectionVariables(selection, { maxDepth, maxChildren });
+  // 调试：直接读取 fillStyleId / strokeStyleId / boundVariables 并通过 figma.notify 把关键字段弹出来
+  // 同时收集成纯文本，让 UI 端写入剪贴板。
+  const inspectLines: string[] = [];
+  try {
+      for (const node of selection) {
+          inspectLines.push(`# node: ${node.name} (${node.type}) id=${node.id}`);
+          const fillStyleId = (node as any).fillStyleId;
+          const strokeStyleId = (node as any).strokeStyleId;
+          const boundVars = (node as any).boundVariables;
+          let fillStyleKey = '';
+          let strokeStyleKey = '';
+          if (typeof fillStyleId === 'string' && fillStyleId.trim()) {
+              try {
+                  const style = await figma.getStyleByIdAsync(fillStyleId);
+                  fillStyleKey = style ? `${style.name} | key=${style.key}` : fillStyleId;
+              } catch {
+                  fillStyleKey = fillStyleId;
+              }
+              inspectLines.push(`[fillStyle] ${fillStyleKey}`);
+          }
+          if (typeof strokeStyleId === 'string' && strokeStyleId.trim()) {
+              try {
+                  const style = await figma.getStyleByIdAsync(strokeStyleId);
+                  strokeStyleKey = style ? `${style.name} | key=${style.key}` : strokeStyleId;
+              } catch {
+                  strokeStyleKey = strokeStyleId;
+              }
+              inspectLines.push(`[strokeStyle] ${strokeStyleKey}`);
+          }
+          if (boundVars) {
+              try {
+                  inspectLines.push(`[boundVariables] ${JSON.stringify(boundVars)}`);
+              } catch {}
+          }
+          if (fillStyleKey) figma.notify(`[fillStyle] ${fillStyleKey}`, { timeout: 12000 });
+          if (strokeStyleKey) figma.notify(`[strokeStyle] ${strokeStyleKey}`, { timeout: 12000 });
+          if (!fillStyleKey && !strokeStyleKey && !boundVars) {
+              const line = `[inspect] node "${node.name}" has no styleId / boundVariables`;
+              inspectLines.push(line);
+              figma.notify(line, { timeout: 6000 });
+          }
+      }
+  } catch (e) {
+      const line = `[inspect] error: ${String((e as any)?.message || e)}`;
+      inspectLines.push(line);
+      figma.notify(line, { timeout: 6000, error: true });
+  }
+  // 把全部纯文本结果发到 UI 端，UI 端会写入剪贴板并在聊天里显示
+  figma.ui.postMessage({
+    type: 'inspect-selection-variables-clipboard',
+    data: { text: inspectLines.join('\n') }
+  });
+  if (inspectLines.length > 0) {
+      figma.notify('[inspect] 已复制完整结果到剪贴板，可直接粘贴', { timeout: 6000 });
+  }
   figma.ui.postMessage({
     type: 'inspect-selection-variables-result',
     data: result
