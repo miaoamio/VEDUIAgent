@@ -2446,6 +2446,7 @@ function App() {
         return;
       }
       if (type === 'selection-update') {
+        try { console.log('[merge] selection-update mergeRole=', (data as any)?.mergeRole, 'componentId=', data?.componentId, 'nodeName=', data?.nodeName); } catch {}
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
@@ -10066,18 +10067,37 @@ StepB:\n`;
                     <span className="chat-selection-tag-text">{selectionTitleDisplay}</span>
                   </span>
                 </div>
+                {((selectedComponent as any)?.mergeRole === 'merge-anchor' ||
+                  (selectedComponent as any)?.mergeRole === 'merge-hidden') && (
+                  <div className="selection-merge-anchor-bar">
+                    <span className="selection-merge-anchor-text">该单元格已合并</span>
+                    <button
+                      className="selection-merge-anchor-btn"
+                      onClick={() => {
+                        window.parent.postMessage(
+                          { pluginMessage: { type: 'unmerge-selected-cells' } },
+                          '*'
+                        );
+                      }}
+                    >
+                      取消合并
+                    </button>
+                  </div>
+                )}
                 {renderSelectionEditor()}
               </div>
             </>
           ) : selectionCount > 1 ? (
-            <div className="selection-multi-actions">
-              <div className="selection-multi-hint">
-                在画布中多选同一列内连续的多个单元格后点击合并
-              </div>
-              <div className="selection-multi-action-group">
-                <div className="selection-multi-tip">已选中 {selectionCount} 个元素</div>
+            <div className="selection-merge-prompt">
+              <p className="selection-merge-prompt-hint">
+                <span>在画布中多选</span>
+                <span className="selection-merge-prompt-hint-strong">同一列内连续的</span>
+                <span>多个单元格</span>
+              </p>
+              <div className="selection-merge-prompt-row">
+                <span className="selection-merge-prompt-count">已选中 {selectionCount} 个元素</span>
                 <button
-                  className="selection-multi-merge-btn"
+                  className="selection-merge-prompt-btn"
                   onClick={() => {
                     window.parent.postMessage(
                       { pluginMessage: { type: 'merge-selected-cells' } },

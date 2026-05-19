@@ -544,6 +544,14 @@ export async function applyCellAlignment(cell: SceneNode, align: 'left' | 'right
 
 export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBreak') {
   const componentId = 'getPluginData' in cell ? cell.getPluginData('component-id') : '';
+  // 合并 anchor cell：快照高度，函数末尾强制还原，确保任何内部子节点 sizing 调整都不会改变合并高度
+  const isMergeAnchorCell = 'getPluginData' in cell && cell.getPluginData('merge-role') === 'merge-anchor';
+  const anchorSnapshot = isMergeAnchorCell
+    ? {
+        width: Math.max(1, Math.round((cell as any).width || 1)),
+        height: Math.max(1, Math.round((cell as any).height || 1))
+      }
+    : null;
   const isMixedContentCell =
     componentId === 'table-cell-tag' ||
     componentId === 'table-cell-avatar' ||
@@ -646,7 +654,28 @@ export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBr
     }
   }
   if (!multiElementCell && 'counterAxisSizingMode' in cell) {
-    if (layoutMode === 'lineBreak') {
+    // 合并 anchor 已用 FIXED + 显式高度（如 80）保持合并状态；
+    // 切换 ellipsis/lineBreak 时不能改它的垂直 sizing 和高度，否则会回到标准 body 高
+    const mergeRole = 'getPluginData' in cell ? cell.getPluginData('merge-role') : '';
+    const isMergeAnchor = mergeRole === 'merge-anchor';
+    if (isMergeAnchor) {
+      // 仅根据需要更新 padding，保持高度与 FIXED 不变
+      if (layoutMode === 'lineBreak') {
+        if ('paddingTop' in cell) {
+          try { (cell as any).paddingTop = 8; } catch {}
+        }
+        if ('paddingBottom' in cell) {
+          try { (cell as any).paddingBottom = 8; } catch {}
+        }
+      } else {
+        if (paddingTop !== undefined && 'paddingTop' in cell) {
+          try { (cell as any).paddingTop = paddingTop; } catch {}
+        }
+        if (paddingBottom !== undefined && 'paddingBottom' in cell) {
+          try { (cell as any).paddingBottom = paddingBottom; } catch {}
+        }
+      }
+    } else if (layoutMode === 'lineBreak') {
       try {
         (cell as any).counterAxisSizingMode = 'AUTO';
       } catch {}
@@ -692,6 +721,23 @@ export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBr
     }
   }
   mergeNodeParams(cell, { textDisplay: mode });
+
+  // 合并 anchor cell：函数末尾强制还原 FIXED + 原始合并高度，覆盖前面任何隐式高度变化
+  if (isMergeAnchorCell && anchorSnapshot) {
+    try { (cell as any).layoutPositioning = 'AUTO'; } catch {}
+    try {
+      if ('layoutSizingVertical' in cell) (cell as any).layoutSizingVertical = 'FIXED';
+    } catch {}
+    try {
+      if ('counterAxisSizingMode' in cell) (cell as any).counterAxisSizingMode = 'FIXED';
+    } catch {}
+    if ('resize' in cell) {
+      try {
+        const w = Math.max(1, Math.round((cell as any).width || anchorSnapshot.width));
+        (cell as any).resize(w, anchorSnapshot.height);
+      } catch {}
+    }
+  }
 }
 
 export function applyColumnWidthMode(column: FrameNode, mode: 'FIXED' | 'HUG' | 'FILL', width?: number) {

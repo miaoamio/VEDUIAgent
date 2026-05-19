@@ -216,6 +216,7 @@ import {
   applyRowActionColumn as applyRowActionColumnOp,
   ensureOperationColumnHeader as ensureOperationColumnHeaderOp,
   mergeSelectedColumnCells,
+  unmergeAnchorCell,
 } from './code/table/table-operations';
 import {
   resolveTableSizeHeight,
@@ -463,6 +464,21 @@ function scheduleTableCellPrewarm(): void {
     TABLE_CELL_PREWARM_STATE.scheduled = false;
     void prewarmTableCellAssets();
   }, 0);
+}
+
+function findMergeRoleFromNode(node: SceneNode | null): string {
+  let current: BaseNode | null = node;
+  while (current && current.type !== 'PAGE') {
+    if ('getPluginData' in current) {
+      const role = (current as SceneNode).getPluginData('merge-role');
+      if (role === 'merge-anchor' || role === 'merge-hidden') {
+        try { console.log('[merge] findMergeRoleFromNode hit', role, 'on', (current as any).name, (current as any).id); } catch {}
+        return role;
+      }
+    }
+    current = current.parent;
+  }
+  return '';
 }
 
 function findAiComponentNode(node: SceneNode | null): SceneNode | null {
@@ -723,7 +739,8 @@ async function checkSelection() {
             params: normalizedParams,
             childComponentId, // Optional: for columns
             nodeName: effectiveTarget.name,
-            tableContext
+            tableContext,
+            mergeRole: findMergeRoleFromNode(node)
           }
         });
 
@@ -2677,12 +2694,64 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
     };
     
     const columnToUpdate = isActionCell ? findTableColumnFromNode(node) : null;
+
+    // 保留合并状态：若旧节点是合并 anchor，记录其 merge-* plugin data 与当前合并高度，
+    // swap 完成后回写到新节点，并把同列 hidden 占位的 merge-anchor-id 指向新节点。
+    const MERGE_KEYS = [
+      'merge-role',
+      'merge-row-span',
+      'merge-start-index',
+      'merge-end-index',
+      'merge-original-y',
+      'merge-original-height',
+      'merge-original-sizing-v',
+      'merge-original-layout-align',
+      'merge-hidden-ids'
+    ];
+    const oldMergeRole = node.getPluginData('merge-role');
+    const oldMergeData: Record<string, string> = {};
+    let oldMergedHeight = 0;
+    if (oldMergeRole === 'merge-anchor') {
+      for (const key of MERGE_KEYS) {
+        const value = node.getPluginData(key);
+        if (value) oldMergeData[key] = value;
+      }
+      oldMergedHeight = ('height' in node) ? Math.max(0, Math.round((node as any).height || 0)) : 0;
+    }
+    const oldNodeId = node.id;
+
     const newNode = await renderComponent(instance);
     if (!replaceSceneNode(node, newNode)) return null;
     if (columnToUpdate) {
         applyColumnWidthMode(columnToUpdate, 'HUG');
         mergeNodeParams(columnToUpdate, { width: undefined });
     }
+
+    // 回写合并 anchor 信息到新节点：保留高度、plugin data、并修复同列 hidden 占位指向
+    if (oldMergeRole === 'merge-anchor') {
+      for (const key of MERGE_KEYS) {
+        if (oldMergeData[key]) newNode.setPluginData(key, oldMergeData[key]);
+      }
+      try { (newNode as any).layoutPositioning = 'AUTO'; } catch {}
+      try { if ('layoutSizingVertical' in newNode) (newNode as any).layoutSizingVertical = 'FIXED'; } catch {}
+      if (oldMergedHeight > 0 && 'resize' in newNode) {
+        const w = Math.max(1, Math.round((newNode as any).width || 1));
+        (newNode as any).resize(w, oldMergedHeight);
+      }
+      const parentColumn = newNode.parent;
+      if (parentColumn && parentColumn.type === 'FRAME') {
+        for (const sibling of (parentColumn as FrameNode).children) {
+          if (
+            sibling !== newNode &&
+            sibling.getPluginData('merge-role') === 'merge-hidden' &&
+            sibling.getPluginData('merge-anchor-id') === oldNodeId
+          ) {
+            sibling.setPluginData('merge-anchor-id', newNode.id);
+          }
+        }
+      }
+    }
+
     return newNode;
 }
 
@@ -5780,6 +5849,15 @@ async function handleUpdateComponent(msg: any) {
 	        }
 
         if (isTableCellComponentId(componentId)) {
+            // 合并 anchor：在更新前快照合并高度，更新后强制还原，避免任何子操作隐式改高度
+            const cellAsScene = node as SceneNode;
+            const isMergeAnchor = cellAsScene.getPluginData('merge-role') === 'merge-anchor';
+            const mergeSnapshot = isMergeAnchor && 'height' in cellAsScene
+              ? {
+                  width: Math.max(1, Math.round((cellAsScene as any).width || 1)),
+                  height: Math.max(1, Math.round((cellAsScene as any).height || 1))
+                }
+              : null;
             if (typeof params.textAlign === 'string') {
                 await applyCellAlignment(node as SceneNode, params.textAlign as 'left' | 'right' | 'center');
             }
@@ -5802,6 +5880,20 @@ async function handleUpdateComponent(msg: any) {
                         alignTableRowHeights(table, rowIndex, [cell as SceneNode]);
                     }
                 }
+            }
+            // 强制还原 anchor 合并高度，覆盖任何隐式变化
+            if (mergeSnapshot && 'resize' in cellAsScene) {
+                try { (cellAsScene as any).layoutPositioning = 'AUTO'; } catch {}
+                try {
+                  if ('layoutSizingVertical' in cellAsScene) (cellAsScene as any).layoutSizingVertical = 'FIXED';
+                } catch {}
+                try {
+                  if ('counterAxisSizingMode' in cellAsScene) (cellAsScene as any).counterAxisSizingMode = 'FIXED';
+                } catch {}
+                try {
+                  const w = Math.max(1, Math.round((cellAsScene as any).width || mergeSnapshot.width));
+                  (cellAsScene as any).resize(w, mergeSnapshot.height);
+                } catch {}
             }
         }
         if (shouldRefreshSelection) {
@@ -5842,6 +5934,11 @@ async function handleApplyColumnSettings(msg: any) {
             for (let index = offset; index < children.length; index += 1) {
               const child = children[index];
               if (child === sourceCell) continue;
+              // 合并产生的 anchor / hidden 占位不能被克隆替换：
+              //   - anchor：保留合并高度与 plugin data
+              //   - hidden：visible=false 占位，必须保留以维持列高
+              const role = child.getPluginData('merge-role');
+              if (role === 'merge-anchor' || role === 'merge-hidden') continue;
               const cloned = sourceCell.clone();
               column.insertChild(index, cloned);
               child.remove();
@@ -5854,6 +5951,9 @@ async function handleApplyColumnSettings(msg: any) {
               const childId = child.getPluginData('component-id');
               const isBodyCell = isTableCellComponentId(childId) && childId !== 'table-header-cell';
               if (isBodyCell) {
+                // 合并 hidden 占位不需要 swap：visible=false，类型保持原样不影响渲染
+                const role = child.getPluginData('merge-role');
+                if (role === 'merge-hidden') continue;
                 const newNode = await swapComponent(child, componentId);
                 if (newNode) {
                   newNode.setPluginData('cellType', componentId);
@@ -5884,7 +5984,11 @@ async function handleApplyColumnSettings(msg: any) {
         if (alignToApply || displayToApply) {
           const children = column.children.filter((child) => {
             const id = child.getPluginData('component-id');
-            return isTableCellComponentId(id);
+            if (!isTableCellComponentId(id)) return false;
+            // 合并 hidden 占位 visible=false，跳过避免内部重排
+            const role = child.getPluginData('merge-role');
+            if (role === 'merge-hidden') return false;
+            return true;
           });
           for (const child of children) {
             if (alignToApply) {
@@ -6237,6 +6341,65 @@ async function handleMergeSelectedCells(_msg: any) {
   }
 }
 
+async function handleUnmergeSelectedCells(_msg: any) {
+  try {
+    const selection = Array.from(figma.currentPage.selection) as SceneNode[];
+    // 收集所有 anchor：直接选中 anchor、或选中带 merge-anchor-id 的隐藏占位时回溯到对应 anchor
+    const anchors: SceneNode[] = [];
+    const seen = new Set<string>();
+    const pushAnchor = (node: SceneNode | null | undefined) => {
+      if (!node || node.removed) return;
+      if (seen.has(node.id)) return;
+      seen.add(node.id);
+      anchors.push(node);
+    };
+    for (const node of selection) {
+      const role = node.getPluginData('merge-role');
+      if (role === 'merge-anchor') {
+        pushAnchor(node);
+      } else if (role === 'merge-hidden') {
+        const anchorId = node.getPluginData('merge-anchor-id');
+        if (anchorId) {
+          const anchorNode = (await figma.getNodeByIdAsync(anchorId)) as SceneNode | null;
+          pushAnchor(anchorNode);
+        }
+      }
+    }
+    if (anchors.length === 0) {
+      figma.notify('请先选中已合并的母体单元格（合并锚点）', { error: true, timeout: 5000 });
+      figma.ui.postMessage({ type: 'unmerge-selected-cells-result', ok: false, reason: 'no-anchor' });
+      return;
+    }
+    let okCount = 0;
+    const failures: string[] = [];
+    const restored: SceneNode[] = [];
+    for (const anchor of anchors) {
+      const result = unmergeAnchorCell(anchor);
+      if (result.ok) {
+        okCount += 1;
+        restored.push(anchor);
+      } else if (result.reason) {
+        failures.push(result.reason);
+      }
+    }
+    if (okCount > 0) {
+      figma.notify(`已取消 ${okCount} 个合并`, { timeout: 3000 });
+      figma.currentPage.selection = restored;
+    } else {
+      figma.notify(failures[0] || '取消合并失败', { error: true, timeout: 5000 });
+    }
+    figma.ui.postMessage({
+      type: 'unmerge-selected-cells-result',
+      ok: okCount > 0,
+      okCount,
+      reason: failures[0]
+    });
+  } catch (e: any) {
+    figma.notify(`取消合并失败：${String(e?.message || e)}`, { error: true, timeout: 5000 });
+    figma.ui.postMessage({ type: 'unmerge-selected-cells-result', ok: false, reason: String(e?.message || e) });
+  }
+}
+
 // ── Thin message dispatcher ─────────────────────────────────────────
 figma.ui.onmessage = async (msg) => {
   const handlers: Record<string, (m: any) => Promise<void> | void> = {
@@ -6256,6 +6419,7 @@ figma.ui.onmessage = async (msg) => {
     'edit-table-cells': handleEditTableCells,
     'request-table-context': handleRequestTableContext,
     'merge-selected-cells': handleMergeSelectedCells,
+    'unmerge-selected-cells': handleUnmergeSelectedCells,
   };
   const handler = handlers[msg.type];
   if (handler) await handler(msg);
