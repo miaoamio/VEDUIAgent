@@ -5238,7 +5238,8 @@ async function handleInspectStructure(msg: any) {
 async function handleInspectVariables(msg: any) {
   const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
   const maxDepthRaw = Number(payload.maxDepth);
-  const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw > 0 ? Math.floor(maxDepthRaw) : 6;  const maxChildrenRaw = Number(payload.maxChildren);
+  const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw > 0 ? Math.floor(maxDepthRaw) : 6;
+  const maxChildrenRaw = Number(payload.maxChildren);
   const maxChildren = Number.isFinite(maxChildrenRaw) && maxChildrenRaw > 0 ? Math.floor(maxChildrenRaw) : 80;
   const selection = Array.from(figma.currentPage.selection);
   const result = await inspectSelectionVariables(selection, { maxDepth, maxChildren });
