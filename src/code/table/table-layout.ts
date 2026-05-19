@@ -330,11 +330,21 @@ export function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceN
 
     const sourceNodeSet = new Set(sourceNodes);
 
+    // 手动合并产生的 anchor / hidden cell 不参与同行高度联动：
+    //   - merge-anchor：高度等于 N 行总高，吸纳了 hidden cell 的空间，不能拿来做"该行高度"基准
+    //   - merge-hidden：visible=false，仅作为占位，高度是合并前的原始 height，不应被改写
+    const isMergeNeutralCell = (cell: SceneNode): boolean => {
+        if (!cell || cell.removed) return false;
+        const role = cell.getPluginData('merge-role');
+        return role === 'merge-anchor' || role === 'merge-hidden';
+    };
+
     for (const column of columns) {
         if (rowIndex >= column.children.length) continue;
         const cell = column.children[rowIndex];
         if (!cell || cell.removed) continue;
         if (cell.type !== 'FRAME' && cell.type !== 'INSTANCE') continue;
+        if (isMergeNeutralCell(cell)) continue;
 
         if (isLineBreakCell(cell)) {
             ensureLineBreakMeasure(cell);
@@ -352,6 +362,7 @@ export function alignTableRowHeights(table: FrameNode, rowIndex: number, sourceN
         if (rowIndex >= column.children.length) continue;
         const cell = column.children[rowIndex];
         if (cell.removed) continue;
+        if (isMergeNeutralCell(cell)) continue;
         if (cell.type === 'FRAME' || cell.type === 'INSTANCE') {
             const lineBreak = isLineBreakCell(cell);
             if (lineBreak) {

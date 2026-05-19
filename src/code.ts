@@ -215,6 +215,7 @@ import {
   updateTableRowCount as updateTableRowCountOp,
   applyRowActionColumn as applyRowActionColumnOp,
   ensureOperationColumnHeader as ensureOperationColumnHeaderOp,
+  mergeSelectedColumnCells,
 } from './code/table/table-operations';
 import {
   resolveTableSizeHeight,
@@ -5237,8 +5238,7 @@ async function handleInspectStructure(msg: any) {
 async function handleInspectVariables(msg: any) {
   const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
   const maxDepthRaw = Number(payload.maxDepth);
-  const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw > 0 ? Math.floor(maxDepthRaw) : 6;
-  const maxChildrenRaw = Number(payload.maxChildren);
+  const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw > 0 ? Math.floor(maxDepthRaw) : 6;  const maxChildrenRaw = Number(payload.maxChildren);
   const maxChildren = Number.isFinite(maxChildrenRaw) && maxChildrenRaw > 0 ? Math.floor(maxChildrenRaw) : 80;
   const selection = Array.from(figma.currentPage.selection);
   const result = await inspectSelectionVariables(selection, { maxDepth, maxChildren });
@@ -6209,6 +6209,33 @@ async function replaceAllTextInNode(node: SceneNode, newText: string): Promise<b
   return false;
 }
 
+async function handleMergeSelectedCells(_msg: any) {
+  try {
+    const selection = Array.from(figma.currentPage.selection) as SceneNode[];
+    if (selection.length < 2) {
+      figma.notify('请在画布中多选同一列里连续的 ≥2 个 body 单元格', { error: true, timeout: 5000 });
+      figma.ui.postMessage({ type: 'merge-selected-cells-result', ok: false, reason: 'selection<2' });
+      return;
+    }
+    const result = mergeSelectedColumnCells(selection);
+    if (!result.ok) {
+      figma.notify(result.reason || '合并失败', { error: true, timeout: 5000 });
+    } else {
+      figma.notify('已合并选中单元格', { timeout: 3000 });
+      if (result.anchorCell) figma.currentPage.selection = [result.anchorCell];
+    }
+    figma.ui.postMessage({
+      type: 'merge-selected-cells-result',
+      ok: result.ok,
+      reason: result.reason,
+      anchorCellId: result.anchorCell?.id
+    });
+  } catch (e: any) {
+    figma.notify(`合并失败：${String(e?.message || e)}`, { error: true, timeout: 5000 });
+    figma.ui.postMessage({ type: 'merge-selected-cells-result', ok: false, reason: String(e?.message || e) });
+  }
+}
+
 // ── Thin message dispatcher ─────────────────────────────────────────
 figma.ui.onmessage = async (msg) => {
   const handlers: Record<string, (m: any) => Promise<void> | void> = {
@@ -6227,6 +6254,7 @@ figma.ui.onmessage = async (msg) => {
     'swap-component': handleSwapComponent,
     'edit-table-cells': handleEditTableCells,
     'request-table-context': handleRequestTableContext,
+    'merge-selected-cells': handleMergeSelectedCells,
   };
   const handler = handlers[msg.type];
   if (handler) await handler(msg);

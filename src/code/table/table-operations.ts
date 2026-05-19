@@ -1095,3 +1095,249 @@ export async function ensureOperationColumnHeader(
   mergeNodeParams(headerCell, { text: '操作' });
   await ctx.setSceneText(headerCell as SceneNode, '操作');
 }
+
+// ---------------------------------------------------------------------------
+// mergeSelectedColumnCells —— "纯列结构 + 流内拉高母体 + 列内隐藏占位"算法
+//
+// 输入：cellNodes（同一 table-column 内连续行的 N(>=2) 个 body cell 节点）
+// 算法（严格保持纯按列布局，不动任何右侧列）：
+//   ① 计算 totalHeight = Σ cellHeight + (N-1) * column.itemSpacing
+//      —— anchor 拉高后正好吸收原本 N-1 个 spacing 的纵向空间
+//   ② anchor 留在 auto-layout 流内（layoutPositioning='AUTO'）：
+//      - layoutSizingVertical = 'FIXED'
+//      - resize(width, totalHeight)
+//   ③ 把 startIndex+1..endIndex 的 N-1 个 cell 设 visible=false
+//      —— Figma auto-layout 会自动跳过 visible=false 的 child 以及它前后的 spacing
+//      所以 column 整体的"行节奏"和原始一致，与右侧列完美对齐
+//   ④ 右侧列完全不动
+//
+// 反向取消合并请走 unmergeAnchorCell。
+// ---------------------------------------------------------------------------
+
+interface MergeSelectionPlan {
+  table: FrameNode;
+  columns: FrameNode[];
+  targetColumnIndex: number;
+  startIndex: number;
+  endIndex: number;
+}
+
+function resolvePlanFromSelection(cellNodes: SceneNode[]): MergeSelectionPlan | null {
+  if (!Array.isArray(cellNodes) || cellNodes.length < 2) return null;
+  const firstCell = cellNodes[0];
+  let column: FrameNode | null = null;
+  let cur: BaseNode | null = firstCell.parent;
+  while (cur && cur.type !== 'PAGE') {
+    if (cur.type === 'FRAME' && (cur as FrameNode).getPluginData('component-id') === 'table-column') {
+      column = cur as FrameNode;
+      break;
+    }
+    cur = cur.parent;
+  }
+  if (!column) return null;
+  const table = column.parent;
+  if (!table || table.type !== 'FRAME') return null;
+  const columns = getTableColumns(table as FrameNode);
+  if (columns.length === 0) return null;
+  const targetColumnIndex = columns.indexOf(column);
+  if (targetColumnIndex < 0) return null;
+
+  const offset = getTableHeaderOffset(column);
+  const indices: number[] = [];
+  for (const cellNode of cellNodes) {
+    if (cellNode.parent !== column) return null;
+    const idx = column.children.indexOf(cellNode);
+    if (idx < offset) return null; // 不允许选 header
+    indices.push(idx);
+  }
+  indices.sort((a, b) => a - b);
+  for (let i = 1; i < indices.length; i += 1) {
+    if (indices[i] !== indices[i - 1] + 1) return null;
+  }
+  return {
+    table: table as FrameNode,
+    columns,
+    targetColumnIndex,
+    startIndex: indices[0],
+    endIndex: indices[indices.length - 1]
+  };
+}
+
+function getCellHeight(cell: SceneNode): number {
+  if ('height' in cell) return Math.max(0, Math.round((cell as any).height));
+  return 40;
+}
+
+export function mergeSelectedColumnCells(cellNodes: SceneNode[]): {
+  ok: boolean;
+  reason?: string;
+  anchorCell?: SceneNode;
+} {
+  const plan = resolvePlanFromSelection(cellNodes);
+  if (!plan) {
+    return {
+      ok: false,
+      reason:
+        '只能合并同一列里连续的多个 body 单元格（≥2 个），且该列必须属于一个按列布局的表格。'
+    };
+  }
+  const { columns, targetColumnIndex, startIndex, endIndex } = plan;
+  const targetColumn = columns[targetColumnIndex];
+  const segLen = endIndex - startIndex + 1;
+
+  // 检查范围内是否已存在合并标记，避免重复合并造成错乱
+  for (let r = startIndex; r <= endIndex; r += 1) {
+    const child = targetColumn.children[r];
+    if (!child) continue;
+    const role = child.getPluginData('merge-role');
+    if (role === 'merge-anchor' || role === 'merge-hidden') {
+      return {
+        ok: false,
+        reason: '所选范围内已存在合并单元格，请先取消已有合并。'
+      };
+    }
+  }
+
+  // ① 计算 totalHeight
+  const itemSpacing = Math.max(0, Number(targetColumn.itemSpacing) || 0);
+  let sumHeights = 0;
+  for (let r = startIndex; r <= endIndex; r += 1) {
+    const child = targetColumn.children[r];
+    if (child) sumHeights += getCellHeight(child);
+  }
+  const totalHeight = Math.max(1, sumHeights + (segLen - 1) * itemSpacing);
+
+  // ② 锚定 anchor —— 先记录原始几何，但暂不调整高度
+  const anchor = targetColumn.children[startIndex];
+  if (!anchor) return { ok: false, reason: '未找到母体单元格' };
+
+  const originalHeight = getCellHeight(anchor);
+  const originalSizingV: string | null = ('layoutSizingVertical' in anchor)
+    ? String((anchor as any).layoutSizingVertical || '')
+    : null;
+  const originalLayoutAlign: string | null = ('layoutAlign' in anchor)
+    ? String((anchor as any).layoutAlign || '')
+    : null;
+
+  // 合并前记录 column 总高度，作为目标基准
+  const columnHeightBefore = Math.max(0, Math.round((targetColumn as any).height || 0));
+
+  // 写入 plugin data（在动 height 前写好，方便取消时读到）
+  anchor.setPluginData('merge-role', 'merge-anchor');
+  anchor.setPluginData('merge-row-span', String(segLen));
+  anchor.setPluginData('merge-start-index', String(startIndex));
+  anchor.setPluginData('merge-end-index', String(endIndex));
+  anchor.setPluginData('merge-original-height', String(originalHeight));
+  if (originalSizingV) anchor.setPluginData('merge-original-sizing-v', originalSizingV);
+  if (originalLayoutAlign) anchor.setPluginData('merge-original-layout-align', originalLayoutAlign);
+
+  // ③ 先隐藏 startIndex+1..endIndex 的 N-1 个 cell（anchor 暂不动高度）
+  //    这样隐藏完成后，column 缩短的精确像素 = anchor 真正需要承担的补偿值
+  const hiddenIds: string[] = [];
+  for (let r = startIndex + 1; r <= endIndex; r += 1) {
+    const child = targetColumn.children[r];
+    if (!child) continue;
+    try { (child as any).visible = false; } catch {}
+    child.setPluginData('merge-role', 'merge-hidden');
+    child.setPluginData('merge-anchor-id', anchor.id);
+    hiddenIds.push(child.id);
+  }
+  anchor.setPluginData('merge-hidden-ids', JSON.stringify(hiddenIds));
+
+  // ④ 读取隐藏后的 column 高度，把缩短量精确补到 anchor 上
+  //    无论 Figma 对 visible=false 的 spacing 处理如何（跳过/保留/部分），
+  //    都靠这个"实测差额"修正，保证 column 总高度严格 = columnHeightBefore。
+  let columnHeightAfter = Math.max(0, Math.round((targetColumn as any).height || 0));
+  let shrink = columnHeightBefore - columnHeightAfter;
+  // 若 column 是 STRETCH/FILL 模式，column.height 不会随内容缩短 → fallback：
+  // 用理论值 totalHeight 作为 anchor 目标（与原始 N 个 cell 占的连续空间一致）。
+  let anchorTargetHeight: number;
+  if (Math.abs(shrink) < 0.5) {
+    anchorTargetHeight = totalHeight;
+  } else {
+    anchorTargetHeight = Math.max(1, originalHeight + shrink);
+  }
+
+  try { (anchor as any).layoutPositioning = 'AUTO'; } catch {}
+  try {
+    if ('layoutSizingVertical' in anchor) (anchor as any).layoutSizingVertical = 'FIXED';
+  } catch {}
+  if ('resize' in anchor) {
+    const w = Math.max(1, Math.round((anchor as any).width || targetColumn.width));
+    (anchor as any).resize(w, anchorTargetHeight);
+  }
+
+  // ⑤ 二次精校：若 column 此时仍偏离 columnHeightBefore，按差额再补一次
+  try {
+    columnHeightAfter = Math.max(0, Math.round((targetColumn as any).height || 0));
+    shrink = columnHeightBefore - columnHeightAfter;
+    if (Math.abs(shrink) > 0.5 && 'resize' in anchor) {
+      const w = Math.max(1, Math.round((anchor as any).width || targetColumn.width));
+      (anchor as any).resize(w, Math.max(1, anchorTargetHeight + shrink));
+    }
+  } catch {}
+
+  // ⑥ 右侧列完全不动
+
+  return { ok: true, anchorCell: anchor };
+}
+
+// ---------------------------------------------------------------------------
+// unmergeAnchorCell —— 反向取消"绝对定位悬浮母体"合并
+// 输入：母体 cell（带 merge-role=merge-anchor 的 plugin data）
+// ---------------------------------------------------------------------------
+export function unmergeAnchorCell(anchor: SceneNode): {
+  ok: boolean;
+  reason?: string;
+} {
+  if (anchor.getPluginData('merge-role') !== 'merge-anchor') {
+    return { ok: false, reason: '该单元格不是合并锚点' };
+  }
+  const column = anchor.parent;
+  if (!column || column.type !== 'FRAME') {
+    return { ok: false, reason: '锚点单元格的父级列不存在' };
+  }
+
+  // 1. 恢复母体几何
+  try { (anchor as any).layoutPositioning = 'AUTO'; } catch {}
+  const originalHeight = Number(anchor.getPluginData('merge-original-height') || '0') || 0;
+  if (originalHeight > 0 && 'resize' in anchor) {
+    const w = Math.max(1, Math.round((anchor as any).width || (column as FrameNode).width));
+    (anchor as any).resize(w, originalHeight);
+  }
+  const originalSizingV = anchor.getPluginData('merge-original-sizing-v');
+  if (originalSizingV && 'layoutSizingVertical' in anchor) {
+    try { (anchor as any).layoutSizingVertical = originalSizingV; } catch {}
+  }
+  const originalLayoutAlign = anchor.getPluginData('merge-original-layout-align');
+  if (originalLayoutAlign && 'layoutAlign' in anchor) {
+    try { (anchor as any).layoutAlign = originalLayoutAlign; } catch {}
+  }
+
+  // 2. 恢复隐藏占位
+  let hiddenIds: string[] = [];
+  try {
+    const raw = anchor.getPluginData('merge-hidden-ids');
+    if (raw) hiddenIds = JSON.parse(raw);
+  } catch {}
+  for (const id of hiddenIds) {
+    const node = (column as FrameNode).children.find((c) => c.id === id);
+    if (!node) continue;
+    try { (node as any).visible = true; } catch {}
+    node.setPluginData('merge-role', '');
+    node.setPluginData('merge-anchor-id', '');
+  }
+
+  // 3. 清理母体 plugin data
+  anchor.setPluginData('merge-role', '');
+  anchor.setPluginData('merge-row-span', '');
+  anchor.setPluginData('merge-start-index', '');
+  anchor.setPluginData('merge-end-index', '');
+  anchor.setPluginData('merge-original-y', '');
+  anchor.setPluginData('merge-original-height', '');
+  anchor.setPluginData('merge-original-sizing-v', '');
+  anchor.setPluginData('merge-original-layout-align', '');
+  anchor.setPluginData('merge-hidden-ids', '');
+
+  return { ok: true };
+}

@@ -10069,10 +10069,28 @@ StepB:\n`;
                 {renderSelectionEditor()}
               </div>
             </>
-          ) : (
-            <div className="selection-empty">
-              {selectionCount > 1 ? '暂不支持选中画布里多个元素' : '未选中任何内容'}
+          ) : selectionCount > 1 ? (
+            <div className="selection-multi-actions">
+              <div className="selection-multi-hint">
+                在画布中多选同一列内连续的多个单元格后点击合并
+              </div>
+              <div className="selection-multi-action-group">
+                <div className="selection-multi-tip">已选中 {selectionCount} 个元素</div>
+                <button
+                  className="selection-multi-merge-btn"
+                  onClick={() => {
+                    window.parent.postMessage(
+                      { pluginMessage: { type: 'merge-selected-cells' } },
+                      '*'
+                    );
+                  }}
+                >
+                  合并单元格
+                </button>
+              </div>
             </div>
+          ) : (
+            <div className="selection-empty">未选中任何内容</div>
           )}
         </div>
       </div>

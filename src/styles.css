@@ -1540,6 +1540,73 @@ div#react-page > div.container > div.chat-layout > div.chat-scroll > div.chat-th
   text-align: center;
 }
 
+.selection-multi-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  row-gap: 12px;
+  border-radius: 4px;
+  background: #F4F4F5;
+  padding: 16px 12px;
+  box-sizing: border-box;
+}
+
+.selection-multi-hint {
+  flex-shrink: 0;
+  color: #71717A;
+  font-size: 13px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.selection-multi-action-group {
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  row-gap: 8px;
+}
+
+.selection-multi-tip {
+  flex-shrink: 0;
+  color: #18181B;
+  font-size: 12px;
+  line-height: 20px;
+  letter-spacing: 0.04px;
+  font-weight: 500;
+}
+
+.selection-multi-merge-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: none;
+  border-radius: 4px;
+  background: #18181B;
+  padding: 0 10px;
+  height: 28px;
+  color: #FFFFFF;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+  font-weight: 500;
+  cursor: pointer;
+  column-gap: 10px;
+  transition: background-color 120ms ease;
+}
+
+.selection-multi-merge-btn:hover {
+  background: #27272A;
+}
+
+.selection-multi-merge-btn:active {
+  background: #09090B;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
