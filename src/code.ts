@@ -3680,9 +3680,9 @@ async function renderComponent(
           }, Math.max(0, Number(params.rowCount || 0)));
 
           // 合计行/汇总行检测：
-          //   1) 某 body 行存在 colspan>1 的 anchor 且首格文案为 合计/小计/总计/Total/Sum 等
-          //   2) 或 该行的第一列（col=0）单元格文案命中关键词（含 rowspan 跨行的 anchor 与普通 cell）
-          // 满足任一即把该行整行（合并段 + 右侧汇总值单元格）涂成 color-bg-3。
+          //   1) 优先按“每一行第一列实际识别出的文本”判定，避免被 merge plan 结构影响
+          //   2) 再用 body merge anchor 兜底（如最后一行横向 colspan 的合计行）
+          // 满足任一即把该行整行（被合并段 + 右侧汇总值单元格）涂成 color-bg-3。
           const TOTAL_ROW_REGEX = /^(合计|小计|总计|总和|汇总|合\s*计|小\s*计|总\s*计|汇\s*总|total|subtotal|summary|sum)$/i;
           const TOTAL_ROW_BG_HEX = '#F7F8FA';
           const totalRowSet = new Set<number>();
@@ -3701,30 +3701,47 @@ async function renderComponent(
               }
               return String(cellLike);
           };
+          const firstColumnBodyChildren = Array.isArray(lightweightColumnData[0]?.bodyChildren)
+              ? lightweightColumnData[0].bodyChildren
+              : [];
+          const extractFirstColumnTextForRow = (rowIndex: number): string => {
+              // 先找第一列里覆盖该行的 merge/body cell
+              const coveringCell = bodyCells.find((c: any) => {
+                  if (!c || Number(c.col ?? -1) !== 0) return false;
+                  if (c.isMergeHidden) return false;
+                  const startRow = Number(c.row ?? 0);
+                  const rowspan = Math.max(1, Number(c.rowspan || 1));
+                  return rowIndex >= startRow && rowIndex < startRow + rowspan;
+              });
+              const coveringText = extractCellText(coveringCell?.value).trim();
+              if (coveringText) return coveringText;
+
+              // 再回退到第一列原始识别出的 body child params
+              const bodyChild = firstColumnBodyChildren[rowIndex];
+              const paramsText = extractCellText((bodyChild?.params as any)?.text).trim();
+              if (paramsText) return paramsText;
+              const paramsValue = extractCellText((bodyChild?.params as any)?.value).trim();
+              if (paramsValue) return paramsValue;
+              const paramsLabel = extractCellText((bodyChild?.params as any)?.label).trim();
+              if (paramsLabel) return paramsLabel;
+              const paramsContent = extractCellText((bodyChild?.params as any)?.content).trim();
+              if (paramsContent) return paramsContent;
+              return '';
+          };
+          for (let rowIndex = 0; rowIndex < bodyRowCount; rowIndex += 1) {
+              const firstColumnText = extractFirstColumnTextForRow(rowIndex);
+              if (TOTAL_ROW_REGEX.test(firstColumnText)) {
+                  totalRowSet.add(rowIndex);
+              }
+          }
+          // 兜底：横向合计行常表现为首格 colspan>1 的 merge anchor
           for (const c of bodyCells) {
               if (!c?.isMergeAnchor) continue;
               const colspan = Number(c.colspan || 1);
               if (colspan <= 1) continue;
               const valueText = extractCellText(c.value).trim();
-              if (TOTAL_ROW_REGEX.test(valueText)) {
-                  totalRowSet.add(Number(c.row ?? 0));
-              }
-          }
-          // 第二轮：扫描所有 body cell，若该 cell 落在第 0 列（含 rowspan 跨多行的 anchor），
-          // 且文本命中关键词，则把它**覆盖到的所有 row** 都标为合计行
-          for (const c of bodyCells) {
-              if (!c) continue;
-              const col = Number(c.col ?? 0);
-              if (col !== 0) continue;
-              // 普通 cell（非 anchor 的 hidden 占位也跳过）：只看 anchor 或非合并产物
-              if (c.isMergeHidden) continue;
-              const valueText = extractCellText(c.value).trim();
               if (!TOTAL_ROW_REGEX.test(valueText)) continue;
-              const rowStart = Number(c.row ?? 0);
-              const rowspan = Math.max(1, Number(c.rowspan || 1));
-              for (let r = rowStart; r < rowStart + rowspan; r += 1) {
-                  totalRowSet.add(r);
-              }
+              totalRowSet.add(Number(c.row ?? 0));
           }
           try {
               if (totalRowSet.size > 0) {
