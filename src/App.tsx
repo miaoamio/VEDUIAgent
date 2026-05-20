@@ -2339,6 +2339,7 @@ function App() {
     params: any;
     childComponentId?: string; // For columns, this stores the type of cells inside
     nodeName?: string;
+    isAiGeneratedMergedCell?: boolean;
     tableContext?: {
       headers: string[];
       data: string[][];
@@ -2671,6 +2672,7 @@ function App() {
 
   const applyColumnSettings = () => {
     if (!selectedComponent) return;
+    if (selectedComponent.isAiGeneratedMergedCell) return;
     const params = selectedComponent.params || {};
     const cellType = selectedComponent.componentId === 'table-column'
       ? (selectedComponent.childComponentId || 'table-cell')
@@ -9336,6 +9338,10 @@ StepB:\n`;
     const params = selectedComponent.params || {};
     const isColumn = selectedComponent.componentId === 'table-column';
     const isCell = isTableCellComponent(selectedComponent.componentId);
+    const disableApplyToColumn = Boolean(selectedComponent.isAiGeneratedMergedCell);
+    const applyColumnTooltip = disableApplyToColumn
+      ? 'AI生成的合并单元格暂不支持应用到整列'
+      : '';
     const cellVariants = Object.values(COMPONENT_DEFS).filter((def) => def.family === 'table-cell');
     const currentCellType = isColumn
       ? (selectedComponent.childComponentId || 'table-cell')
@@ -9465,9 +9471,18 @@ StepB:\n`;
 
         {isCell && !isColumn && selectedComponent.componentId !== 'table-header-cell' && (
           <div className="row apply-column-row">
-            <button type="button" className="selection-primary" onClick={applyColumnSettings}>
-              应用到整列
-            </button>
+            <Tooltip content={applyColumnTooltip} enabled={disableApplyToColumn} placement="top-end">
+              <div className="apply-column-tooltip-trigger">
+                <button
+                  type="button"
+                  className="selection-primary"
+                  onClick={applyColumnSettings}
+                  disabled={disableApplyToColumn}
+                >
+                  应用到整列
+                </button>
+              </div>
+            </Tooltip>
           </div>
         )}
 

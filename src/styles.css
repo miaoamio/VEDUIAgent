@@ -2840,12 +2840,17 @@ button:disabled {
 }
 
 .selection-primary:disabled {
-  background: var(--ved-button-primary-bg, #18181B);
+  background: #9CA3AF;
   cursor: not-allowed;
 }
 
 .apply-column-row {
   margin-top: 16px;
+}
+
+.apply-column-tooltip-trigger {
+  display: block;
+  width: 100%;
 }
 
 .tabs {

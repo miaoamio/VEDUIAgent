@@ -740,7 +740,8 @@ async function checkSelection() {
             childComponentId, // Optional: for columns
             nodeName: effectiveTarget.name,
             tableContext,
-            mergeRole: findMergeRoleFromNode(node)
+            mergeRole: findMergeRoleFromNode(node),
+            isAiGeneratedMergedCell: isAiGeneratedMergedCellSelection(node)
           }
         });
 
@@ -2547,6 +2548,285 @@ function shouldStoreComponentInstance(instance: ComponentInstance): boolean {
   return FULL_RERENDER_COMPONENT_IDS.has(instance.componentId);
 }
 
+function deepCloneComponentInstance(instance: ComponentInstance): ComponentInstance {
+  return JSON.parse(JSON.stringify(instance)) as ComponentInstance;
+}
+
+function isAiMergedTableParams(params: Record<string, any> | null | undefined): boolean {
+  if (!params || typeof params !== 'object') return false;
+  const plan = params.tableRenderPlan;
+  return Boolean(
+    plan &&
+    typeof plan === 'object' &&
+    (
+      Boolean((plan as any).hasMultiLevelHeader) ||
+      (Array.isArray(params.merges) && params.merges.length > 0)
+    )
+  );
+}
+
+function getCellMetaFromSelection(node: BaseNode | null | undefined): { rowIndex: number | null; colIndex: number | null; cell: SceneNode | null } {
+  const cell = findTableCellFromNode(node) as SceneNode | null;
+  if (!cell) return { rowIndex: null, colIndex: null, cell: null };
+  const rawRow = cell.getPluginData('table-cell-row-index');
+  const rawCol = cell.getPluginData('table-cell-column-index');
+  const rowIndex = Number.isInteger(Number(rawRow)) ? Number(rawRow) : null;
+  const colIndex = Number.isInteger(Number(rawCol)) ? Number(rawCol) : null;
+  return { rowIndex, colIndex, cell };
+}
+
+function isAiGeneratedMergedCellSelection(node: BaseNode | null | undefined): boolean {
+  const tableRoot = findTableFrameFromNode(node as SceneNode | null | undefined);
+  if (!tableRoot) return false;
+  const tableParams = readNodeParams(tableRoot);
+  if (!isAiMergedTableParams(tableParams)) return false;
+
+  const { rowIndex, colIndex } = getCellMetaFromSelection(node);
+  if (rowIndex === null || colIndex === null) return false;
+
+  const bodyCells = Array.isArray((tableParams as any)?.tableRenderPlan?.bodyCells)
+    ? ((tableParams as any).tableRenderPlan.bodyCells as any[])
+    : [];
+  for (const cell of bodyCells) {
+    if (!cell || cell.isMergeHidden) continue;
+    const startRow = Number(cell.row ?? 0);
+    const startCol = Number(cell.col ?? 0);
+    const rowspan = Math.max(1, Number(cell.rowspan || 1));
+    const colspan = Math.max(1, Number(cell.colspan || 1));
+    if (rowspan <= 1 && colspan <= 1) continue;
+    if (
+      rowIndex >= startRow &&
+      rowIndex < startRow + rowspan &&
+      colIndex >= startCol &&
+      colIndex < startCol + colspan
+    ) {
+      return true;
+    }
+  }
+
+  const merges = Array.isArray((tableParams as any)?.merges) ? ((tableParams as any).merges as any[]) : [];
+  return merges.some((merge) => {
+    if (!merge || String(merge.section || 'body') !== 'body') return false;
+    const startRow = Number(merge.row ?? 0);
+    const startCol = Number(merge.col ?? 0);
+    const rowspan = Math.max(1, Number(merge.rowspan || 1));
+    const colspan = Math.max(1, Number(merge.colspan || 1));
+    if (rowspan <= 1 && colspan <= 1) return false;
+    return (
+      rowIndex >= startRow &&
+      rowIndex < startRow + rowspan &&
+      colIndex >= startCol &&
+      colIndex < startCol + colspan
+    );
+  });
+}
+
+function copyPluginDataKeys(source: SceneNode, target: SceneNode, keys: string[]) {
+  for (const key of keys) {
+    const value = source.getPluginData(key);
+    if (value) {
+      target.setPluginData(key, value);
+    } else {
+      target.setPluginData(key, '');
+    }
+  }
+}
+
+function extractTableCellParamText(params: Record<string, any> | null | undefined): string {
+  if (!params || typeof params !== 'object') return '';
+  const candidates = [params.text, params.tagText, params.value, params.label, params.content];
+  for (const value of candidates) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function buildColumnApplyParamsForCell(
+  targetCellParams: Record<string, any>,
+  templateParams: Record<string, any>,
+  nextComponentId: string
+): Record<string, any> | null {
+  const def = COMPONENT_DEFS[nextComponentId];
+  if (!def) return null;
+  const nextParams: Record<string, any> = { ...getDefaultParams(nextComponentId) };
+  for (const [key, value] of Object.entries(templateParams || {})) {
+    if (def.params[key]) {
+      nextParams[key] = value;
+    }
+  }
+
+  const currentText = extractTableCellParamText(targetCellParams);
+  if (currentText) {
+    if (def.params.text) {
+      nextParams.text = currentText;
+    }
+    if (def.params.tagText) {
+      nextParams.tagText = currentText;
+    }
+    if (def.params.value && !nextParams.value) {
+      nextParams.value = currentText;
+    }
+  }
+  if (!currentText && targetCellParams.value !== undefined && def.params.value) {
+    nextParams.value = targetCellParams.value;
+  }
+  if (isTableActionCellComponentId(nextComponentId)) {
+    nextParams.width = 0;
+  }
+  return nextParams;
+}
+
+function patchMergedTableInstanceForColumnApply(
+  tableInstance: ComponentInstance,
+  columnIndex: number,
+  options: {
+    componentId?: string;
+    textAlign?: string;
+    textDisplay?: string;
+    columnWidthMode?: string;
+    width?: number;
+    templateParams?: Record<string, any>;
+  }
+): ComponentInstance | null {
+  if (!Array.isArray(tableInstance.children)) return null;
+  if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex >= tableInstance.children.length) return null;
+
+  const nextInstance = deepCloneComponentInstance(tableInstance);
+  const targetColumn = nextInstance.children?.[columnIndex];
+  if (!targetColumn || targetColumn.componentId !== 'table-column') return null;
+
+  const templateParams = options.templateParams || {};
+  const nextComponentId = typeof options.componentId === 'string' && options.componentId
+    ? options.componentId
+    : undefined;
+  const alignToApply = typeof options.textAlign === 'string' ? options.textAlign : undefined;
+  const displayToApply = typeof options.textDisplay === 'string' ? options.textDisplay : undefined;
+
+  targetColumn.params = { ...(targetColumn.params || {}) };
+  if (nextComponentId) {
+    targetColumn.params.cellType = nextComponentId;
+  }
+  if (alignToApply) {
+    targetColumn.params.textAlign = alignToApply;
+  }
+  if (displayToApply) {
+    targetColumn.params.textDisplay = displayToApply;
+  }
+  if (typeof options.columnWidthMode === 'string' && options.columnWidthMode) {
+    targetColumn.params.columnWidthMode = options.columnWidthMode.toUpperCase();
+  }
+  if (options.width !== undefined) {
+    targetColumn.params.width = options.width;
+  }
+  if (nextComponentId && isTableActionCellComponentId(nextComponentId) && !targetColumn.params.columnWidthMode) {
+    targetColumn.params.columnWidthMode = 'HUG';
+  }
+
+  const leafHeaders = Array.isArray((nextInstance.params as any)?.headers) ? (nextInstance.params as any).headers : [];
+  targetColumn.children = (targetColumn.children || []).map((child) => {
+    const nextChild = deepCloneComponentInstance(child);
+    nextChild.params = { ...(nextChild.params || {}) };
+
+    if (nextChild.componentId === 'table-header-cell') {
+      if (alignToApply) {
+        nextChild.params.textAlign = alignToApply;
+      }
+      if (nextComponentId && isTableActionCellComponentId(nextComponentId)) {
+        nextChild.params.text = '操作';
+      } else if (Array.isArray(leafHeaders) && leafHeaders[columnIndex]) {
+        nextChild.params.text = String(leafHeaders[columnIndex]);
+      }
+      return nextChild;
+    }
+
+    if (nextComponentId) {
+      const patchedParams = buildColumnApplyParamsForCell(nextChild.params || {}, templateParams, nextComponentId);
+      if (patchedParams) {
+        nextChild.componentId = nextComponentId;
+        nextChild.params = patchedParams;
+      }
+    }
+    if (alignToApply) {
+      nextChild.params.textAlign = alignToApply;
+    }
+    if (displayToApply) {
+      nextChild.params.textDisplay = displayToApply;
+    }
+    return nextChild;
+  });
+
+  return nextInstance;
+}
+
+function findLogicalBodyCellNode(root: SceneNode, rowIndex: number | null, colIndex: number | null): SceneNode | null {
+  if (rowIndex === null || colIndex === null || !('findOne' in root)) return null;
+  try {
+    const found = root.findOne((node) => {
+      if (!('getPluginData' in node)) return false;
+      return (
+        node.getPluginData('table-cell-row-index') === String(rowIndex) &&
+        node.getPluginData('table-cell-column-index') === String(colIndex)
+      );
+    });
+    return (found as SceneNode | null) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function applyMergedTableColumnSettings(msg: any, selectedNode: SceneNode): Promise<boolean> {
+  const tableRoot = findTableFrameFromNode(selectedNode);
+  if (!tableRoot) return false;
+  const tableParams = readNodeParams(tableRoot);
+  if (!isAiMergedTableParams(tableParams)) return false;
+
+  const snapshot = readComponentInstanceSnapshot(tableRoot);
+  if (!snapshot || snapshot.componentId !== 'table') {
+    figma.notify('当前 AI 合并表格缺少可重建快照，请重新生成后再试。', { error: true });
+    return true;
+  }
+
+  const { rowIndex, colIndex, cell } = getCellMetaFromSelection(selectedNode);
+  if (colIndex === null) {
+    figma.notify('未能定位当前单元格所在列，暂时无法应用到整列。', { error: true });
+    return true;
+  }
+
+  const sourceCell = cell || selectedNode;
+  const templateParams = readNodeParams(sourceCell);
+  const nextComponentId =
+    typeof msg.componentId === 'string' && msg.componentId
+      ? msg.componentId
+      : sourceCell.getPluginData('component-id') || undefined;
+
+  const patchedInstance = patchMergedTableInstanceForColumnApply(snapshot, colIndex, {
+    componentId: nextComponentId,
+    textAlign: msg.textAlign,
+    textDisplay: msg.textDisplay,
+    columnWidthMode: msg.columnWidthMode,
+    width: msg.width,
+    templateParams,
+  });
+  if (!patchedInstance) {
+    figma.notify('应用到整列失败：无法重建目标列。', { error: true });
+    return true;
+  }
+
+  const newRoot = await renderComponent(patchedInstance, { isRoot: false });
+  if (!replaceSceneNode(tableRoot, newRoot)) {
+    try { newRoot.remove(); } catch {}
+    figma.notify('应用到整列失败：表格重建未成功。', { error: true });
+    return true;
+  }
+
+  const nextSelection = findLogicalBodyCellNode(newRoot, rowIndex, colIndex) || newRoot;
+  figma.currentPage.selection = [nextSelection];
+  checkSelection();
+  return true;
+}
+
 function collectChildComponentNodes(root: SceneNode): SceneNode[] {
   const results: SceneNode[] = [];
   const stack: SceneNode[] = [];
@@ -2708,6 +2988,13 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
       'merge-original-layout-align',
       'merge-hidden-ids'
     ];
+    const TABLE_META_KEYS = [
+      'table-cell-section',
+      'table-cell-row-index',
+      'table-cell-column-index',
+      'table-cell-column-id',
+      'table-cell-key'
+    ];
     const oldMergeRole = node.getPluginData('merge-role');
     const oldMergeData: Record<string, string> = {};
     let oldMergedHeight = 0;
@@ -2722,6 +3009,7 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
 
     const newNode = await renderComponent(instance);
     if (!replaceSceneNode(node, newNode)) return null;
+    copyPluginDataKeys(node, newNode, TABLE_META_KEYS);
     if (columnToUpdate) {
         applyColumnWidthMode(columnToUpdate, 'HUG');
         mergeNodeParams(columnToUpdate, { width: undefined });
@@ -3835,7 +4123,10 @@ async function renderComponent(
                   } catch {}
               }
               try {
+                  node.setPluginData('table-cell-section', 'body');
+                  node.setPluginData('table-cell-row-index', String(rowIndex));
                   node.setPluginData('table-cell-column-index', String(colIndex));
+                  node.setPluginData('table-cell-key', `body:${rowIndex}:${colIndex}`);
                   if (col?.colInstance?.id) {
                       node.setPluginData('table-cell-column-id', String(col.colInstance.id));
                   }
@@ -4271,6 +4562,10 @@ async function renderComponent(
       }
       if (node !== frame) {
           clearNodeStrokes(node as FrameNode);
+      }
+      writeComponentInstanceSnapshot(frame, instance);
+      if (node !== frame) {
+          writeComponentInstanceSnapshot(node, instance);
       }
   }
   // --- TABLE COLUMN ---
@@ -5951,6 +6246,14 @@ async function handleApplyColumnSettings(msg: any) {
     const selection = figma.currentPage.selection;
     if (selection.length === 1) {
       const node = selection[0];
+      if (isAiGeneratedMergedCellSelection(node)) {
+        figma.notify('AI生成的合并单元格暂不支持应用到整列', { error: true });
+        return;
+      }
+      const handledMergedTable = await applyMergedTableColumnSettings(msg, node);
+      if (handledMergedTable) {
+        return;
+      }
       const column = isTableColumnNode(node) ? node : findTableColumnFromNode(node);
       if (column) {
         let didClone = false;
