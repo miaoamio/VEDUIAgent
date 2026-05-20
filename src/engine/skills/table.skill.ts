@@ -514,7 +514,7 @@ export const buildTableComponentFromPayload = (
     return [{ section: 'body', row: lastRowIndex, col: 0, rowspan: 1, colspan: span }];
   };
   const totalRowMerges = inferTotalRowMerges();
-  const mergesInput = [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges];
+  let mergesInput = [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges];
   const autoMergeRulesInput = normalizeAutoMergeRulesInput(source);
   const isMergeTable = mergesInput.length > 0 || headerRows.length > 1;
 

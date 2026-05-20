@@ -3428,7 +3428,8 @@ async function renderComponent(
           frame.counterAxisSizingMode = 'FIXED';
           try { (frame as any).layoutSizingVertical = 'HUG'; } catch {}
           frame.itemSpacing = 0;
-          frame.clipsContent = false;
+          frame.cornerRadius = Number(params.cornerRadius ?? 4);
+          frame.clipsContent = true;
           const mergedBorderWidth = Number(params.borderWidth ?? 1);
           const mergedBorderColor = String(params.borderColor || '#EAEDF1');
 
@@ -3518,13 +3519,20 @@ async function renderComponent(
               const headerChild = reachedLeaf ? lightweightColumnData[leafColForHeader]?.headerChild : undefined;
               const headerChildParams: any = headerChild ? { ...(headerChild.params || {}) } : {};
               const finalTextAlign = shouldCenterHeader ? 'center' : (headerChildParams.textAlign as any);
+              const finalText = String(cell.text || headerChildParams.text || '');
+              // 调试：表头 anchor 文案为空时报告位置，便于排查 payload 缺字段
+              try {
+                  if (!finalText.trim()) {
+                      figma.notify(`[header empty] row=${cell.row} col=${cell.col} colspan=${colspan} rowspan=${cell.rowspan ?? 1}`, { timeout: 3000, error: true });
+                  }
+              } catch {}
               const node = await renderComponent(
                   {
                       id: String(cell.key || `header-${cell.row}-${cell.col}`),
                       componentId: 'table-header-cell',
                       params: {
                           ...headerChildParams,
-                          text: String(cell.text || headerChildParams.text || ''),
+                          text: finalText,
                           width: opts.width,
                           height: opts.height,
                           disableStretch: true,
@@ -3671,9 +3679,11 @@ async function renderComponent(
               return Math.max(max, row + rowspan);
           }, Math.max(0, Number(params.rowCount || 0)));
 
-          // 合计行/汇总行检测：当某 body 行存在 colspan>1 的 anchor 且首格文案为 合计/小计/总计/Total/Sum 等，
-          // 则该行整行（被合并段 + 右侧汇总值单元格）都使用 color-bg-3 作为底色。
-          const TOTAL_ROW_REGEX = /^(合计|小计|总计|总和|合\s*计|小\s*计|总\s*计|total|subtotal|sum)$/i;
+          // 合计行/汇总行检测：
+          //   1) 某 body 行存在 colspan>1 的 anchor 且首格文案为 合计/小计/总计/Total/Sum 等
+          //   2) 或 该行的第一列（col=0）单元格文案命中关键词（含 rowspan 跨行的 anchor 与普通 cell）
+          // 满足任一即把该行整行（合并段 + 右侧汇总值单元格）涂成 color-bg-3。
+          const TOTAL_ROW_REGEX = /^(合计|小计|总计|总和|汇总|合\s*计|小\s*计|总\s*计|汇\s*总|total|subtotal|summary|sum)$/i;
           const TOTAL_ROW_BG_HEX = '#F7F8FA';
           const totalRowSet = new Set<number>();
           const extractCellText = (cellLike: any): string => {
@@ -3698,6 +3708,22 @@ async function renderComponent(
               const valueText = extractCellText(c.value).trim();
               if (TOTAL_ROW_REGEX.test(valueText)) {
                   totalRowSet.add(Number(c.row ?? 0));
+              }
+          }
+          // 第二轮：扫描所有 body cell，若该 cell 落在第 0 列（含 rowspan 跨多行的 anchor），
+          // 且文本命中关键词，则把它**覆盖到的所有 row** 都标为合计行
+          for (const c of bodyCells) {
+              if (!c) continue;
+              const col = Number(c.col ?? 0);
+              if (col !== 0) continue;
+              // 普通 cell（非 anchor 的 hidden 占位也跳过）：只看 anchor 或非合并产物
+              if (c.isMergeHidden) continue;
+              const valueText = extractCellText(c.value).trim();
+              if (!TOTAL_ROW_REGEX.test(valueText)) continue;
+              const rowStart = Number(c.row ?? 0);
+              const rowspan = Math.max(1, Number(c.rowspan || 1));
+              for (let r = rowStart; r < rowStart + rowspan; r += 1) {
+                  totalRowSet.add(r);
               }
           }
           try {
@@ -4219,7 +4245,7 @@ async function renderComponent(
           }
           node = frame;
       }
-      const borderWidth = Number(params.borderWidth ?? 0);
+      const borderWidth = Number(params.borderWidth ?? (wantsMergedRender ? 1 : 0));
       if (Number.isFinite(borderWidth) && borderWidth > 0) {
           await applyStrokeColorVariable(frame, 'table-border-key', params.borderColor || '#EAEDF1');
           frame.strokeWeight = borderWidth;
