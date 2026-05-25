@@ -414,6 +414,54 @@ export function alignAllTableRows(table: FrameNode) {
     }
 }
 
+export function restoreMergedAnchorCellHeight(cell: SceneNode): boolean {
+    if (!cell || cell.removed || cell.getPluginData('merge-role') !== 'merge-anchor') return false;
+    if (!('resize' in cell)) return false;
+    const column = cell.parent;
+    if (!column || column.type !== 'FRAME') return false;
+
+    const rowSpan = Math.max(1, Math.floor(Number(cell.getPluginData('merge-row-span') || '1') || 1));
+    if (rowSpan <= 1) return false;
+
+    const originalHeight = Math.max(
+        1,
+        Math.round(Number(cell.getPluginData('merge-original-height') || '0') || (cell as any).height || 1)
+    );
+    const hiddenCells = (column as FrameNode).children.filter((child) => {
+        return (
+            child.getPluginData('merge-role') === 'merge-hidden' &&
+            child.getPluginData('merge-anchor-id') === cell.id
+        );
+    });
+    const hiddenCount = Math.max(rowSpan - 1, hiddenCells.length);
+    let hiddenHeightSum = 0;
+    for (let i = 0; i < hiddenCount; i += 1) {
+        const hidden = hiddenCells[i];
+        const h = hidden && 'height' in hidden ? Math.round((hidden as any).height || 0) : 0;
+        hiddenHeightSum += h > 0 ? h : originalHeight;
+    }
+    const itemSpacing = Math.max(
+        0,
+        Math.round((column as FrameNode).layoutMode === 'VERTICAL' ? Number((column as FrameNode).itemSpacing || 0) : 0)
+    );
+    const targetHeight = Math.max(1, originalHeight + hiddenHeightSum + itemSpacing * (rowSpan - 1));
+
+    try { (cell as any).layoutPositioning = 'AUTO'; } catch {}
+    try {
+        if ('layoutSizingVertical' in cell) (cell as any).layoutSizingVertical = 'FIXED';
+    } catch {}
+    try {
+        if ('counterAxisSizingMode' in cell) (cell as any).counterAxisSizingMode = 'FIXED';
+    } catch {}
+    try {
+        const w = Math.max(1, Math.round((cell as any).width || 1));
+        (cell as any).resize(w, targetHeight);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function applyTableSizeToCells(table: FrameNode, headerHeight: number, bodyHeight: number) {
     const columns = getTableColumns(table);
     // Ensure the table can grow/shrink when row heights change.
@@ -442,6 +490,12 @@ export function applyTableSizeToCells(table: FrameNode, headerHeight: number, bo
         mergeNodeParams(column, { headerHeight, bodyHeight });
         column.children.forEach((child, index) => {
             if (!('resize' in child)) return;
+            const mergeRole = child.getPluginData('merge-role');
+            if (mergeRole === 'merge-anchor') {
+                restoreMergedAnchorCellHeight(child as SceneNode);
+                return;
+            }
+            if (mergeRole === 'merge-hidden') return;
             const isHeader = offset > 0 && index === 0 && child.getPluginData('component-id') === 'table-header-cell';
             const nextHeight = isHeader ? headerHeight : bodyHeight;
             const childParams = readNodeParams(child);
@@ -738,6 +792,7 @@ export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBr
       } catch {}
     }
   }
+  restoreMergedAnchorCellHeight(cell);
 }
 
 export function applyColumnWidthMode(column: FrameNode, mode: 'FIXED' | 'HUG' | 'FILL', width?: number) {

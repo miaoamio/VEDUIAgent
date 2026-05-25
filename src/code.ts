@@ -192,6 +192,7 @@ import {
   alignTableRowHeights,
   alignAllTableRows,
   applyTableSizeToCells,
+  restoreMergedAnchorCellHeight,
   applyColumnWidthMode,
   applyCellAlignment,
   applyCellTextDisplay,
@@ -745,6 +746,18 @@ async function checkSelection() {
           }
         });
 
+        // #region debug-point C:selection-update
+        if (isTableCellComponentId(componentId) || findMergeRoleFromNode(node)) {
+          reportManualMergeDebug('C', 'checkSelection:selection-update', 'selection update snapshot', {
+            rawNode: summarizeManualMergeDebugNode(node),
+            effectiveTarget: summarizeManualMergeDebugNode(effectiveTarget),
+            componentId,
+            mergeRoleFromRawNode: findMergeRoleFromNode(node) || '',
+            tableContextKind: tableContext?.selectionKind || ''
+          });
+        }
+        // #endregion
+
         // Also emit figma-instance-info so the Docs tab can show the Figma key.
         // For figma-component, read from params; for other INSTANCE nodes, read from mainComponent.
         if (effectiveTarget.type === 'INSTANCE') {
@@ -962,6 +975,12 @@ figma.on('documentchange', async (event) => {
             const child = col.children[ri];
             if (!child || child.removed) continue;
             if (child.type !== 'FRAME' && child.type !== 'INSTANCE') continue;
+            const mergeRole = child.getPluginData('merge-role');
+            if (mergeRole === 'merge-anchor') {
+              restoreMergedAnchorCellHeight(child as SceneNode);
+              continue;
+            }
+            if (mergeRole === 'merge-hidden') continue;
             const cellParams = readNodeParams(child);
             if (cellParams.textDisplay !== 'lineBreak') continue;
             if ('counterAxisSizingMode' in child) {
@@ -998,6 +1017,15 @@ figma.on('documentchange', async (event) => {
     const hasWidthOnly = !hasHeightChange && properties.includes('width');
     const cellParams = readNodeParams(cell);
     const isCellLineBreak = cellParams.textDisplay === 'lineBreak';
+    const mergeRole = cell.getPluginData('merge-role');
+
+    if (mergeRole === 'merge-anchor') {
+      restoreMergedAnchorCellHeight(cell as SceneNode);
+      continue;
+    }
+    if (mergeRole === 'merge-hidden') {
+      continue;
+    }
 
     if (hasWidthOnly && !isCellLineBreak) continue;
 
@@ -2575,6 +2603,147 @@ function getCellMetaFromSelection(node: BaseNode | null | undefined): { rowIndex
   return { rowIndex, colIndex, cell };
 }
 
+// #region debug-point A:manual-merge-debug-reporter
+const MANUAL_MERGE_DEBUG_URL = 'http://127.0.0.1:7777/event';
+const MANUAL_MERGE_DEBUG_SESSION = 'manual-merge-swap';
+
+function reportManualMergeDebug(
+  hypothesisId: 'A' | 'B' | 'C' | 'D',
+  location: string,
+  msg: string,
+  data: Record<string, any> = {}
+) {
+  try {
+    figma.ui.postMessage({
+      type: 'debug-report',
+      data: {
+        sessionId: MANUAL_MERGE_DEBUG_SESSION,
+        runId: 'pre-fix',
+        hypothesisId,
+        location,
+        msg: `[DEBUG] ${msg}`,
+        data,
+        ts: Date.now()
+      }
+    });
+  } catch {}
+}
+
+function summarizeManualMergeDebugNode(node: BaseNode | null | undefined): Record<string, any> {
+  if (!node || !('getPluginData' in node)) {
+    return { exists: false };
+  }
+  const sceneNode = node as SceneNode;
+  const parent = sceneNode.parent;
+  const hiddenSiblingCount = parent && parent.type === 'FRAME'
+    ? parent.children.filter((child) =>
+        child !== sceneNode &&
+        child.getPluginData('merge-role') === 'merge-hidden' &&
+        child.getPluginData('merge-anchor-id') === sceneNode.id
+      ).length
+    : 0;
+  return {
+    exists: true,
+    id: sceneNode.id,
+    name: sceneNode.name,
+    type: sceneNode.type,
+    componentId: sceneNode.getPluginData('component-id') || '',
+    mergeRole: sceneNode.getPluginData('merge-role') || '',
+    mergeAnchorId: sceneNode.getPluginData('merge-anchor-id') || '',
+    mergeHiddenIds: sceneNode.getPluginData('merge-hidden-ids') || '',
+    parentId: parent?.id || '',
+    parentName: parent?.name || '',
+    hiddenSiblingCount,
+    height: 'height' in sceneNode ? Math.round((sceneNode as any).height || 0) : null,
+    width: 'width' in sceneNode ? Math.round((sceneNode as any).width || 0) : null,
+  };
+}
+// #endregion
+
+function getMergeAnchorSnapshot(node: SceneNode): {
+  isMergeAnchor: boolean;
+  mergeData: Record<string, string>;
+  mergedHeight: number;
+  anchorWidth: number;
+  layoutSizingHorizontal: string | null;
+  layoutAlign: string | null;
+  primaryAxisSizingMode: string | null;
+} {
+  const mergeData: Record<string, string> = {};
+  const explicitRole = node.getPluginData('merge-role');
+  const parentColumn = node.parent && node.parent.type === 'FRAME' ? (node.parent as FrameNode) : null;
+  const hiddenSiblings = parentColumn
+    ? parentColumn.children.filter((child) =>
+        child !== node &&
+        child.getPluginData('merge-role') === 'merge-hidden' &&
+        child.getPluginData('merge-anchor-id') === node.id
+      )
+    : [];
+  const isMergeAnchor = explicitRole === 'merge-anchor' || hiddenSiblings.length > 0;
+  if (!isMergeAnchor) {
+    return {
+      isMergeAnchor: false,
+      mergeData,
+      mergedHeight: 0,
+      anchorWidth: 0,
+      layoutSizingHorizontal: null,
+      layoutAlign: null,
+      primaryAxisSizingMode: null,
+    };
+  }
+
+  const directKeys = [
+    'merge-role',
+    'merge-row-span',
+    'merge-start-index',
+    'merge-end-index',
+    'merge-original-y',
+    'merge-original-height',
+    'merge-original-sizing-v',
+    'merge-original-layout-align',
+    'merge-hidden-ids'
+  ];
+  for (const key of directKeys) {
+    const value = node.getPluginData(key);
+    if (value) mergeData[key] = value;
+  }
+
+  const rowSpan = Math.max(
+    1,
+    Number(mergeData['merge-row-span'] || hiddenSiblings.length + 1 || 1)
+  );
+  const fallbackOriginalHeight = (() => {
+    const hiddenHeight = hiddenSiblings.find((child) => 'height' in child && (child as any).height > 0);
+    if (hiddenHeight && 'height' in hiddenHeight) {
+      return Math.max(1, Math.round((hiddenHeight as any).height || 0));
+    }
+    const itemSpacing = parentColumn && parentColumn.layoutMode === 'VERTICAL'
+      ? Math.max(0, Math.round(Number(parentColumn.itemSpacing || 0)))
+      : 0;
+    const currentHeight = Math.max(1, Math.round((node as any).height || 1));
+    return Math.max(1, Math.round((currentHeight - itemSpacing * (rowSpan - 1)) / rowSpan));
+  })();
+
+  mergeData['merge-role'] = 'merge-anchor';
+  mergeData['merge-row-span'] = String(rowSpan);
+  if (!mergeData['merge-original-height']) {
+    mergeData['merge-original-height'] = String(fallbackOriginalHeight);
+  }
+  if (!mergeData['merge-hidden-ids']) {
+    mergeData['merge-hidden-ids'] = JSON.stringify(hiddenSiblings.map((child) => child.id));
+  }
+
+  return {
+    isMergeAnchor: true,
+    mergeData,
+    mergedHeight: ('height' in node) ? Math.max(0, Math.round((node as any).height || 0)) : 0,
+    anchorWidth: ('width' in node) ? Math.max(0, Math.round((node as any).width || 0)) : 0,
+    layoutSizingHorizontal: 'layoutSizingHorizontal' in node ? String((node as any).layoutSizingHorizontal || '') : null,
+    layoutAlign: 'layoutAlign' in node ? String((node as any).layoutAlign || '') : null,
+    primaryAxisSizingMode: 'primaryAxisSizingMode' in node ? String((node as any).primaryAxisSizingMode || '') : null,
+  };
+}
+
 function isAiGeneratedMergedCellSelection(node: BaseNode | null | undefined): boolean {
   const tableRoot = findTableFrameFromNode(node as SceneNode | null | undefined);
   if (!tableRoot) return false;
@@ -2628,6 +2797,54 @@ function copyPluginDataKeys(source: SceneNode, target: SceneNode, keys: string[]
       target.setPluginData(key, value);
     } else {
       target.setPluginData(key, '');
+    }
+  }
+}
+
+function syncTableCellFrameFromRenderedSource(target: FrameNode, source: FrameNode) {
+  try { target.layoutMode = source.layoutMode; } catch {}
+  try { target.primaryAxisSizingMode = source.primaryAxisSizingMode; } catch {}
+  try { target.counterAxisSizingMode = source.counterAxisSizingMode; } catch {}
+  try { target.primaryAxisAlignItems = source.primaryAxisAlignItems; } catch {}
+  try { target.counterAxisAlignItems = source.counterAxisAlignItems; } catch {}
+  try { target.itemSpacing = source.itemSpacing; } catch {}
+  try { target.paddingLeft = source.paddingLeft; } catch {}
+  try { target.paddingRight = source.paddingRight; } catch {}
+  try { target.paddingTop = source.paddingTop; } catch {}
+  try { target.paddingBottom = source.paddingBottom; } catch {}
+  try { target.layoutWrap = source.layoutWrap; } catch {}
+  try { target.fills = JSON.parse(JSON.stringify(source.fills)); } catch {}
+  try { target.strokes = JSON.parse(JSON.stringify(source.strokes)); } catch {}
+  try { target.strokeWeight = source.strokeWeight; } catch {}
+  try { target.strokeTopWeight = source.strokeTopWeight; } catch {}
+  try { target.strokeRightWeight = source.strokeRightWeight; } catch {}
+  try { target.strokeBottomWeight = source.strokeBottomWeight; } catch {}
+  try { target.strokeLeftWeight = source.strokeLeftWeight; } catch {}
+  try { target.strokeAlign = source.strokeAlign; } catch {}
+  try { target.dashPattern = [...source.dashPattern]; } catch {}
+  try { target.cornerRadius = source.cornerRadius; } catch {}
+  try { target.topLeftRadius = source.topLeftRadius; } catch {}
+  try { target.topRightRadius = source.topRightRadius; } catch {}
+  try { target.bottomLeftRadius = source.bottomLeftRadius; } catch {}
+  try { target.bottomRightRadius = source.bottomRightRadius; } catch {}
+  try { target.clipsContent = source.clipsContent; } catch {}
+  try { target.effects = JSON.parse(JSON.stringify(source.effects)); } catch {}
+  try { target.opacity = source.opacity; } catch {}
+  try { target.visible = source.visible; } catch {}
+  try { target.locked = source.locked; } catch {}
+
+  while (target.children.length > 0) {
+    try {
+      target.children[0].remove();
+    } catch {
+      break;
+    }
+  }
+  while (source.children.length > 0) {
+    try {
+      target.appendChild(source.children[0]);
+    } catch {
+      break;
     }
   }
 }
@@ -2870,8 +3087,9 @@ function buildComponentInstanceFromNode(node: SceneNode): ComponentInstance | nu
 }
 
 function applyNodeSize(node: SceneNode, width: number | null, height: number | null) {
+  const isMergeAnchor = 'getPluginData' in node && node.getPluginData('merge-role') === 'merge-anchor';
   const nextWidth = typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : node.width;
-  const nextHeight = typeof height === 'number' && Number.isFinite(height) && height > 0 ? height : node.height;
+  const nextHeight = !isMergeAnchor && typeof height === 'number' && Number.isFinite(height) && height > 0 ? height : node.height;
   if ('resize' in node && (nextWidth !== node.width || nextHeight !== node.height)) {
     try {
       node.resize(nextWidth, nextHeight);
@@ -2896,6 +3114,9 @@ function applyNodeSize(node: SceneNode, width: number | null, height: number | n
         node.counterAxisSizingMode = 'FIXED';
       }
     }
+  }
+  if (isMergeAnchor) {
+    restoreMergedAnchorCellHeight(node);
   }
 }
 
@@ -2967,14 +3188,6 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
         newParams.text = currentParams.tagText;
     }
     
-    const instance: ComponentInstance = {
-        id: 'temp-swap',
-        componentId: newComponentId,
-        params: newParams
-    };
-    
-    const columnToUpdate = isActionCell ? findTableColumnFromNode(node) : null;
-
     // 保留合并状态：若旧节点是合并 anchor，记录其 merge-* plugin data 与当前合并高度，
     // swap 完成后回写到新节点，并把同列 hidden 占位的 merge-anchor-id 指向新节点。
     const MERGE_KEYS = [
@@ -2995,52 +3208,138 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
       'table-cell-column-id',
       'table-cell-key'
     ];
-    const oldMergeRole = node.getPluginData('merge-role');
+    const mergeSnapshot = getMergeAnchorSnapshot(node);
+    // #region debug-point B:swap-pre
+    reportManualMergeDebug('B', 'swapComponent:pre', 'pre swap snapshot', {
+      requestedComponentId: newComponentId,
+      node: summarizeManualMergeDebugNode(node),
+      mergeSnapshot: {
+        isMergeAnchor: mergeSnapshot.isMergeAnchor,
+        mergeData: mergeSnapshot.mergeData,
+        mergedHeight: mergeSnapshot.mergedHeight,
+        anchorWidth: mergeSnapshot.anchorWidth,
+        layoutSizingHorizontal: mergeSnapshot.layoutSizingHorizontal,
+        layoutAlign: mergeSnapshot.layoutAlign,
+        primaryAxisSizingMode: mergeSnapshot.primaryAxisSizingMode,
+      }
+    });
+    // #endregion
     const oldMergeData: Record<string, string> = {};
     let oldMergedHeight = 0;
-    if (oldMergeRole === 'merge-anchor') {
+    let oldAnchorWidth = 0;
+    let oldLayoutSizingHorizontal: string | null = null;
+    let oldLayoutAlign: string | null = null;
+    let oldPrimaryAxisSizingMode: string | null = null;
+    if (mergeSnapshot.isMergeAnchor) {
       for (const key of MERGE_KEYS) {
-        const value = node.getPluginData(key);
+        const value = mergeSnapshot.mergeData[key];
         if (value) oldMergeData[key] = value;
       }
-      oldMergedHeight = ('height' in node) ? Math.max(0, Math.round((node as any).height || 0)) : 0;
+      oldMergedHeight = mergeSnapshot.mergedHeight;
+      oldAnchorWidth = mergeSnapshot.anchorWidth;
+      oldLayoutSizingHorizontal = mergeSnapshot.layoutSizingHorizontal;
+      oldLayoutAlign = mergeSnapshot.layoutAlign;
+      oldPrimaryAxisSizingMode = mergeSnapshot.primaryAxisSizingMode;
+      if (oldAnchorWidth > 0) {
+        newParams.width = oldAnchorWidth;
+      }
     }
+
+    const instance: ComponentInstance = {
+        id: 'temp-swap',
+        componentId: newComponentId,
+        params: newParams
+    };
+    
+    const columnToUpdate =
+      isActionCell && !mergeSnapshot.isMergeAnchor
+        ? findTableColumnFromNode(node)
+        : null;
+
     const oldNodeId = node.id;
 
     const newNode = await renderComponent(instance);
-    if (!replaceSceneNode(node, newNode)) return null;
-    copyPluginDataKeys(node, newNode, TABLE_META_KEYS);
+    const shouldPreserveMergeAnchorRoot =
+      mergeSnapshot.isMergeAnchor &&
+      node.type === 'FRAME' &&
+      newNode.type === 'FRAME' &&
+      isTableCellComponentId(node.getPluginData('component-id')) &&
+      isTableCellComponentId(newComponentId);
+
+    if (shouldPreserveMergeAnchorRoot) {
+      syncTableCellFrameFromRenderedSource(node as FrameNode, newNode as FrameNode);
+      copyPluginDataKeys(newNode, node, ['is-ai-component', 'component-id', 'params']);
+      try {
+        const snapshot = readComponentInstanceSnapshot(newNode);
+        if (snapshot) {
+          writeComponentInstanceSnapshot(node, snapshot);
+        }
+      } catch {}
+      try { newNode.remove(); } catch {}
+    } else {
+      if (!replaceSceneNode(node, newNode)) return null;
+      copyPluginDataKeys(node, newNode, TABLE_META_KEYS);
+    }
+    const effectiveNode = shouldPreserveMergeAnchorRoot ? node : newNode;
     if (columnToUpdate) {
         applyColumnWidthMode(columnToUpdate, 'HUG');
         mergeNodeParams(columnToUpdate, { width: undefined });
     }
 
     // 回写合并 anchor 信息到新节点：保留高度、plugin data、并修复同列 hidden 占位指向
-    if (oldMergeRole === 'merge-anchor') {
+    if (mergeSnapshot.isMergeAnchor) {
       for (const key of MERGE_KEYS) {
-        if (oldMergeData[key]) newNode.setPluginData(key, oldMergeData[key]);
+        if (oldMergeData[key]) effectiveNode.setPluginData(key, oldMergeData[key]);
       }
-      try { (newNode as any).layoutPositioning = 'AUTO'; } catch {}
-      try { if ('layoutSizingVertical' in newNode) (newNode as any).layoutSizingVertical = 'FIXED'; } catch {}
-      if (oldMergedHeight > 0 && 'resize' in newNode) {
-        const w = Math.max(1, Math.round((newNode as any).width || 1));
-        (newNode as any).resize(w, oldMergedHeight);
+      try { (effectiveNode as any).layoutPositioning = 'AUTO'; } catch {}
+      if (oldLayoutSizingHorizontal && 'layoutSizingHorizontal' in effectiveNode) {
+        try { (effectiveNode as any).layoutSizingHorizontal = oldLayoutSizingHorizontal; } catch {}
       }
-      const parentColumn = newNode.parent;
+      if (oldLayoutAlign && 'layoutAlign' in effectiveNode) {
+        try { (effectiveNode as any).layoutAlign = oldLayoutAlign; } catch {}
+      }
+      if (oldPrimaryAxisSizingMode && 'primaryAxisSizingMode' in effectiveNode) {
+        try { (effectiveNode as any).primaryAxisSizingMode = oldPrimaryAxisSizingMode; } catch {}
+      }
+      try { if ('layoutSizingVertical' in effectiveNode) (effectiveNode as any).layoutSizingVertical = 'FIXED'; } catch {}
+      if (oldMergedHeight > 0 && 'resize' in effectiveNode) {
+        const w = Math.max(1, Math.round(oldAnchorWidth || (effectiveNode as any).width || 1));
+        (effectiveNode as any).resize(w, oldMergedHeight);
+      }
+      const parentColumn = effectiveNode.parent;
       if (parentColumn && parentColumn.type === 'FRAME') {
         for (const sibling of (parentColumn as FrameNode).children) {
           if (
-            sibling !== newNode &&
+            sibling !== effectiveNode &&
             sibling.getPluginData('merge-role') === 'merge-hidden' &&
             sibling.getPluginData('merge-anchor-id') === oldNodeId
           ) {
-            sibling.setPluginData('merge-anchor-id', newNode.id);
+            sibling.setPluginData('merge-anchor-id', effectiveNode.id);
           }
         }
       }
+      restoreMergedAnchorCellHeight(effectiveNode as SceneNode);
+      if (oldAnchorWidth > 0 && 'resize' in effectiveNode) {
+        try { (effectiveNode as any).resize(oldAnchorWidth, Math.max(1, Math.round((effectiveNode as any).height || oldMergedHeight || 1))); } catch {}
+      }
     }
 
-    return newNode;
+    // #region debug-point D:swap-post
+    reportManualMergeDebug('D', 'swapComponent:post', 'post swap snapshot', {
+      requestedComponentId: newComponentId,
+      oldNodeId,
+      oldNode: summarizeManualMergeDebugNode(node),
+      newNode: summarizeManualMergeDebugNode(effectiveNode),
+      mergeSnapshot: {
+        isMergeAnchor: mergeSnapshot.isMergeAnchor,
+        oldMergeData,
+        oldMergedHeight,
+        oldAnchorWidth,
+      }
+    });
+    // #endregion
+
+    return effectiveNode;
 }
 
 async function createMissingFigmaComponentFrame(
@@ -5925,6 +6224,7 @@ async function handleUpdateComponent(msg: any) {
              if (nextWidth !== null || nextHeight !== null) {
                  applyNodeSize(node, nextWidth, nextHeight);
              }
+             restoreMergedAnchorCellHeight(node);
              if (params.cornerRadius !== undefined) {
                  node.cornerRadius = params.cornerRadius;
              }
@@ -6159,6 +6459,7 @@ async function handleUpdateComponent(msg: any) {
                     if (typeof params.textDisplay === 'string') {
                         applyCellTextDisplay(child, params.textDisplay as 'ellipsis' | 'lineBreak');
 	                    }
+                    restoreMergedAnchorCellHeight(child as SceneNode);
 	                }
                 if (typeof params.textDisplay === 'string') {
                     const table = findTableFrameFromNode(node);
@@ -6233,6 +6534,7 @@ async function handleUpdateComponent(msg: any) {
                   (cellAsScene as any).resize(w, mergeSnapshot.height);
                 } catch {}
             }
+            restoreMergedAnchorCellHeight(cellAsScene);
         }
         if (shouldRefreshSelection) {
             checkSelection();
@@ -6306,6 +6608,7 @@ async function handleApplyColumnSettings(msg: any) {
                   if (newNode.parent !== column) {
                     column.insertChild(column.children.indexOf(child), newNode);
                   }
+                  restoreMergedAnchorCellHeight(newNode as SceneNode);
                 }
               }
             }
@@ -6343,6 +6646,7 @@ async function handleApplyColumnSettings(msg: any) {
             if (displayToApply) {
               applyCellTextDisplay(child, displayToApply as 'ellipsis' | 'lineBreak');
             }
+            restoreMergedAnchorCellHeight(child as SceneNode);
           }
         }
         const cellsToNormalize = column.children.filter((child) => {
@@ -6383,6 +6687,9 @@ async function handleApplyColumnSettings(msg: any) {
         if (table) {
           alignAllTableRows(table);
         }
+        for (const child of column.children) {
+          restoreMergedAnchorCellHeight(child as SceneNode);
+        }
 
         checkSelection();
         figma.ui.postMessage({ type: 'action-done', message: 'Applied column settings' });
@@ -6396,7 +6703,32 @@ async function handleSwapComponent(msg: any) {
     const { componentId } = msg;
     const selection = figma.currentPage.selection;
     if (selection.length === 1) {
-      const node = selection[0];
+      const rawNode = selection[0] as SceneNode;
+      let node = rawNode;
+      const selectedCell = findTableCellFromNode(node);
+      if (selectedCell && isTableCellComponentId(selectedCell.getPluginData('component-id'))) {
+        node = selectedCell as SceneNode;
+      } else if (node.getPluginData('is-ai-component') !== 'true') {
+        const resolved = findAiComponentNode(node);
+        if (resolved) {
+          node = resolved;
+        }
+      }
+
+      const formFieldAncestor = findAncestorFormFieldNode(node);
+      if (formFieldAncestor) {
+        node = formFieldAncestor;
+      }
+
+      // #region debug-point A:handle-swap-resolution
+      reportManualMergeDebug('A', 'handleSwapComponent:resolved', 'resolved swap target', {
+        requestedComponentId: componentId,
+        rawNode: summarizeManualMergeDebugNode(rawNode),
+        selectedCell: summarizeManualMergeDebugNode(selectedCell),
+        resolvedNode: summarizeManualMergeDebugNode(node),
+      });
+      // #endregion
+
       const currentId = node.getPluginData('component-id');
       
       if (currentId) {
@@ -6413,12 +6745,14 @@ async function handleSwapComponent(msg: any) {
                   const childDef = COMPONENT_DEFS[childId];
                   // Only swap if it's a data cell (part of table-cell family but not header)
                   if (childDef && childDef.family === 'table-cell' && childId !== 'table-header-cell') {
+                      if (child.getPluginData('merge-role') === 'merge-hidden') continue;
                       const newNode = await swapComponent(child, componentId);
                       if (newNode) {
                         newNode.setPluginData('cellType', componentId);
                         if (newNode.parent !== node) {
                           node.insertChild(node.children.indexOf(child), newNode);
                         }
+                        restoreMergedAnchorCellHeight(newNode as SceneNode);
                       }
                       swappedCount++;
                   }
@@ -6440,6 +6774,7 @@ async function handleSwapComponent(msg: any) {
               const newNode = await swapComponent(node, componentId);
               if (newNode) {
                   figma.currentPage.selection = [newNode];
+                  checkSelection();
                   figma.ui.postMessage({ type: 'action-done', message: 'Swapped component type' });
               }
           }

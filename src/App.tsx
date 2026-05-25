@@ -2446,6 +2446,19 @@ function App() {
         }
         return;
       }
+      // #region debug-point A:ui-debug-forwarder
+      if (type === 'debug-report') {
+        const payload = data && typeof data === 'object' ? data : null;
+        if (payload) {
+          fetch('http://127.0.0.1:7777/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).catch(() => {});
+        }
+        return;
+      }
+      // #endregion
       if (type === 'selection-update') {
         try { console.log('[merge] selection-update mergeRole=', (data as any)?.mergeRole, 'componentId=', data?.componentId, 'nodeName=', data?.nodeName); } catch {}
         setUserInput('');
