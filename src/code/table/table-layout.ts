@@ -433,13 +433,14 @@ export function restoreMergedAnchorCellHeight(cell: SceneNode): boolean {
             child.getPluginData('merge-anchor-id') === cell.id
         );
     });
-    const hiddenCount = Math.max(rowSpan - 1, hiddenCells.length);
     let hiddenHeightSum = 0;
-    for (let i = 0; i < hiddenCount; i += 1) {
+    for (let i = 0; i < hiddenCells.length; i += 1) {
         const hidden = hiddenCells[i];
         const h = hidden && 'height' in hidden ? Math.round((hidden as any).height || 0) : 0;
         hiddenHeightSum += h > 0 ? h : originalHeight;
     }
+    const missingCount = Math.max(0, (rowSpan - 1) - hiddenCells.length);
+    hiddenHeightSum += missingCount * originalHeight;
     const itemSpacing = Math.max(
         0,
         Math.round((column as FrameNode).layoutMode === 'VERTICAL' ? Number((column as FrameNode).itemSpacing || 0) : 0)

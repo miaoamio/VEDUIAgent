@@ -746,18 +746,6 @@ async function checkSelection() {
           }
         });
 
-        // #region debug-point C:selection-update
-        if (isTableCellComponentId(componentId) || findMergeRoleFromNode(node)) {
-          reportManualMergeDebug('C', 'checkSelection:selection-update', 'selection update snapshot', {
-            rawNode: summarizeManualMergeDebugNode(node),
-            effectiveTarget: summarizeManualMergeDebugNode(effectiveTarget),
-            componentId,
-            mergeRoleFromRawNode: findMergeRoleFromNode(node) || '',
-            tableContextKind: tableContext?.selectionKind || ''
-          });
-        }
-        // #endregion
-
         // Also emit figma-instance-info so the Docs tab can show the Figma key.
         // For figma-component, read from params; for other INSTANCE nodes, read from mainComponent.
         if (effectiveTarget.type === 'INSTANCE') {
@@ -2603,63 +2591,6 @@ function getCellMetaFromSelection(node: BaseNode | null | undefined): { rowIndex
   return { rowIndex, colIndex, cell };
 }
 
-// #region debug-point A:manual-merge-debug-reporter
-const MANUAL_MERGE_DEBUG_URL = 'http://127.0.0.1:7777/event';
-const MANUAL_MERGE_DEBUG_SESSION = 'manual-merge-swap';
-
-function reportManualMergeDebug(
-  hypothesisId: 'A' | 'B' | 'C' | 'D',
-  location: string,
-  msg: string,
-  data: Record<string, any> = {}
-) {
-  try {
-    figma.ui.postMessage({
-      type: 'debug-report',
-      data: {
-        sessionId: MANUAL_MERGE_DEBUG_SESSION,
-        runId: 'pre-fix',
-        hypothesisId,
-        location,
-        msg: `[DEBUG] ${msg}`,
-        data,
-        ts: Date.now()
-      }
-    });
-  } catch {}
-}
-
-function summarizeManualMergeDebugNode(node: BaseNode | null | undefined): Record<string, any> {
-  if (!node || !('getPluginData' in node)) {
-    return { exists: false };
-  }
-  const sceneNode = node as SceneNode;
-  const parent = sceneNode.parent;
-  const hiddenSiblingCount = parent && parent.type === 'FRAME'
-    ? parent.children.filter((child) =>
-        child !== sceneNode &&
-        child.getPluginData('merge-role') === 'merge-hidden' &&
-        child.getPluginData('merge-anchor-id') === sceneNode.id
-      ).length
-    : 0;
-  return {
-    exists: true,
-    id: sceneNode.id,
-    name: sceneNode.name,
-    type: sceneNode.type,
-    componentId: sceneNode.getPluginData('component-id') || '',
-    mergeRole: sceneNode.getPluginData('merge-role') || '',
-    mergeAnchorId: sceneNode.getPluginData('merge-anchor-id') || '',
-    mergeHiddenIds: sceneNode.getPluginData('merge-hidden-ids') || '',
-    parentId: parent?.id || '',
-    parentName: parent?.name || '',
-    hiddenSiblingCount,
-    height: 'height' in sceneNode ? Math.round((sceneNode as any).height || 0) : null,
-    width: 'width' in sceneNode ? Math.round((sceneNode as any).width || 0) : null,
-  };
-}
-// #endregion
-
 function getMergeAnchorSnapshot(node: SceneNode): {
   isMergeAnchor: boolean;
   mergeData: Record<string, string>;
@@ -3209,21 +3140,6 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
       'table-cell-key'
     ];
     const mergeSnapshot = getMergeAnchorSnapshot(node);
-    // #region debug-point B:swap-pre
-    reportManualMergeDebug('B', 'swapComponent:pre', 'pre swap snapshot', {
-      requestedComponentId: newComponentId,
-      node: summarizeManualMergeDebugNode(node),
-      mergeSnapshot: {
-        isMergeAnchor: mergeSnapshot.isMergeAnchor,
-        mergeData: mergeSnapshot.mergeData,
-        mergedHeight: mergeSnapshot.mergedHeight,
-        anchorWidth: mergeSnapshot.anchorWidth,
-        layoutSizingHorizontal: mergeSnapshot.layoutSizingHorizontal,
-        layoutAlign: mergeSnapshot.layoutAlign,
-        primaryAxisSizingMode: mergeSnapshot.primaryAxisSizingMode,
-      }
-    });
-    // #endregion
     const oldMergeData: Record<string, string> = {};
     let oldMergedHeight = 0;
     let oldAnchorWidth = 0;
@@ -3323,21 +3239,6 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
         try { (effectiveNode as any).resize(oldAnchorWidth, Math.max(1, Math.round((effectiveNode as any).height || oldMergedHeight || 1))); } catch {}
       }
     }
-
-    // #region debug-point D:swap-post
-    reportManualMergeDebug('D', 'swapComponent:post', 'post swap snapshot', {
-      requestedComponentId: newComponentId,
-      oldNodeId,
-      oldNode: summarizeManualMergeDebugNode(node),
-      newNode: summarizeManualMergeDebugNode(effectiveNode),
-      mergeSnapshot: {
-        isMergeAnchor: mergeSnapshot.isMergeAnchor,
-        oldMergeData,
-        oldMergedHeight,
-        oldAnchorWidth,
-      }
-    });
-    // #endregion
 
     return effectiveNode;
 }
@@ -6719,15 +6620,6 @@ async function handleSwapComponent(msg: any) {
       if (formFieldAncestor) {
         node = formFieldAncestor;
       }
-
-      // #region debug-point A:handle-swap-resolution
-      reportManualMergeDebug('A', 'handleSwapComponent:resolved', 'resolved swap target', {
-        requestedComponentId: componentId,
-        rawNode: summarizeManualMergeDebugNode(rawNode),
-        selectedCell: summarizeManualMergeDebugNode(selectedCell),
-        resolvedNode: summarizeManualMergeDebugNode(node),
-      });
-      // #endregion
 
       const currentId = node.getPluginData('component-id');
       
