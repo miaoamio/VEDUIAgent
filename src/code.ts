@@ -2596,8 +2596,11 @@ function getMergeAnchorSnapshot(node: SceneNode): {
   mergeData: Record<string, string>;
   mergedHeight: number;
   anchorWidth: number;
+  layoutPositioning: string | null;
+  layoutSizingVertical: string | null;
   layoutSizingHorizontal: string | null;
   layoutAlign: string | null;
+  counterAxisSizingMode: string | null;
   primaryAxisSizingMode: string | null;
 } {
   const mergeData: Record<string, string> = {};
@@ -2617,8 +2620,11 @@ function getMergeAnchorSnapshot(node: SceneNode): {
       mergeData,
       mergedHeight: 0,
       anchorWidth: 0,
+      layoutPositioning: null,
+      layoutSizingVertical: null,
       layoutSizingHorizontal: null,
       layoutAlign: null,
+      counterAxisSizingMode: null,
       primaryAxisSizingMode: null,
     };
   }
@@ -2669,10 +2675,58 @@ function getMergeAnchorSnapshot(node: SceneNode): {
     mergeData,
     mergedHeight: ('height' in node) ? Math.max(0, Math.round((node as any).height || 0)) : 0,
     anchorWidth: ('width' in node) ? Math.max(0, Math.round((node as any).width || 0)) : 0,
+    layoutPositioning: 'layoutPositioning' in node ? String((node as any).layoutPositioning || '') : null,
+    layoutSizingVertical: 'layoutSizingVertical' in node ? String((node as any).layoutSizingVertical || '') : null,
     layoutSizingHorizontal: 'layoutSizingHorizontal' in node ? String((node as any).layoutSizingHorizontal || '') : null,
     layoutAlign: 'layoutAlign' in node ? String((node as any).layoutAlign || '') : null,
+    counterAxisSizingMode: 'counterAxisSizingMode' in node ? String((node as any).counterAxisSizingMode || '') : null,
     primaryAxisSizingMode: 'primaryAxisSizingMode' in node ? String((node as any).primaryAxisSizingMode || '') : null,
   };
+}
+
+function reapplyMergeAnchorFrameSnapshot(
+  node: SceneNode,
+  snapshot: ReturnType<typeof getMergeAnchorSnapshot> | null | undefined
+) {
+  if (!snapshot?.isMergeAnchor) return;
+  try {
+    if ('layoutPositioning' in node && snapshot.layoutPositioning) {
+      (node as any).layoutPositioning = snapshot.layoutPositioning;
+    }
+  } catch {}
+  try {
+    if ('layoutSizingVertical' in node && snapshot.layoutSizingVertical) {
+      (node as any).layoutSizingVertical = snapshot.layoutSizingVertical;
+    }
+  } catch {}
+  try {
+    if ('layoutSizingHorizontal' in node && snapshot.layoutSizingHorizontal) {
+      (node as any).layoutSizingHorizontal = snapshot.layoutSizingHorizontal;
+    }
+  } catch {}
+  try {
+    if ('layoutAlign' in node && snapshot.layoutAlign) {
+      (node as any).layoutAlign = snapshot.layoutAlign;
+    }
+  } catch {}
+  try {
+    if ('counterAxisSizingMode' in node && snapshot.counterAxisSizingMode) {
+      (node as any).counterAxisSizingMode = snapshot.counterAxisSizingMode;
+    }
+  } catch {}
+  try {
+    if ('primaryAxisSizingMode' in node && snapshot.primaryAxisSizingMode) {
+      (node as any).primaryAxisSizingMode = snapshot.primaryAxisSizingMode;
+    }
+  } catch {}
+  try {
+    if ('resize' in node) {
+      const width = Math.max(1, snapshot.anchorWidth || Math.round((node as any).width || 1));
+      const height = Math.max(1, snapshot.mergedHeight || Math.round((node as any).height || 1));
+      (node as any).resize(width, height);
+    }
+  } catch {}
+  restoreMergedAnchorCellHeight(node);
 }
 
 function isAiGeneratedMergedCellSelection(node: BaseNode | null | undefined): boolean {
@@ -2791,6 +2845,43 @@ function extractTableCellParamText(params: Record<string, any> | null | undefine
   return '';
 }
 
+function normalizeTableNumberUnitLabel(rawUnit: string): string {
+  const unit = String(rawUnit || '').trim();
+  if (!unit) return '';
+  const upper = unit.toUpperCase();
+  if (unit === 'HK$' || upper === 'HKD') return '港币';
+  if (unit === 'US$' || upper === 'USD') return '美元';
+  if (unit === '¥' || unit === '￥') return '元';
+  if (upper === 'CNY' || upper === 'RMB' || upper === 'CNH') return '元';
+  if (unit === '$') return '美元';
+  if (unit === '€' || upper === 'EUR') return '欧元';
+  if (unit === '£' || upper === 'GBP') return '英镑';
+  if (['B', 'KB', 'MB', 'GB', 'TB', 'PB'].includes(upper)) return upper;
+  return unit;
+}
+
+function parseTableNumberUnitText(rawValue: unknown): { value: string; unit: string } {
+  const text = String(rawValue ?? '').trim();
+  if (!text) return { value: '0', unit: '' };
+
+  const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
+  if (prefixCurrencyMatch) {
+    const value = (prefixCurrencyMatch[2] || '').trim() || text;
+    const trailingUnit = normalizeTableNumberUnitLabel(prefixCurrencyMatch[3] || '');
+    const currencyUnit = normalizeTableNumberUnitLabel(prefixCurrencyMatch[1] || '');
+    return { value, unit: trailingUnit || currencyUnit };
+  }
+
+  const numberFirstMatch = text.match(/^([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
+  if (!numberFirstMatch) {
+    return { value: text, unit: '' };
+  }
+
+  const value = (numberFirstMatch[1] || '').trim() || text;
+  const unit = normalizeTableNumberUnitLabel(numberFirstMatch[2] || '');
+  return { value, unit };
+}
+
 function buildColumnApplyParamsForCell(
   targetCellParams: Record<string, any>,
   templateParams: Record<string, any>,
@@ -2807,14 +2898,27 @@ function buildColumnApplyParamsForCell(
 
   const currentText = extractTableCellParamText(targetCellParams);
   if (currentText) {
-    if (def.params.text) {
-      nextParams.text = currentText;
-    }
-    if (def.params.tagText) {
-      nextParams.tagText = currentText;
-    }
-    if (def.params.value && !nextParams.value) {
-      nextParams.value = currentText;
+    if (nextComponentId === 'table-cell-number-unit') {
+      const parsed = parseTableNumberUnitText(currentText);
+      if (def.params.value) {
+        nextParams.value = parsed.value;
+      }
+      if (def.params.unit) {
+        nextParams.unit = parsed.unit;
+      }
+      if (def.params.text) {
+        nextParams.text = parsed.unit ? `${parsed.value} ${parsed.unit}` : parsed.value;
+      }
+    } else {
+      if (def.params.text) {
+        nextParams.text = currentText;
+      }
+      if (def.params.tagText) {
+        nextParams.tagText = currentText;
+      }
+      if (def.params.value && !nextParams.value) {
+        nextParams.value = currentText;
+      }
     }
   }
   if (!currentText && targetCellParams.value !== undefined && def.params.value) {
@@ -3118,6 +3222,25 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
     if (currentParams.tagText && newDef.params.text && !newParams.text) {
         newParams.text = currentParams.tagText;
     }
+    if (newComponentId === 'table-cell-number-unit') {
+        const currentText = extractTableCellParamText(currentParams).trim();
+        if (currentText) {
+            const defaultValue = defaultParams.value;
+            const defaultUnit = defaultParams.unit;
+            const parsed = parseTableNumberUnitText(currentText);
+            const parsedValue = parsed.value;
+            const parsedUnit = parsed.unit;
+            if (!newParams.value || newParams.value === defaultValue) {
+                newParams.value = parsedValue;
+            }
+            if (newParams.unit === undefined || newParams.unit === null || newParams.unit === defaultUnit) {
+                newParams.unit = parsedUnit;
+            }
+            if (!newParams.text || newParams.text === defaultParams.text) {
+                newParams.text = parsedUnit ? `${parsedValue} ${parsedUnit}` : parsedValue;
+            }
+        }
+    }
     
     // 保留合并状态：若旧节点是合并 anchor，记录其 merge-* plugin data 与当前合并高度，
     // swap 完成后回写到新节点，并把同列 hidden 占位的 merge-anchor-id 指向新节点。
@@ -3184,6 +3307,7 @@ async function swapComponent(node: SceneNode, newComponentId: string): Promise<S
 
     if (shouldPreserveMergeAnchorRoot) {
       syncTableCellFrameFromRenderedSource(node as FrameNode, newNode as FrameNode);
+      reapplyMergeAnchorFrameSnapshot(node as SceneNode, mergeSnapshot);
       copyPluginDataKeys(newNode, node, ['is-ai-component', 'component-id', 'params']);
       try {
         const snapshot = readComponentInstanceSnapshot(newNode);
@@ -5955,11 +6079,11 @@ async function handleUpdateComponent(msg: any) {
       }
 
       const componentId = node.getPluginData('component-id');
+      const previousParams = componentId ? readNodeParams(node) : {};
       
       if (componentId) {
         let shouldRefreshSelection = true;
         if (FULL_RERENDER_COMPONENT_IDS.has(componentId)) {
-          const previousParams = readNodeParams(node);
           if (componentId === 'form' && node.type === 'FRAME' && areFormParamsEquivalent(previousParams, params)) {
             const updated = await updateFormItemCount(node, previousParams, params);
             if (updated) {
@@ -6391,13 +6515,31 @@ async function handleUpdateComponent(msg: any) {
         if (isTableCellComponentId(componentId)) {
             // 合并 anchor：在更新前快照合并高度，更新后强制还原，避免任何子操作隐式改高度
             const cellAsScene = node as SceneNode;
-            const isMergeAnchor = cellAsScene.getPluginData('merge-role') === 'merge-anchor';
-            const mergeSnapshot = isMergeAnchor && 'height' in cellAsScene
-              ? {
-                  width: Math.max(1, Math.round((cellAsScene as any).width || 1)),
-                  height: Math.max(1, Math.round((cellAsScene as any).height || 1))
+            const mergeSnapshot = getMergeAnchorSnapshot(cellAsScene);
+            const shouldRerenderNumberUnitContent =
+              componentId === 'table-cell-number-unit' &&
+              node.type === 'FRAME' &&
+              (
+                previousParams.unit !== params.unit ||
+                previousParams.suffix !== params.suffix ||
+                previousParams.value !== params.value ||
+                previousParams.number !== params.number ||
+                previousParams.num !== params.num ||
+                previousParams.text !== params.text
+              );
+            if (shouldRerenderNumberUnitContent) {
+                const rerenderedCell = await renderComponent({
+                    id: node.id,
+                    componentId,
+                    params
+                }, { isRoot: false });
+                if (rerenderedCell && rerenderedCell.type === 'FRAME') {
+                    syncTableCellFrameFromRenderedSource(node as FrameNode, rerenderedCell as FrameNode);
+                    reapplyMergeAnchorFrameSnapshot(node as SceneNode, mergeSnapshot);
+                    copyPluginDataKeys(rerenderedCell as SceneNode, node as SceneNode, ['is-ai-component', 'component-id', 'params']);
+                    try { rerenderedCell.remove(); } catch {}
                 }
-              : null;
+            }
             if (typeof params.textAlign === 'string') {
                 await applyCellAlignment(node as SceneNode, params.textAlign as 'left' | 'right' | 'center');
             }
@@ -6422,18 +6564,8 @@ async function handleUpdateComponent(msg: any) {
                 }
             }
             // 强制还原 anchor 合并高度，覆盖任何隐式变化
-            if (mergeSnapshot && 'resize' in cellAsScene) {
-                try { (cellAsScene as any).layoutPositioning = 'AUTO'; } catch {}
-                try {
-                  if ('layoutSizingVertical' in cellAsScene) (cellAsScene as any).layoutSizingVertical = 'FIXED';
-                } catch {}
-                try {
-                  if ('counterAxisSizingMode' in cellAsScene) (cellAsScene as any).counterAxisSizingMode = 'FIXED';
-                } catch {}
-                try {
-                  const w = Math.max(1, Math.round((cellAsScene as any).width || mergeSnapshot.width));
-                  (cellAsScene as any).resize(w, mergeSnapshot.height);
-                } catch {}
+            if (mergeSnapshot.isMergeAnchor) {
+                reapplyMergeAnchorFrameSnapshot(cellAsScene, mergeSnapshot);
             }
             restoreMergedAnchorCellHeight(cellAsScene);
         }

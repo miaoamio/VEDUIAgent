@@ -112,6 +112,25 @@ const NUMERIC_HEADER_HINTS = [
   'revenue', 'profit', 'balance'
 ];
 
+const NUMBER_UNIT_HEADER_HINTS = [
+  '率', '占比', '比例', '百分比', '比率', '同比', '环比',
+  '金额', '价格', '单价', '总价', '费用', '成本', '收入', '支出', '利润', '毛利', '净利', '额度', '余额',
+  '时长', '耗时', '延迟', '大小', '容量', '内存', '磁盘', '流量', '带宽', '速度', '吞吐', 'QPS', 'TPS',
+  'amount', 'price', 'cost', 'revenue', 'profit', 'balance',
+  'rate', 'ratio', 'percent', 'percentage', 'duration', 'latency',
+  'size', 'memory', 'disk', 'storage', 'bandwidth', 'throughput'
+];
+
+const RATE_HEADER_HINTS = [
+  '率', '占比', '比例', '百分比', '比率', '同比', '环比',
+  'rate', 'ratio', 'percent', 'percentage'
+];
+
+const AMOUNT_HEADER_HINTS = [
+  '金额', '价格', '单价', '总价', '费用', '成本', '收入', '支出', '利润', '毛利', '净利', '额度', '余额',
+  'amount', 'price', 'cost', 'revenue', 'profit', 'balance'
+];
+
 const NON_NUMERIC_HEADER_HINTS = [
   '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编'
 ];
@@ -299,7 +318,31 @@ const inferColumnType = (header: string, values: unknown[]): string => {
     return kind === 'type' ? 'TypeTag' : 'StatusTag';
   }
 
+  const numberUnitMeta = inferNumberUnitColumnMeta(header, values);
+  if (numberUnitMeta.shouldUse) return 'Number(unit)';
+
   return 'Text';
+};
+
+const normalizeNumberUnitLabel = (rawUnit: string): string => {
+  const unit = String(rawUnit || '').trim();
+  if (!unit) return '';
+  const upper = unit.toUpperCase();
+  if (unit === 'HK$' || upper === 'HKD') return '港币';
+  if (unit === 'US$' || upper === 'USD') return '美元';
+  if (unit === '¥' || unit === '￥') return '元';
+  if (upper === 'CNY' || upper === 'RMB' || upper === 'CNH') return '元';
+  if (unit === '$') return '美元';
+  if (unit === '€' || upper === 'EUR') return '欧元';
+  if (unit === '£' || upper === 'GBP') return '英镑';
+  if (['B', 'KB', 'MB', 'GB', 'TB', 'PB'].includes(upper)) return upper;
+  return unit;
+};
+
+const isNumberUnitValueLike = (parsed: { value: string; unit: string }): boolean => {
+  const value = String(parsed.value || '').trim();
+  if (!value) return false;
+  return isNumericLikeText(value);
 };
 
 const parseNumberUnitCell = (rawValue: unknown): { value: string; unit: string } => {
@@ -316,11 +359,58 @@ const parseNumberUnitCell = (rawValue: unknown): { value: string; unit: string }
 
   const text = extractCellText(rawValue).trim();
   if (!text) return { value: '0', unit: '' };
+
+  const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
+  if (prefixCurrencyMatch) {
+    const value = (prefixCurrencyMatch[2] || '').trim() || text;
+    const trailingUnit = normalizeNumberUnitLabel(prefixCurrencyMatch[3] || '');
+    const currencyUnit = normalizeNumberUnitLabel(prefixCurrencyMatch[1] || '');
+    return { value, unit: trailingUnit || currencyUnit };
+  }
+
   const match = text.match(/^([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
   if (!match) return { value: text, unit: '' };
   const value = (match[1] || '').trim() || text;
-  const unit = (match[2] || '').trim();
+  const unit = normalizeNumberUnitLabel(match[2] || '');
   return { value, unit };
+};
+
+const inferNumberUnitColumnMeta = (
+  header: string,
+  values: unknown[]
+): { shouldUse: boolean; textAlign: 'left' | 'right'; defaultUnit: string } => {
+  const nonEmptyValues = values.filter((value) => String(extractCellText(value) || '').trim() !== '');
+  if (nonEmptyValues.length === 0) return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+
+  const parsedValues = nonEmptyValues.map((value) => parseNumberUnitCell(value));
+  const numericParsed = parsedValues.filter(isNumberUnitValueLike);
+  const numericRatio = numericParsed.length / nonEmptyValues.length;
+  const units = numericParsed
+    .map((item) => normalizeNumberUnitLabel(item.unit))
+    .filter((unit) => unit);
+  const distinctUnits = Array.from(new Set(units));
+  const hasExplicitUnit = distinctUnits.length > 0;
+  const hasMixedUnits = distinctUnits.length > 1;
+  const hasHeaderHint = headerIncludes(header, NUMBER_UNIT_HEADER_HINTS);
+  const inferredDefaultUnit =
+    distinctUnits.length === 1
+      ? distinctUnits[0]
+      : headerIncludes(header, RATE_HEADER_HINTS)
+        ? '%'
+        : headerIncludes(header, AMOUNT_HEADER_HINTS)
+          ? '元'
+          : '';
+
+  if (hasMixedUnits && numericParsed.length >= 2 && numericRatio >= 0.6) {
+    return { shouldUse: true, textAlign: 'left', defaultUnit: '' };
+  }
+  if (hasExplicitUnit && numericParsed.length >= 1 && numericRatio >= 0.5) {
+    return { shouldUse: true, textAlign: 'right', defaultUnit: inferredDefaultUnit };
+  }
+  if (hasHeaderHint && numericParsed.length >= 1 && numericRatio >= 0.6) {
+    return { shouldUse: true, textAlign: 'right', defaultUnit: inferredDefaultUnit };
+  }
+  return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
 };
 
 export const inferColumnTypesFromRows = (
@@ -331,14 +421,10 @@ export const inferColumnTypesFromRows = (
   const normalizedTypes = Array.isArray(currentTypes)
     ? currentTypes.map((t) => String(t || '').trim())
     : [];
-  const hasExplicitNonText = normalizedTypes.some((t) => t && t.toLowerCase() !== 'text');
-  const allTextOrEmpty = normalizedTypes.every((t) => !t || t.toLowerCase() === 'text');
-  const shouldInferAll = !hasExplicitNonText && allTextOrEmpty;
 
   return headers.map((header, index) => {
     const explicit = normalizedTypes[index];
     if (explicit && explicit.toLowerCase() !== 'text') return explicit;
-    if (!shouldInferAll && explicit && explicit.toLowerCase() === 'text') return explicit;
     const columnValues = rows.map((row) => row?.[index]);
     const inferred = inferColumnType(header, columnValues);
     return inferred || explicit || 'Text';
@@ -604,6 +690,7 @@ export const buildTableComponentFromPayload = (
     const cellComponentId = tableTypeToComponentId(type);
     const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
     const columnValues = rows.map((row) => row[colIndex]);
+    const numberUnitMeta = inferNumberUnitColumnMeta(header, columnValues);
     const widthRaw = Number(columnWidths[colIndex]);
     const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;
     const width = hasWidth ? widthRaw : undefined;
@@ -612,7 +699,7 @@ export const buildTableComponentFromPayload = (
     const headerText = isActionColumn ? '操作' : header;
     const textAlign =
       cellComponentId === 'table-cell-number-unit'
-        ? 'right'
+        ? numberUnitMeta.textAlign
         : cellComponentId === 'table-cell' && isNumericTextColumn(header, columnValues)
           ? 'right'
           : undefined;
@@ -701,13 +788,14 @@ export const buildTableComponentFromPayload = (
       }
       if (cellComponentId === 'table-cell-number-unit') {
         const parsed = parseNumberUnitCell(rawValue);
+        const effectiveUnit = parsed.unit || numberUnitMeta.defaultUnit;
         columnChildren.push({
           componentId: 'table-cell-number-unit',
           params: {
             height: bodyHeight,
             value: parsed.value,
-            unit: parsed.unit,
-            text: `${parsed.value}${parsed.unit ? ` ${parsed.unit}` : ''}`,
+            unit: effectiveUnit,
+            text: `${parsed.value}${effectiveUnit ? ` ${effectiveUnit}` : ''}`,
             ...(hasWidth && !isActionColumn ? { width } : {}),
             ...(textAlign ? { textAlign } : {})
           }

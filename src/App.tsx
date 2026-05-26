@@ -2365,6 +2365,7 @@ function App() {
   const [selectionVersion, setSelectionVersion] = React.useState(0);
   const [formFieldTextMode, setFormFieldTextMode] = React.useState<'value' | 'placeholder'>('placeholder');
   const [controlWidthDraft, setControlWidthDraft] = React.useState<string>('240');
+  const [numberUnitDraft, setNumberUnitDraft] = React.useState<string>('');
 
   // Sync controlWidthDraft when selectedComponent changes
   React.useEffect(() => {
@@ -2374,6 +2375,14 @@ function App() {
       setControlWidthDraft('240');
     }
   }, [selectedComponent?.params?.controlWidth]);
+
+  React.useEffect(() => {
+    if (selectedComponent?.componentId === 'table-cell-number-unit') {
+      setNumberUnitDraft(String(selectedComponent.params?.unit ?? ''));
+    } else {
+      setNumberUnitDraft('');
+    }
+  }, [selectedComponent?.componentId, selectedComponent?.params?.unit]);
 
   // Tab state
   const [activeTab, setActiveTab] = React.useState<'chat' | 'selection' | 'docs'>('chat');
@@ -9347,6 +9356,7 @@ StepB:\n`;
       ? (selectedComponent.childComponentId || 'table-cell')
       : selectedComponent.componentId;
     const supportsTextDisplay = currentCellType === 'table-cell';
+    const supportsNumberUnit = !isColumn && currentCellType === 'table-cell-number-unit';
     const headerTypeValue = params.headerType || 'None';
     const alignValue = params.textAlign || 'left';
     const textDisplayValue = params.textDisplay || 'ellipsis';
@@ -9403,6 +9413,36 @@ StepB:\n`;
                   value={headerTextValue}
                   onChange={(value) => updateParam('headerText', value)}
                 />
+              </div>
+            </div>
+          </>
+        )}
+
+        {supportsNumberUnit && (
+          <>
+            <div className="section-title">单位</div>
+            <div className="row">
+              <div className="col">
+                <div className="selection-inline-confirm-row">
+                  <input
+                    type="text"
+                    value={numberUnitDraft}
+                    onChange={(e) => setNumberUnitDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        updateParam('unit', numberUnitDraft);
+                      }
+                    }}
+                    placeholder="请输入"
+                  />
+                  <button
+                    type="button"
+                    className="selection-inline-confirm-btn"
+                    onClick={() => updateParam('unit', numberUnitDraft)}
+                  >
+                    确定
+                  </button>
+                </div>
               </div>
             </div>
           </>
