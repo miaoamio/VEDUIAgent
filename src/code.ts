@@ -251,6 +251,7 @@ import {
   TABLE_CELL_COMPONENT_PREFIX,
   TABLE_HEADER_ICON_PLUGIN_KEY,
 } from './code/table/table-queries';
+import { normalizeNumberUnitLabel as normalizeTableNumberUnitLabel } from './code/table/table-number-unit';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 initStyleBindingDefs(COMPONENT_DEFS);
@@ -2843,21 +2844,6 @@ function extractTableCellParamText(params: Record<string, any> | null | undefine
     if (text) return text;
   }
   return '';
-}
-
-function normalizeTableNumberUnitLabel(rawUnit: string): string {
-  const unit = String(rawUnit || '').trim();
-  if (!unit) return '';
-  const upper = unit.toUpperCase();
-  if (unit === 'HK$' || upper === 'HKD') return '港币';
-  if (unit === 'US$' || upper === 'USD') return '美元';
-  if (unit === '¥' || unit === '￥') return '元';
-  if (upper === 'CNY' || upper === 'RMB' || upper === 'CNH') return '元';
-  if (unit === '$') return '美元';
-  if (unit === '€' || upper === 'EUR') return '欧元';
-  if (unit === '£' || upper === 'GBP') return '英镑';
-  if (['B', 'KB', 'MB', 'GB', 'TB', 'PB'].includes(upper)) return upper;
-  return unit;
 }
 
 function parseTableNumberUnitText(rawValue: unknown): { value: string; unit: string } {
