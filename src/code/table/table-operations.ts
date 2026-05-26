@@ -1120,46 +1120,134 @@ interface MergeSelectionPlan {
   targetColumnIndex: number;
   startIndex: number;
   endIndex: number;
+  existingAnchor?: SceneNode;
 }
 
-function resolvePlanFromSelection(cellNodes: SceneNode[]): MergeSelectionPlan | null {
-  if (!Array.isArray(cellNodes) || cellNodes.length < 2) return null;
-  const firstCell = cellNodes[0];
-  let column: FrameNode | null = null;
-  let cur: BaseNode | null = firstCell.parent;
+function resolveSelectionColumn(node: SceneNode): FrameNode | null {
+  let cur: BaseNode | null = node.parent;
   while (cur && cur.type !== 'PAGE') {
     if (cur.type === 'FRAME' && (cur as FrameNode).getPluginData('component-id') === 'table-column') {
-      column = cur as FrameNode;
-      break;
+      return cur as FrameNode;
     }
     cur = cur.parent;
   }
-  if (!column) return null;
+  return null;
+}
+
+function resolveMergeSpanForNode(
+  node: SceneNode,
+  column: FrameNode
+): { anchor: SceneNode; startIndex: number; endIndex: number } | null {
+  const role = node.getPluginData('merge-role');
+  if (role !== 'merge-anchor' && role !== 'merge-hidden') return null;
+
+  let anchor: SceneNode | null = null;
+  if (role === 'merge-anchor') {
+    anchor = node;
+  } else {
+    const anchorId = node.getPluginData('merge-anchor-id');
+    if (anchorId) {
+      const found = column.children.find((child) => child.id === anchorId);
+      if (found) anchor = found as SceneNode;
+    }
+  }
+  if (!anchor || anchor.removed || anchor.parent !== column) return null;
+
+  const anchorIndex = column.children.indexOf(anchor);
+  if (anchorIndex < 0) return null;
+  const startIndexRaw = Number(anchor.getPluginData('merge-start-index'));
+  const endIndexRaw = Number(anchor.getPluginData('merge-end-index'));
+  const startIndex = Number.isFinite(startIndexRaw) && startIndexRaw >= 0 ? startIndexRaw : anchorIndex;
+  const endIndex = Number.isFinite(endIndexRaw) && endIndexRaw >= startIndex ? endIndexRaw : anchorIndex;
+  return { anchor, startIndex, endIndex };
+}
+
+function resolvePlanFromSelection(cellNodes: SceneNode[]): { ok: true; plan: MergeSelectionPlan } | { ok: false; reason: string } {
+  if (!Array.isArray(cellNodes) || cellNodes.length < 2) {
+    return { ok: false, reason: '请至少选中 2 个单元格。' };
+  }
+
+  let column: FrameNode | null = null;
+  const coveredIndices = new Set<number>();
+  const encounteredAnchorIds = new Set<string>();
+  let existingAnchor: SceneNode | undefined;
+
+  for (const cellNode of cellNodes) {
+    const currentColumn = resolveSelectionColumn(cellNode);
+    if (!currentColumn) {
+      return { ok: false, reason: '只能合并表格同一列中的 body 单元格。' };
+    }
+    if (!column) {
+      column = currentColumn;
+    } else if (column !== currentColumn) {
+      return { ok: false, reason: '只能合并同一列中的连续单元格。' };
+    }
+  }
+  if (!column) {
+    return { ok: false, reason: '未能定位当前选区所在列。' };
+  }
+
   const table = column.parent;
-  if (!table || table.type !== 'FRAME') return null;
+  if (!table || table.type !== 'FRAME') {
+    return { ok: false, reason: '当前列不属于有效的表格结构。' };
+  }
   const columns = getTableColumns(table as FrameNode);
-  if (columns.length === 0) return null;
+  if (columns.length === 0) {
+    return { ok: false, reason: '未能定位当前表格的列结构。' };
+  }
   const targetColumnIndex = columns.indexOf(column);
-  if (targetColumnIndex < 0) return null;
+  if (targetColumnIndex < 0) {
+    return { ok: false, reason: '当前选区不在有效表格列中。' };
+  }
 
   const offset = getTableHeaderOffset(column);
-  const indices: number[] = [];
   for (const cellNode of cellNodes) {
-    if (cellNode.parent !== column) return null;
+    if (cellNode.parent !== column) {
+      return { ok: false, reason: '只能合并同一列中的连续单元格。' };
+    }
+    const mergeSpan = resolveMergeSpanForNode(cellNode, column);
+    if (mergeSpan) {
+      if (mergeSpan.startIndex < offset) {
+        return { ok: false, reason: '表头区域不支持手动合并。' };
+      }
+      encounteredAnchorIds.add(mergeSpan.anchor.id);
+      if (!existingAnchor) existingAnchor = mergeSpan.anchor;
+      for (let idx = mergeSpan.startIndex; idx <= mergeSpan.endIndex; idx += 1) {
+        coveredIndices.add(idx);
+      }
+      continue;
+    }
+
     const idx = column.children.indexOf(cellNode);
-    if (idx < offset) return null; // 不允许选 header
-    indices.push(idx);
+    if (idx < offset) {
+      return { ok: false, reason: '表头区域不支持手动合并。' };
+    }
+    coveredIndices.add(idx);
   }
-  indices.sort((a, b) => a - b);
+
+  if (encounteredAnchorIds.size > 1) {
+    return { ok: false, reason: '暂不支持把多个已合并块再次合并，请先取消其中一个合并。' };
+  }
+
+  const indices = Array.from(coveredIndices).sort((a, b) => a - b);
+  if (indices.length < 2) {
+    return { ok: false, reason: '请选中同一列里连续的至少 2 个 body 单元格。' };
+  }
   for (let i = 1; i < indices.length; i += 1) {
-    if (indices[i] !== indices[i - 1] + 1) return null;
+    if (indices[i] !== indices[i - 1] + 1) {
+      return { ok: false, reason: '只能合并同一列中的连续单元格。' };
+    }
   }
   return {
-    table: table as FrameNode,
-    columns,
-    targetColumnIndex,
-    startIndex: indices[0],
-    endIndex: indices[indices.length - 1]
+    ok: true,
+    plan: {
+      table: table as FrameNode,
+      columns,
+      targetColumnIndex,
+      startIndex: indices[0],
+      endIndex: indices[indices.length - 1],
+      ...(existingAnchor ? { existingAnchor } : {})
+    }
   };
 }
 
@@ -1173,19 +1261,29 @@ export function mergeSelectedColumnCells(cellNodes: SceneNode[]): {
   reason?: string;
   anchorCell?: SceneNode;
 } {
-  const plan = resolvePlanFromSelection(cellNodes);
-  if (!plan) {
+  const resolved = resolvePlanFromSelection(cellNodes);
+  if (!resolved.ok) {
     return {
       ok: false,
-      reason:
-        '只能合并同一列里连续的多个 body 单元格（≥2 个），且该列必须属于一个按列布局的表格。'
+      reason: resolved.reason
     };
   }
+  const plan = resolved.plan;
   const { columns, targetColumnIndex, startIndex, endIndex } = plan;
   const targetColumn = columns[targetColumnIndex];
   const segLen = endIndex - startIndex + 1;
 
-  // 检查范围内是否已存在合并标记，避免重复合并造成错乱
+  if (plan.existingAnchor) {
+    const resetResult = unmergeAnchorCell(plan.existingAnchor);
+    if (!resetResult.ok) {
+      return {
+        ok: false,
+        reason: resetResult.reason || '未能重置已有合并单元格。'
+      };
+    }
+  }
+
+  // 检查范围内是否仍存在其他合并标记，避免重复合并造成错乱
   for (let r = startIndex; r <= endIndex; r += 1) {
     const child = targetColumn.children[r];
     if (!child) continue;
@@ -1193,7 +1291,7 @@ export function mergeSelectedColumnCells(cellNodes: SceneNode[]): {
     if (role === 'merge-anchor' || role === 'merge-hidden') {
       return {
         ok: false,
-        reason: '所选范围内已存在合并单元格，请先取消已有合并。'
+        reason: '所选范围内仍存在其他合并单元格，请先取消已有合并。'
       };
     }
   }
