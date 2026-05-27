@@ -474,8 +474,7 @@ const inferColumnType = (header: string, values: unknown[]): string => {
 
   if (isDateTimeColumn(header, values)) return 'Text';
 
-  const isUserHeader = headerIncludes(header, USER_HEADER_HINTS);
-  if (isUserHeader) return 'Avatar';
+  if (isLikelyAvatarColumn(header, values)) return 'Avatar';
 
   const visualTagKind = inferVisualTagColumnKind(header, values);
   if (visualTagKind) return visualTagKind === 'type' ? 'TypeTag' : 'StatusTag';
@@ -1095,10 +1094,16 @@ export const buildTableComponentFromPayload = (
   const columnWidths = normalizedGrid.columnWidths;
   const merges = normalizedGrid.merges;
   const autoMergeRules = normalizedGrid.autoMergeRules;
+  const effectiveColumnTypes = headers.map((header, colIndex) => {
+    const columnValues = rows.map((row) => row[colIndex]);
+    if (isDateTimeColumn(header, columnValues)) return 'Text';
+    if (isLikelyAvatarColumn(header, columnValues)) return 'Avatar';
+    return columnTypes[colIndex] || 'Text';
+  });
 
   const children = headers.map((header, colIndex) => {
     const columnValues = rows.map((row) => row[colIndex]);
-    const type = isDateTimeColumn(header, columnValues) ? 'Text' : (columnTypes[colIndex] || 'Text');
+    const type = effectiveColumnTypes[colIndex] || 'Text';
     const cellComponentId = tableTypeToComponentId(type);
     const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
     const numberUnitMeta = inferNumberUnitColumnMeta(header, columnValues);
@@ -1251,6 +1256,7 @@ export const buildTableComponentFromPayload = (
       rowCount: rows.length,
       headers,
       headerRows,
+      columnTypes: effectiveColumnTypes,
       merges,
       autoMergeRules,
       tableRenderPlan,
