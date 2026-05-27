@@ -255,13 +255,30 @@ const IDENTIFIER_TEXT_HEADER_HINTS = [
   'topic', 'name', 'title', 'key', 'id', 'code', '编号', '编码', '名称', '标题', '主题', 'topicid'
 ];
 
+const DATE_TIME_HEADER_HINTS = [
+  '时间', '日期', '年月', '时刻', 'timestamp', 'time', 'date', 'datetime', 'createdat', 'updatedat',
+  'create time', 'update time', 'start time', 'end time', 'join date', '入职时间', '入职日期'
+];
+
 const isDateLikeText = (text: string): boolean => {
-  const normalized = text.trim();
+  const normalized = text.trim().replace(/\s*([/-])\s*/g, '$1');
   return (
     /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(normalized) ||
     /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(normalized) ||
     /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalized)
   );
+};
+
+const isDateTimeColumn = (header: string, values: unknown[]): boolean => {
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length === 0) return false;
+
+  const dateLikeCount = nonEmptyValues.filter((value) => isDateLikeText(extractCellText(value))).length;
+  const dateLikeRatio = dateLikeCount / nonEmptyValues.length;
+  const hasDateHeaderHint = headerIncludes(header, DATE_TIME_HEADER_HINTS);
+
+  if (hasDateHeaderHint && dateLikeCount >= 1) return true;
+  return dateLikeCount >= 2 && dateLikeRatio >= 0.6;
 };
 
 const isNumericLikeText = (value: unknown): boolean => {
@@ -455,6 +472,8 @@ const inferColumnType = (header: string, values: unknown[]): string => {
   const isActionHeader = headerIncludes(header, ['操作', 'action', 'actions', 'operation']);
   if (isActionHeader) return 'ActionText';
 
+  if (isDateTimeColumn(header, values)) return 'Text';
+
   const isUserHeader = headerIncludes(header, USER_HEADER_HINTS);
   if (isUserHeader) return 'Avatar';
 
@@ -499,6 +518,7 @@ const parseNumberUnitCell = (rawValue: unknown): { value: string; unit: string }
 
   const text = extractCellText(rawValue).trim();
   if (!text) return { value: '0', unit: '' };
+  if (isDateLikeText(text)) return { value: text.replace(/\s*([/-])\s*/g, '$1'), unit: '' };
 
   const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
   if (prefixCurrencyMatch) {
@@ -568,6 +588,9 @@ export const inferColumnTypesFromRows = (
   return headers.map((header, index) => {
     const explicit = normalizedTypes[index];
     const columnValues = rows.map((row) => row?.[index]);
+    if (isDateTimeColumn(header, columnValues)) {
+      return 'Text';
+    }
     const explicitIsNumberUnit = explicit.toLowerCase() === 'number(unit)' || explicit.toLowerCase() === 'number-unit';
     const explicitIsAvatar =
       explicit.toLowerCase() === 'avatar' ||
@@ -1074,10 +1097,10 @@ export const buildTableComponentFromPayload = (
   const autoMergeRules = normalizedGrid.autoMergeRules;
 
   const children = headers.map((header, colIndex) => {
-    const type = columnTypes[colIndex] || 'Text';
+    const columnValues = rows.map((row) => row[colIndex]);
+    const type = isDateTimeColumn(header, columnValues) ? 'Text' : (columnTypes[colIndex] || 'Text');
     const cellComponentId = tableTypeToComponentId(type);
     const isActionColumn = cellComponentId === 'table-cell-action-text' || cellComponentId === 'table-cell-action-icon';
-    const columnValues = rows.map((row) => row[colIndex]);
     const numberUnitMeta = inferNumberUnitColumnMeta(header, columnValues);
     const widthRaw = Number(columnWidths[colIndex]);
     const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;

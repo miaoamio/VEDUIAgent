@@ -556,11 +556,11 @@ async function checkSelection() {
     }
 
     if (effectiveTarget) {
-        const componentId = effectiveTarget.getPluginData('component-id');
+        const rawComponentId = effectiveTarget.getPluginData('component-id');
         const params = effectiveTarget.getPluginData('params');
-        if (componentId && params) {
+        if (rawComponentId && params) {
           let childComponentId;
-        if (componentId === 'table-column' && effectiveTarget.type === 'FRAME') {
+        if (rawComponentId === 'table-column' && effectiveTarget.type === 'FRAME') {
             const storedCellType = effectiveTarget.getPluginData('cellType');
             if (storedCellType) {
                 childComponentId = storedCellType;
@@ -581,9 +581,13 @@ async function checkSelection() {
           ? liveInstance.params
           : parsedParams;
         const normalizedParams =
-          componentId === 'tag'
+          rawComponentId === 'tag'
             ? normalizeUnifiedTagParams(liveParams)
             : liveParams;
+        const componentId = normalizeTableCellComponentId(rawComponentId, normalizedParams) || rawComponentId;
+        if (childComponentId) {
+          childComponentId = normalizeTableCellComponentId(childComponentId, normalizedParams) || childComponentId;
+        }
         if (componentId === 'figma-component') {
           const paramKey = typeof normalizedParams.componentKey === 'string' ? normalizedParams.componentKey.trim() : '';
           const componentToken = typeof normalizedParams.componentToken === 'string' ? normalizedParams.componentToken.trim() : '';
@@ -1074,6 +1078,8 @@ function toPositiveNumber(value: unknown): number | null {
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+const TABLE_EMPTY_PLACEHOLDER = '-';
 
 
 let generationLockEnabled = false;
@@ -2861,20 +2867,54 @@ function extractRowsFromTableSnapshot(snapshot: ComponentInstance): unknown[][] 
   return rows;
 }
 
+function isDateLikeTableText(text: unknown): boolean {
+  const normalized = String(text ?? '')
+    .trim()
+    .replace(/\s*([/-])\s*/g, '$1');
+  if (!normalized) return false;
+  return (
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(normalized) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(normalized) ||
+    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalized)
+  );
+}
+
+function extractDateLikeTextFromNumberUnitParams(params: Record<string, any> | null | undefined): string {
+  if (!params || typeof params !== 'object') return '';
+  const directText = extractTableCellParamText(params);
+  if (isDateLikeTableText(directText)) return directText;
+
+  const value = String(params.value ?? params.number ?? params.num ?? '').trim();
+  const unit = String(params.unit ?? params.suffix ?? '').trim();
+  const compact = `${value}${unit}`.trim();
+  if (isDateLikeTableText(compact)) return compact;
+
+  const spaced = `${value} ${unit}`.trim();
+  if (isDateLikeTableText(spaced)) return spaced.replace(/\s*([/-])\s*/g, '$1');
+
+  return '';
+}
+
+function normalizeTableCellComponentId(componentId: string | undefined, params?: Record<string, any>): string | undefined {
+  if (componentId !== 'table-cell-number-unit') return componentId;
+  return extractDateLikeTextFromNumberUnitParams(params) ? 'table-cell' : componentId;
+}
+
 function getColumnTypesFromTableSnapshot(snapshot: ComponentInstance): string[] {
-  const mapComponentId = (componentId: string | undefined): string => {
-    if (componentId === 'table-cell-input') return 'Input';
-    if (componentId === 'table-cell-select') return 'Select';
-    if (componentId === 'table-cell-action-icon') return 'ActionIcon';
-    if (componentId === 'table-cell-action-text') return 'ActionText';
-    if (componentId === 'table-cell-avatar') return 'Avatar';
-    if (componentId === 'table-cell-tag') return 'StatusTag';
-    if (componentId === 'table-cell-number-unit') return 'Number(unit)';
+  const mapComponentId = (componentId: string | undefined, params?: Record<string, any>): string => {
+    const normalizedComponentId = normalizeTableCellComponentId(componentId, params);
+    if (normalizedComponentId === 'table-cell-input') return 'Input';
+    if (normalizedComponentId === 'table-cell-select') return 'Select';
+    if (normalizedComponentId === 'table-cell-action-icon') return 'ActionIcon';
+    if (normalizedComponentId === 'table-cell-action-text') return 'ActionText';
+    if (normalizedComponentId === 'table-cell-avatar') return 'Avatar';
+    if (normalizedComponentId === 'table-cell-tag') return 'StatusTag';
+    if (normalizedComponentId === 'table-cell-number-unit') return 'Number(unit)';
     return 'Text';
   };
   return getSnapshotColumns(snapshot).map((column) => {
     const firstBody = getSnapshotBodyChildren(column)[0];
-    return mapComponentId(firstBody?.componentId);
+    return mapComponentId(firstBody?.componentId, firstBody?.params);
   });
 }
 
@@ -3267,6 +3307,7 @@ function extractTableCellParamText(params: Record<string, any> | null | undefine
 function parseTableNumberUnitText(rawValue: unknown): { value: string; unit: string } {
   const text = String(rawValue ?? '').trim();
   if (!text) return { value: '0', unit: '' };
+  if (isDateLikeTableText(text)) return { value: text.replace(/\s*([/-])\s*/g, '$1'), unit: '' };
 
   const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
   if (prefixCurrencyMatch) {
@@ -3842,6 +3883,21 @@ async function renderComponent(
   options: { isRoot?: boolean } = {}
 ): Promise<SceneNode> {
   const isRoot = options.isRoot ?? true;
+  const normalizedComponentId =
+    normalizeTableCellComponentId(instance.componentId, instance.params as Record<string, any> | undefined) || instance.componentId;
+  const normalizedInstance: ComponentInstance =
+    normalizedComponentId === instance.componentId
+      ? instance
+      : {
+          ...instance,
+          componentId: normalizedComponentId,
+          params: {
+            ...(instance.params || {}),
+            text: extractDateLikeTextFromNumberUnitParams(instance.params as Record<string, any> | undefined)
+              || extractTableCellParamText(instance.params as Record<string, any> | undefined)
+          }
+        };
+  instance = normalizedInstance;
   const def = COMPONENT_DEFS[instance.componentId];
   if (!def) throw new Error(`Unknown component type: ${instance.componentId}`);
 
@@ -5624,7 +5680,7 @@ async function renderComponent(
         }
 
         if (!valueText) {
-            valueText = '0';
+            valueText = TABLE_EMPTY_PLACEHOLDER;
         }
 
         const numberUnitRuntime = COMPONENT_DEFS['table-cell-number-unit']?.runtime as
@@ -5798,7 +5854,7 @@ async function renderComponent(
         ) {
             textNode.characters = String(resolvedText);
         } else {
-            textNode.characters = isHeader ? 'Header' : '—';
+            textNode.characters = isHeader ? 'Header' : TABLE_EMPTY_PLACEHOLDER;
         }
         if (typeof params.fontSize === 'number' && params.fontSize > 0) {
             textNode.fontSize = params.fontSize;
