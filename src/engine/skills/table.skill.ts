@@ -17,6 +17,7 @@ import {
   normalizeAutoMergeRulesInput,
   normalizeHeaderRowsInput,
   normalizeMergesInput,
+  type NormalizedTableMergeSpec,
 } from '../../code/table/table-merge-model';
 import { normalizeNumberUnitLabel } from '../../code/table/table-number-unit';
 import { validateNormalizedTableGrid } from '../../code/table/table-merge-validate';
@@ -25,6 +26,10 @@ import { buildTableRenderPlan } from '../../code/table/table-render-grid';
 // ─── Utils：table 专属工具函数 ────────────────────────────────────────────────
 
 export type TagColumnKind = 'status' | 'type';
+
+const STATUS_HEADER_HINTS = ['状态', '级别', 'status', 'state', 'level'];
+const TYPE_TAG_HEADER_HINTS = ['类型', '分类', '品类', '地域', '环境', '分组', '标签', 'type', 'category', 'tag', 'region', 'zone', 'env', 'group'];
+const USER_HEADER_HINTS = ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee', 'creator'];
 
 export const extractCellText = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -52,41 +57,151 @@ const headerIncludes = (header: unknown, tokens: string[]): boolean => {
   return tokens.some((token) => normalized.includes(token));
 };
 
+const CHINESE_ACTION_TOKENS = [
+  '编辑', '删除', '查看', '详情', '更多', '配置', '设置', '启用', '禁用',
+  '重置', '下载', '导出', '复制', '更新', '保存', '发布', '撤回', '审核',
+  '通过', '驳回', '拒绝', '分配', '授权', '解绑', '绑定', '打开', '关闭',
+  '暂停', '恢复'
+];
+
+const ENGLISH_ACTION_TOKENS = [
+  'edit', 'delete', 'view', 'detail', 'details', 'more', 'config', 'configure',
+  'setting', 'settings', 'enable', 'disable', 'reset', 'download', 'export',
+  'copy', 'update', 'save', 'publish', 'revoke', 'approve', 'reject', 'assign',
+  'authorize', 'unbind', 'bind', 'open', 'close', 'pause', 'resume', 'action',
+  'operate'
+];
+
+const looksLikeIdentifierText = (text: string): boolean => {
+  const trimmed = text.trim();
+  if (trimmed.length < 24) return false;
+  if (/[\u4e00-\u9fa5]/.test(trimmed)) return false;
+  return /[_./:-]/.test(trimmed) || /^[a-z0-9_-]+$/i.test(trimmed);
+};
+
+const isActionTextValue = (value: unknown): boolean => {
+  const text = extractCellText(value).trim();
+  if (!text) return false;
+  if (looksLikeIdentifierText(text)) return false;
+
+  const normalized = text.toLowerCase();
+  const chineseHits = CHINESE_ACTION_TOKENS.filter((token) => normalized.includes(token)).length;
+  const englishHits = ENGLISH_ACTION_TOKENS.filter((token) => new RegExp(`\\b${token}\\b`, 'i').test(text)).length;
+  const hitCount = chineseHits + englishHits;
+  if (hitCount === 0) return false;
+
+  const compact = normalized.replace(/[\s,，、|｜/／;；·•]+/g, '');
+  const isShortPhrase = compact.length <= 18;
+  const hasActionSeparator = /[\s,，、|｜/／;；·•]+/.test(text);
+  return isShortPhrase || hasActionSeparator || hitCount >= 2;
+};
+
 const columnHasActionText = (values: unknown[]): boolean => {
-  return values.some((value) => {
-    const text = extractCellText(value);
-    if (!text) return false;
-    const normalized = String(text).trim().toLowerCase();
-    return (
-      normalized.includes('编辑') || normalized.includes('删除') || normalized.includes('查看') ||
-      normalized.includes('详情') || normalized.includes('更多') || normalized.includes('配置') ||
-      normalized.includes('设置') || normalized.includes('启用') || normalized.includes('禁用') ||
-      normalized.includes('重置') || normalized.includes('下载') || normalized.includes('导出') ||
-      normalized.includes('复制') || normalized.includes('更新') || normalized.includes('保存') ||
-      normalized.includes('发布') || normalized.includes('撤回') || normalized.includes('审核') ||
-      normalized.includes('通过') || normalized.includes('驳回') || normalized.includes('拒绝') ||
-      normalized.includes('分配') || normalized.includes('授权') || normalized.includes('解绑') ||
-      normalized.includes('绑定') || normalized.includes('打开') || normalized.includes('关闭') ||
-      normalized.includes('暂停') || normalized.includes('恢复') || normalized.includes('edit') ||
-      normalized.includes('delete') || normalized.includes('view') || normalized.includes('detail') ||
-      normalized.includes('more') || normalized.includes('config') || normalized.includes('setting') ||
-      normalized.includes('enable') || normalized.includes('disable') || normalized.includes('reset') ||
-      normalized.includes('download') || normalized.includes('export') || normalized.includes('copy') ||
-      normalized.includes('update') || normalized.includes('save') || normalized.includes('publish') ||
-      normalized.includes('revoke') || normalized.includes('approve') || normalized.includes('reject') ||
-      normalized.includes('assign') || normalized.includes('authorize') || normalized.includes('unbind') ||
-      normalized.includes('bind') || normalized.includes('open') || normalized.includes('close') ||
-      normalized.includes('pause') || normalized.includes('resume') || normalized.includes('action') ||
-      normalized.includes('operate')
-    );
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length === 0) return false;
+  const actionCount = nonEmptyValues.filter(isActionTextValue).length;
+  return actionCount > 0 && actionCount / nonEmptyValues.length >= 0.5;
+};
+
+const VISUAL_TAG_KEY_RE = /tag|status|badge|state|level|pill|chip|visual|appearance|cellstyle|cell_style|tagstyle|tag_style|visualrole|visual_role|displaystyle|display_style|shape|decoration|uirole|ui_role/i;
+const VISUAL_TAG_VALUE_RE = /(^|[\s_-])(tag|status-tag|type-tag|badge|pill|chip|label|capsule|lozenge|标签|状态标签|类型标签|徽标|胶囊|圆角标签)([\s_-]|$)/i;
+
+const isVisualTagMarkerValue = (value: unknown): boolean => {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  return VISUAL_TAG_VALUE_RE.test(text) || /标签|状态标签|类型标签|徽标|胶囊|圆角标签/.test(text);
+};
+
+const isVisualTagObject = (value: unknown): boolean => {
+  if (!isObject(value)) return false;
+  const obj = value as Record<string, unknown>;
+  return Object.entries(obj).some(([key, val]) => {
+    if (VISUAL_TAG_KEY_RE.test(key) && (val === true || isVisualTagMarkerValue(val) || /tag|badge|pill|chip/i.test(key))) {
+      return true;
+    }
+    return isObject(val) && isVisualTagObject(val);
   });
+};
+
+const isShortTagTextValue = (value: unknown): boolean => {
+  const text = extractCellText(value).trim();
+  if (!text || looksLikeIdentifierText(text)) return false;
+  return text.length <= 24;
+};
+
+const isLikelyPersonNameText = (value: unknown): boolean => {
+  const text = extractCellText(value).trim();
+  if (!text) return false;
+  if (looksLikeIdentifierText(text)) return false;
+  if (/[0-9_/@]/.test(text)) return false;
+  if (/[\u4e00-\u9fa5]{2,4}/.test(text) && text.length <= 6) return true;
+  if (/^[A-Za-z][A-Za-z'-]{1,20}(?:\s+[A-Za-z][A-Za-z'-]{1,20}){1,2}$/.test(text)) return true;
+  return false;
+};
+
+const isLikelyUserObject = (value: unknown): boolean => {
+  if (!isObject(value)) return false;
+  const obj = value as Record<string, unknown>;
+  const userKeys = ['avatar', 'avatarUrl', 'avatarText', 'user', 'userName', 'username', 'owner', 'member', 'assignee', 'creator', 'nickName', 'nickname'];
+  if (Object.keys(obj).some((key) => userKeys.includes(String(key)))) return true;
+  return isLikelyPersonNameText(obj.name ?? obj.label ?? obj.text ?? obj.value);
+};
+
+const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
+  if (headerIncludes(header, USER_HEADER_HINTS)) return true;
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '' || isObject(value));
+  if (nonEmptyValues.length === 0) return false;
+  const avatarLikeCount = nonEmptyValues.filter((value) => isLikelyUserObject(value) || isLikelyPersonNameText(value)).length;
+  const avatarLikeRatio = avatarLikeCount / nonEmptyValues.length;
+  return avatarLikeCount >= Math.min(2, nonEmptyValues.length) && avatarLikeRatio >= 0.6;
+};
+
+const isLikelyPlainTypeTagColumn = (header: string, values: unknown[]): boolean => {
+  if (headerIncludes(header, STATUS_HEADER_HINTS) || headerIncludes(header, USER_HEADER_HINTS)) return false;
+  if (headerIncludes(header, ['操作', 'action', 'actions', 'operation'])) return false;
+  if (headerIncludes(header, ['topic', 'name', 'title', 'key', 'id', 'code', '名称', '标题', '主题', '编号', '编码'])) return false;
+
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length < 2) return false;
+  if (nonEmptyValues.some((value) => isObject(value))) return false;
+  if (isLikelyAvatarColumn(header, values)) return false;
+  if (columnHasActionText(values) || columnHasStatusText(values)) return false;
+  if (isNumericTextColumn(header, values) || inferNumberUnitColumnMeta(header, values).shouldUse) return false;
+  if (nonEmptyValues.some((value) => looksLikeIdentifierText(extractCellText(value)))) return false;
+
+  const shortCount = nonEmptyValues.filter((value) => isShortTagTextValue(value)).length;
+  const shortRatio = shortCount / nonEmptyValues.length;
+  if (shortRatio < 0.8) return false;
+
+  const uniqueValues = new Set(nonEmptyValues.map((value) => extractCellText(value).trim().toLowerCase()));
+  if (uniqueValues.size < 2) return false;
+
+  return true;
 };
 
 const columnHasTagObject = (values: unknown[]): boolean => {
   return values.some((value) => {
     if (!isObject(value)) return false;
-    return Object.keys(value as any).some((key) => /tag|status|badge|state|level/i.test(key));
+    return Object.keys(value as any).some((key) => /tag|status|badge|state|level/i.test(key)) || isVisualTagObject(value);
   });
+};
+
+const inferVisualTagColumnKind = (header: string, values: unknown[]): TagColumnKind | null => {
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length === 0) return null;
+
+  const visualMarkerCount = nonEmptyValues.filter(isVisualTagObject).length;
+  if (visualMarkerCount === 0) return null;
+
+  const shortTextCount = nonEmptyValues.filter(isShortTagTextValue).length;
+  const markerRatio = visualMarkerCount / nonEmptyValues.length;
+  const shortTextRatio = shortTextCount / nonEmptyValues.length;
+  if (markerRatio < 0.5 && shortTextRatio < 0.8) return null;
+
+  if (headerIncludes(header, ['状态', '级别', 'status', 'state', 'level']) || columnHasStatusText(values)) {
+    return 'status';
+  }
+  return 'type';
 };
 
 const columnHasStatusText = (values: unknown[]): boolean => {
@@ -136,6 +251,10 @@ const NON_NUMERIC_HEADER_HINTS = [
   '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编'
 ];
 
+const IDENTIFIER_TEXT_HEADER_HINTS = [
+  'topic', 'name', 'title', 'key', 'id', 'code', '编号', '编码', '名称', '标题', '主题', 'topicid'
+];
+
 const isDateLikeText = (text: string): boolean => {
   const normalized = text.trim();
   return (
@@ -181,6 +300,13 @@ const isNumericTextColumn = (header: string, values: unknown[]): boolean => {
   return numericCount >= 2 && numericRatio >= 0.7;
 };
 
+const isIdentifierLikeColumn = (header: string, values: unknown[]): boolean => {
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length === 0) return false;
+  const identifierRatio = nonEmptyValues.filter((value) => looksLikeIdentifierText(extractCellText(value))).length / nonEmptyValues.length;
+  return headerIncludes(header, IDENTIFIER_TEXT_HEADER_HINTS) || identifierRatio >= 0.4;
+};
+
 export const resolveTagColumnKind = (columnType: unknown, headerText: string): TagColumnKind => {
   const normalized = String(columnType || '')
     .trim()
@@ -188,10 +314,12 @@ export const resolveTagColumnKind = (columnType: unknown, headerText: string): T
     .replace(/[_\\s]+/g, '-');
   if (normalized.includes('type-tag') || normalized.includes('typetag')) return 'type';
   if (normalized.includes('status-tag') || normalized.includes('statustag')) return 'status';
-  if (normalized.includes('status') || normalized.includes('state') || normalized.includes('badge')) return 'status';
+  if (normalized.includes('status') || normalized.includes('state')) return 'status';
+  if (normalized.includes('badge')) return 'type';
   const header = String(headerText || '').trim();
-  if (header.includes('类型') || header.includes('分类') || header.includes('品类')) return 'type';
-  return 'status';
+  if (headerIncludes(header, STATUS_HEADER_HINTS)) return 'status';
+  if (headerIncludes(header, TYPE_TAG_HEADER_HINTS)) return 'type';
+  return 'type';
 };
 
 export const extractTagCellPayload = (
@@ -228,13 +356,24 @@ export const extractTagCellPayload = (
     obj.tagFamily ??
     (typeof obj.tagType === 'string' && obj.tagType.includes('StatusTag') ? 'status' : undefined);
   const kindNormalized = String(rawKind || '').trim().toLowerCase();
+  const hasStrongStatusSignal =
+    obj.statusText !== undefined ||
+    obj.statusSemantic !== undefined ||
+    obj.statusIntent !== undefined ||
+    obj.semantic !== undefined ||
+    obj.intent !== undefined;
+  const hasVisualTagSignal = isVisualTagObject(obj);
   const kind: TagColumnKind =
     kindNormalized.includes('type')
       ? 'type'
       : kindNormalized.includes('status')
         ? 'status'
-        : obj.statusTheme !== undefined || obj.statusColor !== undefined || obj.statusText !== undefined
+        : fallbackKind === 'status'
           ? 'status'
+          : hasStrongStatusSignal
+            ? 'status'
+          : hasVisualTagSignal
+            ? 'type'
           : fallbackKind;
 
   const componentToken = typeof obj.componentToken === 'string' && obj.componentToken.trim()
@@ -242,28 +381,35 @@ export const extractTagCellPayload = (
     : undefined;
 
   const tagColorRaw = obj.tagColor ?? obj.color ?? obj.statusColor;
-  const tagColor = typeof tagColorRaw === 'string' && tagColorRaw.trim() ? tagColorRaw.trim() : undefined;
+  const tagColor =
+    kind === 'status' && typeof tagColorRaw === 'string' && tagColorRaw.trim()
+      ? tagColorRaw.trim()
+      : undefined;
 
   const statusThemeRaw = obj.statusTheme ?? obj.theme ?? obj.tagTheme;
   const semanticKeyRaw = obj.statusSemantic ?? obj.statusIntent ?? obj.semantic ?? obj.intent;
-  const semanticTheme = resolveStatusTagThemeFromSemantic(semanticKeyRaw) || undefined;
-  const textTheme = resolveStatusTagThemeFromSemantic(text) || undefined;
+  const semanticTheme = kind === 'status' ? resolveStatusTagThemeFromSemantic(semanticKeyRaw) || undefined : undefined;
+  const textTheme = kind === 'status' ? resolveStatusTagThemeFromSemantic(text) || undefined : undefined;
   const statusTheme =
-    semanticTheme ||
-    textTheme ||
-    normalizeStatusTagThemeInput(statusThemeRaw) ||
-    resolveStatusTagThemeFromSemantic(tagColorRaw) ||
-    undefined;
+    kind === 'status'
+      ? (
+        semanticTheme ||
+        textTheme ||
+        normalizeStatusTagThemeInput(statusThemeRaw) ||
+        resolveStatusTagThemeFromSemantic(tagColorRaw) ||
+        undefined
+      )
+      : undefined;
 
   const statusTypeRaw = obj.statusType ?? obj.statusLevel ?? obj.level;
   const statusType =
-    typeof statusTypeRaw === 'string' && statusTypeRaw.trim()
+    kind === 'status' && typeof statusTypeRaw === 'string' && statusTypeRaw.trim()
       ? statusTypeRaw.trim()
       : undefined;
 
   const statusStateRaw = obj.statusState ?? obj.state;
   const statusState =
-    typeof statusStateRaw === 'string' && statusStateRaw.trim()
+    kind === 'status' && typeof statusStateRaw === 'string' && statusStateRaw.trim()
       ? statusStateRaw.trim()
       : undefined;
 
@@ -307,20 +453,28 @@ export const tableTypeToComponentId = (type?: string): string => {
 
 const inferColumnType = (header: string, values: unknown[]): string => {
   const isActionHeader = headerIncludes(header, ['操作', 'action', 'actions', 'operation']);
-  if (isActionHeader || columnHasActionText(values)) return 'ActionText';
+  if (isActionHeader) return 'ActionText';
 
-  const isUserHeader = headerIncludes(header, ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee']);
+  const isUserHeader = headerIncludes(header, USER_HEADER_HINTS);
   if (isUserHeader) return 'Avatar';
 
+  const visualTagKind = inferVisualTagColumnKind(header, values);
+  if (visualTagKind) return visualTagKind === 'type' ? 'TypeTag' : 'StatusTag';
+
+  if (isLikelyPlainTypeTagColumn(header, values)) return 'TypeTag';
+
   const isTagHeader = headerIncludes(header, ['状态', '标签', '类型', '分类', '品类', '级别', 'status', 'state', 'tag', 'type', 'badge']);
-  const hasTagSignal = isTagHeader || columnHasTagObject(values) || columnHasStatusText(values);
+  const explicitStatusTagSignal = headerIncludes(header, STATUS_HEADER_HINTS) || columnHasStatusText(values);
+  const hasTagSignal = isTagHeader || columnHasTagObject(values) || explicitStatusTagSignal;
   if (hasTagSignal) {
-    const kind = resolveTagColumnKind('Tag', header);
+    const kind = explicitStatusTagSignal ? 'status' : resolveTagColumnKind('Tag', header);
     return kind === 'type' ? 'TypeTag' : 'StatusTag';
   }
 
   const numberUnitMeta = inferNumberUnitColumnMeta(header, values);
   if (numberUnitMeta.shouldUse) return 'Number(unit)';
+
+  if (columnHasActionText(values)) return 'ActionText';
 
   return 'Text';
 };
@@ -367,6 +521,9 @@ const inferNumberUnitColumnMeta = (
 ): { shouldUse: boolean; textAlign: 'left' | 'right'; defaultUnit: string } => {
   const nonEmptyValues = values.filter((value) => String(extractCellText(value) || '').trim() !== '');
   if (nonEmptyValues.length === 0) return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+  if (isIdentifierLikeColumn(header, values)) {
+    return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+  }
 
   const parsedValues = nonEmptyValues.map((value) => parseNumberUnitCell(value));
   const numericParsed = parsedValues.filter(isNumberUnitValueLike);
@@ -410,11 +567,240 @@ export const inferColumnTypesFromRows = (
 
   return headers.map((header, index) => {
     const explicit = normalizedTypes[index];
-    if (explicit && explicit.toLowerCase() !== 'text') return explicit;
     const columnValues = rows.map((row) => row?.[index]);
+    const explicitIsNumberUnit = explicit.toLowerCase() === 'number(unit)' || explicit.toLowerCase() === 'number-unit';
+    const explicitIsAvatar =
+      explicit.toLowerCase() === 'avatar' ||
+      explicit.toLowerCase() === 'user' ||
+      explicit.toLowerCase() === 'owner';
+    if (explicitIsNumberUnit && !inferNumberUnitColumnMeta(header, columnValues).shouldUse) {
+      return inferColumnType(header, columnValues) || 'Text';
+    }
+    if (explicitIsAvatar && !isLikelyAvatarColumn(header, columnValues)) {
+      return inferColumnType(header, columnValues) || 'Text';
+    }
+    if (explicit && explicit.toLowerCase() !== 'text') return explicit;
     const inferred = inferColumnType(header, columnValues);
     return inferred || explicit || 'Text';
   });
+};
+
+const normalizeGroupCellText = (value: unknown): string => extractCellText(value).trim();
+
+const isNonMergeCandidateHeader = (header: string): boolean => {
+  return (
+    headerIncludes(header, ['操作', 'action', 'actions', 'operation']) ||
+    headerIncludes(header, ['状态', '标签', '类型', '分类', '级别', 'status', 'state', 'tag', 'badge']) ||
+    headerIncludes(header, NUMERIC_HEADER_HINTS) ||
+    headerIncludes(header, NUMBER_UNIT_HEADER_HINTS)
+  );
+};
+
+const bodyMergeCoversCell = (
+  merges: NormalizedTableMergeSpec[],
+  row: number,
+  col: number
+): boolean => {
+  return merges.some((merge) => {
+    if (merge.section !== 'body') return false;
+    return (
+      row >= merge.row &&
+      row < merge.row + merge.rowspan &&
+      col >= merge.col &&
+      col < merge.col + merge.colspan
+    );
+  });
+};
+
+const getNearestLeftMergeBoundary = (
+  merges: NormalizedTableMergeSpec[],
+  row: number,
+  col: number
+): { startRow: number; endRow: number } | null => {
+  let best: NormalizedTableMergeSpec | null = null;
+  for (const merge of merges) {
+    if (merge.section !== 'body' || merge.col >= col || merge.rowspan <= 1) continue;
+    if (row < merge.row || row >= merge.row + merge.rowspan) continue;
+    if (!best || merge.col > best.col) best = merge;
+  }
+  if (!best) return null;
+  return {
+    startRow: best.row,
+    endRow: best.row + best.rowspan - 1,
+  };
+};
+
+const hasRightSideVariationInRun = (
+  rows: unknown[][],
+  startRow: number,
+  endRow: number,
+  colIndex: number,
+  columnCount: number
+): boolean => {
+  for (let col = colIndex + 1; col < columnCount; col += 1) {
+    const values = new Set<string>();
+    for (let row = startRow; row <= endRow; row += 1) {
+      const text = normalizeGroupCellText(rows[row]?.[col]);
+      if (text) values.add(text.toLowerCase());
+    }
+    if (values.size >= 2) return true;
+  }
+  return false;
+};
+
+const isGroupMergeCandidateColumn = (header: string, values: unknown[]): boolean => {
+  if (isNonMergeCandidateHeader(header)) return false;
+  if (isNumericTextColumn(header, values)) return false;
+  if (columnHasActionText(values)) return false;
+  if (columnHasStatusText(values) || columnHasTagObject(values)) return false;
+  if (isLikelyPlainTypeTagColumn(header, values)) return false;
+  const inferredType = inferColumnType(header, values);
+  if (inferredType === 'TypeTag' || inferredType === 'StatusTag' || inferredType === 'Avatar' || inferredType === 'ActionText') {
+    return false;
+  }
+  return true;
+};
+
+const inferRepeatedGroupBodyMerges = (input: {
+  headers: string[];
+  rows: unknown[][];
+  merges?: NormalizedTableMergeSpec[];
+}): NormalizedTableMergeSpec[] => {
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const headers = Array.isArray(input.headers) ? input.headers : [];
+  const existingMerges = Array.isArray(input.merges) ? input.merges : [];
+  const existingBodyMerges = existingMerges.filter((merge) => merge.section === 'body');
+  if (rows.length < 2 || headers.length < 2) return [];
+
+  const columnCount = Math.max(
+    headers.length,
+    rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+  );
+  const maxCandidateCol = Math.min(3, columnCount - 1);
+  const inferred: NormalizedTableMergeSpec[] = [];
+
+  for (let col = 0; col < maxCandidateCol; col += 1) {
+    const header = String(headers[col] || '');
+    const columnValues = rows.map((row) => row?.[col]);
+    if (!isGroupMergeCandidateColumn(header, columnValues)) continue;
+
+    const colMerges: NormalizedTableMergeSpec[] = [];
+    let row = 0;
+    while (row < rows.length) {
+      const text = normalizeGroupCellText(rows[row]?.[col]);
+      if (!text || bodyMergeCoversCell([...existingBodyMerges, ...inferred], row, col)) {
+        row += 1;
+        continue;
+      }
+
+      let endRow = row;
+      const boundary = getNearestLeftMergeBoundary([...existingBodyMerges, ...inferred], row, col);
+      while (
+        endRow + 1 < rows.length &&
+        (!boundary || endRow + 1 <= boundary.endRow) &&
+        normalizeGroupCellText(rows[endRow + 1]?.[col]).toLowerCase() === text.toLowerCase() &&
+        !bodyMergeCoversCell([...existingBodyMerges, ...inferred], endRow + 1, col)
+      ) {
+        endRow += 1;
+      }
+
+      const span = endRow - row + 1;
+      if (span > 1 && hasRightSideVariationInRun(rows, row, endRow, col, columnCount)) {
+        colMerges.push({
+          section: 'body',
+          row,
+          col,
+          rowspan: span,
+          colspan: 1,
+          id: `repeated-body-${row}-${col}`,
+          source: 'repeated-group-value',
+        });
+      }
+      row = endRow + 1;
+    }
+
+    const coveredRows = colMerges.reduce((sum, merge) => sum + merge.rowspan, 0);
+    const hasStrongSignal =
+      colMerges.length >= 2 ||
+      colMerges.some((merge) => merge.rowspan >= 3) ||
+      coveredRows >= Math.ceil(rows.length * 0.5) ||
+      (rows.length <= 3 && colMerges.length >= 1);
+    if (hasStrongSignal) inferred.push(...colMerges);
+  }
+
+  return inferred;
+};
+
+const inferBlankGroupBodyMerges = (input: {
+  headers: string[];
+  rows: unknown[][];
+  merges?: NormalizedTableMergeSpec[];
+}): NormalizedTableMergeSpec[] => {
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const headers = Array.isArray(input.headers) ? input.headers : [];
+  const existingMerges = Array.isArray(input.merges) ? input.merges : [];
+  const existingBodyMerges = existingMerges.filter((merge) => merge.section === 'body');
+  if (rows.length < 2 || headers.length < 2) return [];
+
+  const columnCount = Math.max(
+    headers.length,
+    rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+  );
+  const maxCandidateCol = Math.min(3, columnCount - 1);
+  const inferred: NormalizedTableMergeSpec[] = [];
+
+  for (let col = 0; col < maxCandidateCol; col += 1) {
+    const header = String(headers[col] || '');
+    const columnValues = rows.map((row) => row?.[col]);
+    if (!isGroupMergeCandidateColumn(header, columnValues)) continue;
+
+    const colMerges: NormalizedTableMergeSpec[] = [];
+    let row = 0;
+    while (row < rows.length) {
+      const text = normalizeGroupCellText(rows[row]?.[col]);
+      if (!text || bodyMergeCoversCell([...existingBodyMerges, ...inferred], row, col)) {
+        row += 1;
+        continue;
+      }
+
+      let endRow = row;
+      const boundary = getNearestLeftMergeBoundary([...existingBodyMerges, ...inferred], row, col);
+      while (
+        endRow + 1 < rows.length &&
+        (!boundary || endRow + 1 <= boundary.endRow) &&
+        normalizeGroupCellText(rows[endRow + 1]?.[col]) === '' &&
+        !bodyMergeCoversCell([...existingBodyMerges, ...inferred], endRow + 1, col)
+      ) {
+        endRow += 1;
+      }
+
+      const span = endRow - row + 1;
+      if (span > 1 && hasRightSideVariationInRun(rows, row, endRow, col, columnCount)) {
+        colMerges.push({
+          section: 'body',
+          row,
+          col,
+          rowspan: span,
+          colspan: 1,
+          id: `blank-body-${row}-${col}`,
+          source: 'blank-group-value',
+        });
+      }
+      row = endRow + 1;
+    }
+
+    const coveredRows = colMerges.reduce((sum, merge) => sum + merge.rowspan, 0);
+    const hasStrongSignal =
+      colMerges.length >= 1 &&
+      (
+        colMerges.length >= 2 ||
+        colMerges.some((merge) => merge.rowspan >= 3) ||
+        coveredRows >= Math.ceil(rows.length * 0.35)
+      );
+    if (hasStrongSignal) inferred.push(...colMerges);
+  }
+
+  return inferred;
 };
 
 export const normalizeRowsByHeaders = (
@@ -586,7 +972,23 @@ export const buildTableComponentFromPayload = (
     return [{ section: 'body', row: lastRowIndex, col: 0, rowspan: 1, colspan: span }];
   };
   const totalRowMerges = inferTotalRowMerges();
-  let mergesInput = [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges];
+  const repeatedGroupBodyMerges = inferRepeatedGroupBodyMerges({
+    headers,
+    rows,
+    merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges],
+  });
+  const blankGroupBodyMerges = inferBlankGroupBodyMerges({
+    headers,
+    rows,
+    merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges, ...repeatedGroupBodyMerges],
+  });
+  let mergesInput = [
+    ...explicitMergesInput,
+    ...inferredBodyMerges,
+    ...totalRowMerges,
+    ...repeatedGroupBodyMerges,
+    ...blankGroupBodyMerges,
+  ];
   const autoMergeRulesInput = normalizeAutoMergeRulesInput(source);
   const isMergeTable = mergesInput.length > 0 || headerRows.length > 1;
 
@@ -706,20 +1108,22 @@ export const buildTableComponentFromPayload = (
       const rawValue = row[colIndex];
       const value = extractCellText(rawValue);
       if (cellComponentId === 'table-cell-tag') {
-        const columnKind = tagColumnKind || 'status';
+        const columnKind = tagColumnKind || 'type';
         const tagPayload = extractTagCellPayload(rawValue, columnKind);
-        const kind = tagPayload.kind || columnKind;
+        const kind: TagColumnKind = columnKind === 'type' ? 'type' : (tagPayload.kind || columnKind);
         const isStatus = kind === 'status';
         const fallbackToken = isStatus ? 'lib-data-display-status-tag' : 'lib-data-display-tag';
-        const componentToken = tagPayload.componentToken || fallbackToken;
-        const tagText = tagPayload.text || value || 'Tag';
+        const componentToken = isStatus
+          ? (tagPayload.componentToken || fallbackToken)
+          : 'lib-data-display-tag';
+        const tagText = tagPayload.text || value || '';
         const baseParams: any = {
           height: bodyHeight,
           componentToken,
           tagKind: kind,
           tagText,
           text: tagText,
-          tagColor: tagPayload.tagColor,
+          tagColor: isStatus ? tagPayload.tagColor : undefined,
           ...(hasWidth && !isActionColumn ? { width } : {})
         };
 
@@ -731,6 +1135,9 @@ export const buildTableComponentFromPayload = (
           delete baseParams.tagType;
         } else {
           baseParams.tagType = tagPayload.tagType || 'Outline 线型标签';
+          delete baseParams.statusType;
+          delete baseParams.statusTheme;
+          delete baseParams.statusState;
         }
 
         columnChildren.push({

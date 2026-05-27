@@ -252,6 +252,12 @@ import {
   TABLE_HEADER_ICON_PLUGIN_KEY,
 } from './code/table/table-queries';
 import { normalizeNumberUnitLabel as normalizeTableNumberUnitLabel } from './code/table/table-number-unit';
+import {
+  buildNormalizedTableGrid,
+  type NormalizedTableMergeSpec,
+} from './code/table/table-merge-model';
+import { validateNormalizedTableGrid } from './code/table/table-merge-validate';
+import { buildTableRenderPlan } from './code/table/table-render-grid';
 
 const COMPONENT_DEFS = COMPONENT_REGISTRY.components;
 initStyleBindingDefs(COMPONENT_DEFS);
@@ -2776,6 +2782,418 @@ function isAiGeneratedMergedCellSelection(node: BaseNode | null | undefined): bo
   });
 }
 
+type AiTableCellRef = {
+  row: number;
+  col: number;
+  cell: SceneNode;
+};
+
+type AiMergePatchResult =
+  | { ok: true; snapshot: ComponentInstance; row: number; col: number; message: string }
+  | { ok: false; reason: string };
+
+const getMergeRowEnd = (merge: Pick<NormalizedTableMergeSpec, 'row' | 'rowspan'>): number =>
+  merge.row + Math.max(1, Number(merge.rowspan || 1)) - 1;
+
+const getMergeColEnd = (merge: Pick<NormalizedTableMergeSpec, 'col' | 'colspan'>): number =>
+  merge.col + Math.max(1, Number(merge.colspan || 1)) - 1;
+
+const makeMergeIdentity = (merge: Pick<NormalizedTableMergeSpec, 'section' | 'row' | 'col' | 'rowspan' | 'colspan' | 'id'>): string =>
+  `${merge.section}:${merge.id || ''}:${merge.row}:${merge.col}:${merge.rowspan}:${merge.colspan}`;
+
+const rangesOverlap = (aStart: number, aEnd: number, bStart: number, bEnd: number): boolean =>
+  aStart <= bEnd && bStart <= aEnd;
+
+const getSnapshotColumns = (snapshot: ComponentInstance): ComponentInstance[] =>
+  Array.isArray(snapshot.children)
+    ? snapshot.children.filter((child) => child?.componentId === 'table-column')
+    : [];
+
+const getSnapshotBodyChildren = (column: ComponentInstance): ComponentInstance[] =>
+  Array.isArray(column.children)
+    ? column.children.filter((child) => child?.componentId !== 'table-header-cell')
+    : [];
+
+function extractTableCellValueFromParams(params: Record<string, any> | undefined): unknown {
+  if (!params || typeof params !== 'object') return '';
+  if (params.text !== undefined) return params.text;
+  if (params.value !== undefined) return params.value;
+  if (params.label !== undefined) return params.label;
+  if (params.content !== undefined) return params.content;
+  if (params.tagText !== undefined) return params.tagText;
+  return '';
+}
+
+function normalizeCellText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    const record = value as Record<string, any>;
+    return String(record.text ?? record.value ?? record.label ?? record.content ?? record.tagText ?? '');
+  }
+  return String(value);
+}
+
+function setCellParamsText(params: Record<string, any>, value: unknown): Record<string, any> {
+  const text = normalizeCellText(value);
+  const next = { ...params };
+  if ('text' in next || !('value' in next)) next.text = text;
+  if ('value' in next) next.value = text;
+  if ('label' in next) next.label = text;
+  if ('content' in next) next.content = text;
+  if ('tagText' in next) next.tagText = text;
+  return next;
+}
+
+function extractRowsFromTableSnapshot(snapshot: ComponentInstance): unknown[][] {
+  const columns = getSnapshotColumns(snapshot);
+  const bodyChildrenByColumn = columns.map(getSnapshotBodyChildren);
+  const rowCount = Math.max(
+    Number(snapshot.params?.rowCount || 0),
+    ...bodyChildrenByColumn.map((children) => children.length),
+    0
+  );
+  const rows: unknown[][] = [];
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    rows.push(bodyChildrenByColumn.map((children) => extractTableCellValueFromParams(children[rowIndex]?.params)));
+  }
+  return rows;
+}
+
+function getColumnTypesFromTableSnapshot(snapshot: ComponentInstance): string[] {
+  const mapComponentId = (componentId: string | undefined): string => {
+    if (componentId === 'table-cell-input') return 'Input';
+    if (componentId === 'table-cell-select') return 'Select';
+    if (componentId === 'table-cell-action-icon') return 'ActionIcon';
+    if (componentId === 'table-cell-action-text') return 'ActionText';
+    if (componentId === 'table-cell-avatar') return 'Avatar';
+    if (componentId === 'table-cell-tag') return 'StatusTag';
+    if (componentId === 'table-cell-number-unit') return 'Number(unit)';
+    return 'Text';
+  };
+  return getSnapshotColumns(snapshot).map((column) => {
+    const firstBody = getSnapshotBodyChildren(column)[0];
+    return mapComponentId(firstBody?.componentId);
+  });
+}
+
+function getColumnWidthsFromTableSnapshot(snapshot: ComponentInstance): number[] {
+  return getSnapshotColumns(snapshot).map((column) => Number(column.params?.width || 0));
+}
+
+function writeRowsToTableSnapshot(snapshot: ComponentInstance, rows: unknown[][]): ComponentInstance {
+  const nextSnapshot = deepCloneComponentInstance(snapshot);
+  const columns = getSnapshotColumns(nextSnapshot);
+  columns.forEach((column, colIndex) => {
+    const bodyChildren = getSnapshotBodyChildren(column);
+    bodyChildren.forEach((child, rowIndex) => {
+      const nextValue = rows[rowIndex]?.[colIndex] ?? '';
+      child.params = setCellParamsText(child.params || {}, nextValue);
+    });
+  });
+  return nextSnapshot;
+}
+
+function normalizeTableMergeSpecs(rawMerges: unknown): NormalizedTableMergeSpec[] {
+  if (!Array.isArray(rawMerges)) return [];
+  return rawMerges
+    .filter((item): item is Record<string, any> => Boolean(item) && typeof item === 'object')
+    .map((item, index) => {
+      const section = String(item.section || '').trim().toLowerCase() === 'header' ? 'header' : 'body';
+      const row = Number.isInteger(Number(item.row)) ? Math.max(0, Number(item.row)) : 0;
+      const col = Number.isInteger(Number(item.col)) ? Math.max(0, Number(item.col)) : 0;
+      const rowspan = Number.isInteger(Number(item.rowspan)) ? Math.max(1, Number(item.rowspan)) : 1;
+      const colspan = Number.isInteger(Number(item.colspan)) ? Math.max(1, Number(item.colspan)) : 1;
+      const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `merge-${section}-${index + 1}`;
+      return {
+        ...item,
+        section,
+        row,
+        col,
+        rowspan,
+        colspan,
+        id,
+      } as NormalizedTableMergeSpec;
+    });
+}
+
+function findCoveringBodyMerge(
+  merges: NormalizedTableMergeSpec[],
+  row: number,
+  col: number
+): NormalizedTableMergeSpec | null {
+  return merges.find((merge) => {
+    if (merge.section !== 'body') return false;
+    if (merge.rowspan <= 1 && merge.colspan <= 1) return false;
+    return (
+      row >= merge.row &&
+      row <= getMergeRowEnd(merge) &&
+      col >= merge.col &&
+      col <= getMergeColEnd(merge)
+    );
+  }) || null;
+}
+
+function isContinuousIntegerSet(values: Set<number>, start: number, end: number): boolean {
+  for (let value = start; value <= end; value += 1) {
+    if (!values.has(value)) return false;
+  }
+  return true;
+}
+
+function patchAiTableSnapshotForMerge(
+  snapshot: ComponentInstance,
+  tableParams: Record<string, any>,
+  selectedRefs: AiTableCellRef[]
+): AiMergePatchResult {
+  if (selectedRefs.length < 2) {
+    return { ok: false, reason: '请至少选中 2 个单元格。' };
+  }
+
+  const rows = extractRowsFromTableSnapshot(snapshot);
+  const headerRows = Array.isArray(tableParams.headerRows) && tableParams.headerRows.length > 0
+    ? tableParams.headerRows
+    : Array.isArray(tableParams.headers)
+      ? [tableParams.headers]
+      : [];
+  const allMerges = normalizeTableMergeSpecs(tableParams.merges);
+  const bodyMerges = allMerges.filter((merge) => merge.section === 'body');
+  const selectedMergeMap = new Map<string, NormalizedTableMergeSpec>();
+  for (const ref of selectedRefs) {
+    const covering = findCoveringBodyMerge(bodyMerges, ref.row, ref.col);
+    if (covering) selectedMergeMap.set(makeMergeIdentity(covering), covering);
+  }
+
+  let targetRowStart: number;
+  let targetRowEnd: number;
+  let targetColStart: number;
+  let targetColEnd: number;
+  let baseMerge: NormalizedTableMergeSpec | null = null;
+
+  if (selectedMergeMap.size > 1) {
+    return { ok: false, reason: '暂不支持一次合并多个已有合并块，请分步处理。' };
+  }
+
+  if (selectedMergeMap.size === 1) {
+    baseMerge = Array.from(selectedMergeMap.values())[0];
+    const baseRowStart = baseMerge.row;
+    const baseRowEnd = getMergeRowEnd(baseMerge);
+    targetColStart = baseMerge.col;
+    targetColEnd = getMergeColEnd(baseMerge);
+    targetRowStart = Math.min(baseRowStart, ...selectedRefs.map((ref) => ref.row));
+    targetRowEnd = Math.max(baseRowEnd, ...selectedRefs.map((ref) => ref.row));
+
+    const selectedOutsideRows = new Set(
+      selectedRefs
+        .map((ref) => ref.row)
+        .filter((row) => row < baseRowStart || row > baseRowEnd)
+    );
+    if (selectedOutsideRows.size === 0) {
+      return { ok: false, reason: '没有选中需要并入的新行。' };
+    }
+    if (targetRowStart < baseRowStart) {
+      if (!selectedOutsideRows.has(baseRowStart - 1) || !isContinuousIntegerSet(selectedOutsideRows, targetRowStart, baseRowStart - 1)) {
+        return { ok: false, reason: '只能把相邻且连续的行并入已有合并块。' };
+      }
+    }
+    if (targetRowEnd > baseRowEnd) {
+      if (!selectedOutsideRows.has(baseRowEnd + 1) || !isContinuousIntegerSet(selectedOutsideRows, baseRowEnd + 1, targetRowEnd)) {
+        return { ok: false, reason: '只能把相邻且连续的行并入已有合并块。' };
+      }
+    }
+  } else {
+    targetRowStart = Math.min(...selectedRefs.map((ref) => ref.row));
+    targetRowEnd = Math.max(...selectedRefs.map((ref) => ref.row));
+    targetColStart = Math.min(...selectedRefs.map((ref) => ref.col));
+    targetColEnd = Math.max(...selectedRefs.map((ref) => ref.col));
+    if ((targetRowEnd - targetRowStart + 1) * (targetColEnd - targetColStart + 1) !== selectedRefs.length) {
+      return { ok: false, reason: '请选择完整且连续的矩形区域。' };
+    }
+  }
+
+  const targetRowspan = targetRowEnd - targetRowStart + 1;
+  const targetColspan = targetColEnd - targetColStart + 1;
+  if (targetRowspan <= 1 && targetColspan <= 1) {
+    return { ok: false, reason: '请选择至少 2 个单元格进行合并。' };
+  }
+
+  const baseLabel = baseMerge
+    ? (rows[baseMerge.row]?.[baseMerge.col] ?? '')
+    : (rows[targetRowStart]?.[targetColStart] ?? '');
+  const trimmedMergeLabels: Array<{ row: number; col: number; value: unknown }> = [];
+  const nextBodyMerges: NormalizedTableMergeSpec[] = [];
+  const baseIdentity = baseMerge ? makeMergeIdentity(baseMerge) : '';
+
+  for (const merge of bodyMerges) {
+    if (baseMerge && makeMergeIdentity(merge) === baseIdentity) continue;
+
+    const mergeRowStart = merge.row;
+    const mergeRowEnd = getMergeRowEnd(merge);
+    const mergeColStart = merge.col;
+    const mergeColEnd = getMergeColEnd(merge);
+    const intersectsTarget =
+      rangesOverlap(mergeRowStart, mergeRowEnd, targetRowStart, targetRowEnd) &&
+      rangesOverlap(mergeColStart, mergeColEnd, targetColStart, targetColEnd);
+
+    if (!intersectsTarget) {
+      nextBodyMerges.push(merge);
+      continue;
+    }
+
+    if (mergeColStart !== targetColStart || mergeColEnd !== targetColEnd) {
+      return { ok: false, reason: '目标区域会部分覆盖其它合并单元格，请选择完整的合并块。' };
+    }
+
+    const overlapStart = Math.max(mergeRowStart, targetRowStart);
+    const overlapEnd = Math.min(mergeRowEnd, targetRowEnd);
+    if (overlapStart <= mergeRowStart && overlapEnd >= mergeRowEnd) {
+      continue;
+    }
+    if (overlapStart === mergeRowStart) {
+      const nextRow = overlapEnd + 1;
+      const nextRowspan = mergeRowEnd - nextRow + 1;
+      if (nextRowspan >= 1) {
+        trimmedMergeLabels.push({ row: nextRow, col: merge.col, value: rows[merge.row]?.[merge.col] ?? '' });
+      }
+      if (nextRowspan > 1) {
+        nextBodyMerges.push({
+          ...merge,
+          row: nextRow,
+          rowspan: nextRowspan,
+        });
+      }
+      continue;
+    }
+    if (overlapEnd === mergeRowEnd) {
+      const nextRowspan = overlapStart - mergeRowStart;
+      if (nextRowspan > 1) {
+        nextBodyMerges.push({
+          ...merge,
+          rowspan: nextRowspan,
+        });
+      }
+      continue;
+    }
+    return { ok: false, reason: '不能从已有合并块中间切出单独行，请选择相邻边缘行。' };
+  }
+
+  const nextMerge: NormalizedTableMergeSpec = {
+    ...(baseMerge || {}),
+    section: 'body',
+    row: targetRowStart,
+    col: targetColStart,
+    rowspan: targetRowspan,
+    colspan: targetColspan,
+    id: baseMerge?.id || `manual-body-${Date.now()}`,
+    source: 'manual-ai-merge',
+  };
+  nextBodyMerges.push(nextMerge);
+
+  for (let row = targetRowStart; row <= targetRowEnd; row += 1) {
+    if (!rows[row]) rows[row] = [];
+    for (let col = targetColStart; col <= targetColEnd; col += 1) {
+      if (row === targetRowStart && col === targetColStart) continue;
+      rows[row][col] = '';
+    }
+  }
+  if (!rows[targetRowStart]) rows[targetRowStart] = [];
+  rows[targetRowStart][targetColStart] = baseLabel;
+  for (const item of trimmedMergeLabels) {
+    if (!rows[item.row]) rows[item.row] = [];
+    rows[item.row][item.col] = item.value;
+  }
+
+  const nextMerges = [
+    ...allMerges.filter((merge) => merge.section === 'header'),
+    ...nextBodyMerges.sort((a, b) => a.row - b.row || a.col - b.col),
+  ];
+  const normalizedGrid = buildNormalizedTableGrid({
+    headerRows,
+    rows,
+    columnTypes: Array.isArray(tableParams.columnTypes) ? tableParams.columnTypes : getColumnTypesFromTableSnapshot(snapshot),
+    columnWidths: Array.isArray(tableParams.columnWidths) ? tableParams.columnWidths : getColumnWidthsFromTableSnapshot(snapshot),
+    ...(tableParams.rowAction ? { rowAction: tableParams.rowAction } : {}),
+    merges: nextMerges,
+    autoMergeRules: Array.isArray(tableParams.autoMergeRules) ? tableParams.autoMergeRules : [],
+  });
+  const validationErrors = validateNormalizedTableGrid(normalizedGrid);
+  if (validationErrors.length > 0) {
+    return { ok: false, reason: validationErrors[0]?.message || '合并区域校验失败。' };
+  }
+
+  const patchedSnapshot = writeRowsToTableSnapshot(snapshot, rows);
+  patchedSnapshot.params = {
+    ...patchedSnapshot.params,
+    columnCount: normalizedGrid.columnCount,
+    rowCount: normalizedGrid.bodyRowCount,
+    headers: normalizedGrid.leafHeaders,
+    headerRows: normalizedGrid.headerRows,
+    merges: normalizedGrid.merges,
+    autoMergeRules: normalizedGrid.autoMergeRules,
+    tableRenderPlan: buildTableRenderPlan(normalizedGrid),
+  };
+
+  return {
+    ok: true,
+    snapshot: patchedSnapshot,
+    row: targetRowStart,
+    col: targetColStart,
+    message: baseMerge ? '已扩展 AI 合并单元格' : '已合并 AI 表格单元格',
+  };
+}
+
+async function mergeSelectedAiTableCells(cellNodes: SceneNode[]): Promise<{
+  handled: boolean;
+  ok: boolean;
+  reason?: string;
+  anchorCell?: SceneNode;
+}> {
+  const refs: AiTableCellRef[] = [];
+  let tableRoot: FrameNode | null = null;
+  for (const node of cellNodes) {
+    const currentTable = findTableFrameFromNode(node);
+    if (!currentTable) return { handled: false, ok: false };
+    const tableParams = readNodeParams(currentTable);
+    if (!isAiMergedTableParams(tableParams)) return { handled: false, ok: false };
+    if (!tableRoot) {
+      tableRoot = currentTable;
+    } else if (tableRoot.id !== currentTable.id) {
+      return { handled: true, ok: false, reason: '请选择同一张 AI 合并表格内的单元格。' };
+    }
+    const { rowIndex, colIndex, cell } = getCellMetaFromSelection(node);
+    if (rowIndex === null || colIndex === null || !cell) {
+      return { handled: true, ok: false, reason: '未能识别选中单元格的逻辑行列。' };
+    }
+    refs.push({ row: rowIndex, col: colIndex, cell });
+  }
+
+  if (!tableRoot) return { handled: false, ok: false };
+  const tableParams = readNodeParams(tableRoot);
+  const snapshot = readComponentInstanceSnapshot(tableRoot);
+  if (!snapshot || snapshot.componentId !== 'table') {
+    return { handled: true, ok: false, reason: '当前 AI 合并表格缺少可重建快照，请重新生成后再试。' };
+  }
+
+  const patch = patchAiTableSnapshotForMerge(snapshot, tableParams, refs);
+  if (!patch.ok) {
+    return { handled: true, ok: false, reason: patch.reason };
+  }
+
+  const newRoot = await renderComponent(patch.snapshot, { isRoot: false });
+  writeComponentInstanceSnapshot(newRoot, patch.snapshot);
+  writeNodeParams(newRoot, patch.snapshot.params || {});
+  if (!replaceSceneNode(tableRoot, newRoot)) {
+    try { newRoot.remove(); } catch {}
+    return { handled: true, ok: false, reason: '表格重建未成功。' };
+  }
+
+  const anchorCell = findLogicalBodyCellNode(newRoot, patch.row, patch.col) || newRoot;
+  figma.currentPage.selection = [anchorCell];
+  checkSelection();
+  return { handled: true, ok: true, anchorCell, reason: patch.message };
+}
+
 function copyPluginDataKeys(source: SceneNode, target: SceneNode, keys: string[]) {
   for (const key of keys) {
     const value = source.getPluginData(key);
@@ -4487,6 +4905,19 @@ async function renderComponent(
           const isCovered = (row: number, col: number): boolean => {
               return coveredCellKeys.has(`${row}:${col}`);
           };
+          const findCoveringAnchor = (row: number, col: number): any | null => {
+              for (const c of bodyCells) {
+                  if (!c?.isMergeAnchor) continue;
+                  const r0 = Number(c.row ?? 0);
+                  const c0 = Number(c.col ?? 0);
+                  const rs = Number(c.rowspan || 1);
+                  const cs = Number(c.colspan || 1);
+                  if (row >= r0 && row < r0 + rs && col >= c0 && col < c0 + cs) {
+                      return c;
+                  }
+              }
+              return null;
+          };
 
           const bodyFrame = figma.createFrame();
           bodyFrame.name = 'Table Body';
@@ -4548,11 +4979,34 @@ async function renderComponent(
 
           // 普通行：把 [colStart, colEnd] 的 cell 装成一个 Table Body Row
           // 支持横向合并（colspan>1, rowspan=1）：anchor cell 吃掉合并范围内的总宽度，covered cell 跳过
+          const createCoveredCellSpacer = (width: number): FrameNode => {
+              const spacer = figma.createFrame();
+              spacer.name = 'covered_cell_spacer';
+              spacer.layoutMode = 'NONE';
+              spacer.primaryAxisSizingMode = 'FIXED';
+              spacer.counterAxisSizingMode = 'FIXED';
+              spacer.fills = [];
+              spacer.strokes = [];
+              spacer.clipsContent = false;
+              spacer.resize(Math.max(1, width), Math.max(1, bodyHeight));
+              try { (spacer as any).layoutSizingVertical = 'FIXED'; } catch {}
+              try { (spacer as any).layoutAlign = 'INHERIT'; } catch {}
+              return spacer;
+          };
           const buildPlainRow = async (rowIndex: number, colStart: number, colEnd: number): Promise<FrameNode> => {
               const rowWidth = resolveRangeWidth(colStart, colEnd);
               const rowFrame = createRowFrame(rowWidth, bodyHeight);
               for (let col = colStart; col <= colEnd; col += 1) {
-                  if (isCovered(rowIndex, col)) continue;
+                  if (isCovered(rowIndex, col)) {
+                      const anchor = findCoveringAnchor(rowIndex, col);
+                      const anchorRow = Number(anchor?.row ?? rowIndex);
+                      // If a vertical merge anchor was not lifted into a merged_block for this range,
+                      // keep the column slot so later cells do not collapse left.
+                      if (anchor && anchorRow < rowIndex) {
+                          rowFrame.appendChild(createCoveredCellSpacer(resolveRangeWidth(col, col)));
+                      }
+                      continue;
+                  }
                   const cell = cellByKey.get(`${rowIndex}:${col}`);
                   if (!cell) continue;
                   const { node } = await renderBodyCellNode(cell, {});
@@ -7011,6 +7465,21 @@ async function handleMergeSelectedCells(_msg: any) {
     if (selection.length < 2) {
       figma.notify('请在画布中多选同一列里连续的 ≥2 个 body 单元格', { error: true, timeout: 5000 });
       figma.ui.postMessage({ type: 'merge-selected-cells-result', ok: false, reason: 'selection<2' });
+      return;
+    }
+    const aiMergeResult = await mergeSelectedAiTableCells(selection);
+    if (aiMergeResult.handled) {
+      if (!aiMergeResult.ok) {
+        figma.notify(aiMergeResult.reason || '合并失败', { error: true, timeout: 5000 });
+      } else {
+        figma.notify(aiMergeResult.reason || '已合并选中单元格', { timeout: 3000 });
+      }
+      figma.ui.postMessage({
+        type: 'merge-selected-cells-result',
+        ok: aiMergeResult.ok,
+        reason: aiMergeResult.reason,
+        anchorCellId: aiMergeResult.anchorCell?.id
+      });
       return;
     }
     const result = mergeSelectedColumnCells(selection);
