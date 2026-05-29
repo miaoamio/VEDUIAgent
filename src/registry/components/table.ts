@@ -1171,21 +1171,21 @@ export const tableComponents: ComponentRegistry["components"] = {
     "id": "table-cell-action-text",
     "name": "ActionText 操作文字",
     "category": "Table",
-    "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
+    "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认右对齐；仅在存在更多语义时展示更多图标。",
     "schemaVersion": "2.0.0",
     "family": "table-cell",
     "prompts": {
-      "description": "以文字形式承载操作（如“编辑 删除 …”），默认右对齐；支持自动折叠并在末尾展示更多图标。",
-      "usage": "用于表格“操作/Action”列：用文字链接样式展示多个操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除 …”），**严禁使用斜杠/分割**。当包含“…”/“...”/“更多”或操作数 > 3 时，默认只显示前 2 个操作并在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
+      "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认右对齐；仅在存在更多语义时展示更多图标。",
+      "usage": "用于表格“操作/Action”列：用文字链接样式展示操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除”），**严禁使用斜杠/分割**。只有当包含“…”/“...”/“更多”或操作数 > 3 时，才在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
       "examples": [
-        "操作列(文字): { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"编辑 删除 …\", \"width\": 0 } }"
+        "操作列(文字): { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"详情\", \"width\": 0 } }"
       ]
     },
     "params": {
       "text": {
         "type": "string",
-        "default": "编辑 删除 …",
-        "description": "操作文案（空格分隔，严禁使用/）；包含“…”/“...”/“更多”会触发更多图标"
+        "default": "详情",
+        "description": "操作文案（空格分隔，严禁使用/）；仅包含“…”/“...”/“更多”时触发更多图标"
       },
       "width": {
         "type": "number",

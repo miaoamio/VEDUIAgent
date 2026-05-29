@@ -1813,6 +1813,48 @@ div#react-page > div.container > div.chat-layout > div.input-section > div.compo
   z-index: 1;
 }
 
+.composer-table-merge-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px 0;
+}
+
+.composer-table-merge-label {
+  flex-shrink: 0;
+  color: #71717A;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.composer-table-merge-segment {
+  display: inline-flex;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.composer-table-merge-option {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.composer-table-merge-option:disabled {
+  cursor: not-allowed;
+  color: #A1A1AA;
+}
+
+.composer-table-merge-segment.othertabs-group,
+.composer-table-merge-segment .othertabs-group {
+  width: auto;
+}
+
+.composer-table-merge-segment .othertabs-button,
+.composer-table-merge-segment.othertabs-group .othertabs-button,
+.composer-table-merge-option.othertabs-button {
+  flex: 0 0 auto;
+}
+
 .composer-footer-left {
   display: flex;
   align-items: center;

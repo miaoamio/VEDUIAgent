@@ -1,7 +1,6 @@
 import type {
   NormalizedTableGrid,
   NormalizedTableMergeSpec,
-  TableGridCellRef,
   TableMergeSection,
 } from './table-merge-model';
 import { expandMergeCells } from './table-merge-model';
@@ -210,16 +209,53 @@ const isBlankBodyCell = (value: unknown): boolean => {
   return false;
 };
 
+const findTopHeaderCoveringMerge = (
+  merges: NormalizedTableMergeSpec[],
+  colIndex: number
+): NormalizedTableMergeSpec | null =>
+  merges.find((merge) => {
+    if (merge.section !== 'header' || merge.row !== 0) return false;
+    return colIndex >= merge.col && colIndex < merge.col + merge.colspan;
+  }) || null;
+
+const isLeafOnlyTopHeaderColumn = (grid: NormalizedTableGrid, colIndex: number): boolean => {
+  const topText = String(grid.headerRows[0]?.[colIndex] || '').trim();
+  if (!topText) return false;
+  for (let rowIndex = 1; rowIndex < grid.headerRowCount; rowIndex += 1) {
+    if (String(grid.headerRows[rowIndex]?.[colIndex] || '').trim()) return false;
+  }
+  return true;
+};
+
+const isTextLikeMergeColumnType = (columnType: string | undefined): boolean =>
+  String(columnType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_()-]+/g, '') === 'text';
+
+const isEligibleBlankRunMergeColumn = (grid: NormalizedTableGrid, colIndex: number): boolean => {
+  if (!isTextLikeMergeColumnType(grid.columnTypes[colIndex])) return false;
+  const headerMerges = grid.merges.filter((item) => item.section === 'header');
+  if (grid.headerRowCount <= 1 && headerMerges.length === 0) return true;
+  const coveringMerge = findTopHeaderCoveringMerge(headerMerges, colIndex);
+  if (coveringMerge) {
+    return coveringMerge.col === colIndex && coveringMerge.colspan === 1 && coveringMerge.rowspan >= grid.headerRowCount;
+  }
+  return isLeafOnlyTopHeaderColumn(grid, colIndex);
+};
+
 const inferBodyRowspanMergesFromBlankRuns = (
   grid: NormalizedTableGrid,
   existingBodyMerges: Array<{ row: number; col: number; rowspan: number; colspan: number }>
 ) => {
+  if (grid.bodyMergeInference !== 'on') return [];
   const hasHeaderMergeContext =
     grid.headerRowCount > 1 || grid.merges.some((item) => item.section === 'header');
   if (!hasHeaderMergeContext) return [];
 
   const inferred = [];
   for (let colIndex = 0; colIndex < grid.columnCount; colIndex += 1) {
+    if (!isEligibleBlankRunMergeColumn(grid, colIndex)) continue;
     let rowIndex = 0;
     while (rowIndex < grid.bodyRowCount) {
       const current = grid.bodyRows[rowIndex]?.[colIndex];

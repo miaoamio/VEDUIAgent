@@ -2867,16 +2867,51 @@ function extractRowsFromTableSnapshot(snapshot: ComponentInstance): unknown[][] 
   return rows;
 }
 
-function isDateLikeTableText(text: unknown): boolean {
-  const normalized = String(text ?? '')
+function normalizeDateLikeTableToken(text: unknown): string {
+  return String(text ?? '')
     .trim()
-    .replace(/\s*([/-])\s*/g, '$1');
+    .replace(/[（(]\s*含\s*[）)]/g, '')
+    .replace(/\s*([/-])\s*/g, '$1')
+    .replace(/[~～—–－]+/g, '~')
+    .replace(/\s*(?:至|到)\s*/g, '~')
+    .replace(/\s+/g, ' ');
+}
+
+function isSingleDateLikeTableText(text: string): boolean {
+  return (
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(text) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(text) ||
+    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)
+  );
+}
+
+function isDateLikeTableText(text: unknown): boolean {
+  const normalized = normalizeDateLikeTableToken(text);
+  if (!normalized) return false;
+  if (isSingleDateLikeTableText(normalized)) return true;
+  const rangeParts = normalized.split('~').map((part) => part.trim()).filter(Boolean);
+  if (rangeParts.length === 2) {
+    return rangeParts.every(isSingleDateLikeTableText);
+  }
+  return false;
+}
+
+function isIpLikeTableText(text: unknown): boolean {
+  const normalized = String(text ?? '').trim();
   if (!normalized) return false;
   return (
-    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(normalized) ||
-    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(normalized) ||
-    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalized)
+    /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(normalized) ||
+    (/^[0-9a-f:]+$/i.test(normalized) && normalized.includes(':'))
   );
+}
+
+function hasMultipleDecimalSeparatorsInTableText(text: unknown): boolean {
+  const normalized = String(text ?? '')
+    .trim()
+    .replace(/[,\s]/g, '');
+  if (!normalized) return false;
+  const decimalPoints = (normalized.match(/\./g) || []).length;
+  return decimalPoints > 1;
 }
 
 function extractDateLikeTextFromNumberUnitParams(params: Record<string, any> | null | undefined): string {
@@ -2897,7 +2932,15 @@ function extractDateLikeTextFromNumberUnitParams(params: Record<string, any> | n
 
 function normalizeTableCellComponentId(componentId: string | undefined, params?: Record<string, any>): string | undefined {
   if (componentId !== 'table-cell-number-unit') return componentId;
-  return extractDateLikeTextFromNumberUnitParams(params) ? 'table-cell' : componentId;
+  const directText = extractTableCellParamText(params);
+  if (
+    extractDateLikeTextFromNumberUnitParams(params) ||
+    isIpLikeTableText(directText) ||
+    hasMultipleDecimalSeparatorsInTableText(directText)
+  ) {
+    return 'table-cell';
+  }
+  return componentId;
 }
 
 function getColumnTypesFromTableSnapshot(snapshot: ComponentInstance): string[] {
@@ -3308,6 +3351,9 @@ function parseTableNumberUnitText(rawValue: unknown): { value: string; unit: str
   const text = String(rawValue ?? '').trim();
   if (!text) return { value: '0', unit: '' };
   if (isDateLikeTableText(text)) return { value: text.replace(/\s*([/-])\s*/g, '$1'), unit: '' };
+  if (isIpLikeTableText(text) || hasMultipleDecimalSeparatorsInTableText(text)) {
+    return { value: text, unit: '' };
+  }
 
   const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
   if (prefixCurrencyMatch) {
@@ -5049,6 +5095,20 @@ async function renderComponent(
               try { (spacer as any).layoutAlign = 'INHERIT'; } catch {}
               return spacer;
           };
+          const createCoveredMergeSlot = (width: number, height: number): FrameNode => {
+              const slot = figma.createFrame();
+              slot.name = 'covered_merge_slot';
+              slot.layoutMode = 'NONE';
+              slot.primaryAxisSizingMode = 'FIXED';
+              slot.counterAxisSizingMode = 'FIXED';
+              slot.fills = [];
+              slot.strokes = [];
+              slot.clipsContent = false;
+              slot.resize(Math.max(1, width), Math.max(1, height));
+              try { (slot as any).layoutSizingVertical = 'FIXED'; } catch {}
+              try { (slot as any).layoutAlign = 'INHERIT'; } catch {}
+              return slot;
+          };
           const buildPlainRow = async (rowIndex: number, colStart: number, colEnd: number): Promise<FrameNode> => {
               const rowWidth = resolveRangeWidth(colStart, colEnd);
               const rowFrame = createRowFrame(rowWidth, bodyHeight);
@@ -5108,18 +5168,61 @@ async function renderComponent(
               const segLen = rowEnd - rowStart + 1;
               // 识别该段内"母体合并列"：anchor 起点在 rowStart，rowspan 等于段长度，col 在 [colStart, colEnd]
               const mergedAnchors: Array<{ col: number; cell: any }> = [];
+              const inheritedAnchors: Array<{ col: number; cell: any }> = [];
               for (const a of anchorList) {
                   const ar = Number(a.row ?? 0);
                   const ac = Number(a.col ?? 0);
                   const aspan = Number(a.rowspan || 1);
-                  if (ar === rowStart && aspan === segLen && ac >= colStart && ac <= colEnd) {
+                  const acolspan = Math.max(1, Number(a.colspan || 1));
+                  const anchorColEnd = ac + acolspan - 1;
+                  if (anchorColEnd < colStart || ac > colEnd) continue;
+                  if (ar === rowStart && aspan === segLen) {
                       mergedAnchors.push({ col: ac, cell: a });
+                      continue;
+                  }
+                  if (ar < rowStart && rowStart < ar + aspan && rowEnd < ar + aspan) {
+                      inheritedAnchors.push({ col: ac, cell: a });
                   }
               }
               mergedAnchors.sort((a, b) => a.col - b.col);
+              inheritedAnchors.sort((a, b) => a.col - b.col);
 
               // 没有合并：直接产出 Table Body Row（单行）或 Vertical AL（多行普通）
               if (mergedAnchors.length === 0) {
+                  if (inheritedAnchors.length > 0) {
+                      const inherited = inheritedAnchors[0];
+                      const inheritedCol = inherited.col;
+                      const inheritedColspan = Math.max(1, Number(inherited.cell?.colspan || 1));
+                      const inheritedColEnd = Math.min(colEnd, inheritedCol + inheritedColspan - 1);
+                      const inheritedBlock = figma.createFrame();
+                      inheritedBlock.name = 'merged_block';
+                      inheritedBlock.layoutMode = 'HORIZONTAL';
+                      inheritedBlock.primaryAxisSizingMode = 'FIXED';
+                      inheritedBlock.counterAxisSizingMode = 'AUTO';
+                      inheritedBlock.itemSpacing = 0;
+                      inheritedBlock.fills = [];
+                      inheritedBlock.clipsContent = false;
+                      inheritedBlock.setPluginData('table-role', 'merged-block');
+                      inheritedBlock.resize(resolveRangeWidth(colStart, colEnd), Math.max(1, segLen * bodyHeight));
+                      try { (inheritedBlock as any).layoutSizingVertical = 'HUG'; } catch {}
+                      try { (inheritedBlock as any).layoutAlign = 'INHERIT'; } catch {}
+
+                      if (inheritedCol > colStart) {
+                          const leadingFrame = await buildRange(rowStart, rowEnd, colStart, inheritedCol - 1);
+                          inheritedBlock.appendChild(leadingFrame);
+                      }
+
+                      inheritedBlock.appendChild(
+                          createCoveredMergeSlot(resolveRangeWidth(inheritedCol, inheritedColEnd), segLen * bodyHeight)
+                      );
+
+                      if (inheritedColEnd < colEnd) {
+                          const rightFrame = await buildRange(rowStart, rowEnd, inheritedColEnd + 1, colEnd);
+                          inheritedBlock.appendChild(rightFrame);
+                      }
+
+                      return inheritedBlock;
+                  }
                   if (segLen === 1) {
                       return await buildPlainRow(rowStart, colStart, colEnd);
                   }
@@ -5722,7 +5825,7 @@ async function renderComponent(
     }
     // 5. Action Text Cell
     else if (instance.componentId === 'table-cell-action-text') {
-        const rawText = String(params.text || '').trim() || '编辑 删除 …';
+        const rawText = String(params.text || '').trim() || '详情';
         const parts = rawText
           .split(/[\s,，、\/]+/)
           .map((part) => part.trim())
@@ -5731,7 +5834,7 @@ async function renderComponent(
         frame.itemSpacing = 16;
 
         const ellipsisIndex = parts.findIndex((part) => part === '…' || part === '...' || part === '更多' || part.toLowerCase() === 'more');
-        const showMore = true;
+        const showMore = ellipsisIndex !== -1 || parts.length > 3;
         const visibleParts = ellipsisIndex !== -1
           ? parts.slice(0, ellipsisIndex)
           : parts.length > 3

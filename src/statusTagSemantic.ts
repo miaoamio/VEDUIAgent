@@ -131,6 +131,9 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
     normalized.includes('info') ||
     normalized.includes('信息') ||
     normalized.includes('processing') ||
+    normalized.includes('维修中') ||
+    normalized.includes('维护中') ||
+    normalized.includes('检修中') ||
     normalized.includes('审核中') ||
     normalized.includes('审批中') ||
     normalized.includes('生成中') ||

@@ -17,10 +17,11 @@ import {
   normalizeAutoMergeRulesInput,
   normalizeHeaderRowsInput,
   normalizeMergesInput,
+  type BodyMergeInferenceMode,
   type NormalizedTableMergeSpec,
 } from '../../code/table/table-merge-model';
 import { normalizeNumberUnitLabel } from '../../code/table/table-number-unit';
-import { validateNormalizedTableGrid } from '../../code/table/table-merge-validate';
+import { validateNormalizedTableGrid, type TableMergeValidationError } from '../../code/table/table-merge-validate';
 import { buildTableRenderPlan } from '../../code/table/table-render-grid';
 
 // ─── Utils：table 专属工具函数 ────────────────────────────────────────────────
@@ -30,6 +31,20 @@ export type TagColumnKind = 'status' | 'type';
 const STATUS_HEADER_HINTS = ['状态', '级别', 'status', 'state', 'level'];
 const TYPE_TAG_HEADER_HINTS = ['类型', '分类', '品类', '地域', '环境', '分组', '标签', 'type', 'category', 'tag', 'region', 'zone', 'env', 'group'];
 const USER_HEADER_HINTS = ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee', 'creator'];
+const BUSINESS_TEXT_HEADER_HINTS = ['业务', '业务组', '业务分组', '业务域', '业务线', '事业部', '部门'];
+const CHINESE_COMPOUND_SURNAMES = [
+  '欧阳', '太史', '端木', '上官', '司马', '东方', '独孤', '南宫', '万俟', '闻人', '夏侯', '诸葛',
+  '尉迟', '公羊', '赫连', '澹台', '皇甫', '宗政', '濮阳', '公冶', '太叔', '申屠', '公孙', '慕容',
+  '仲孙', '钟离', '长孙', '宇文', '司徒', '鲜于', '司空', '闾丘', '子车', '亓官', '司寇', '巫马',
+  '公西', '颛孙', '壤驷', '公良', '漆雕', '乐正', '宰父', '谷梁', '拓跋', '夹谷', '轩辕', '令狐',
+  '段干', '百里', '呼延', '东郭', '南门', '羊舌', '微生', '梁丘', '左丘', '东门', '西门', '第五'
+] as const;
+const CHINESE_SINGLE_SURNAMES =
+  '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵湛汪祁毛禹狄米贝明臧计伏成戴谈宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣贲邓郁单杭洪包诸左石崔吉龚程嵇邢滑裴陆荣翁荀羊於惠甄曲家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘斜厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴郁胥能苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍郤璩桑桂濮牛寿通边扈燕冀郏浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东殴殳沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公';
+const NON_PERSON_NAME_TOKENS = [
+  '服务', '平台', '系统', '资源', '分析', '报表', '同步', '业务', '分组', '状态', '部门', '事业部',
+  '团队', '项目', '云', '组', '部', '率', '时间', '日期', '名称', '操作', '编辑', '删除', '运行'
+] as const;
 
 export const extractCellText = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -134,7 +149,15 @@ const isLikelyPersonNameText = (value: unknown): boolean => {
   if (!text) return false;
   if (looksLikeIdentifierText(text)) return false;
   if (/[0-9_/@]/.test(text)) return false;
-  if (/[\u4e00-\u9fa5]{2,4}/.test(text) && text.length <= 6) return true;
+  if (/^[\u4e00-\u9fa5]{2,4}$/.test(text)) {
+    if (NON_PERSON_NAME_TOKENS.some((token) => text.includes(token))) return false;
+    const compoundSurname = CHINESE_COMPOUND_SURNAMES.find((surname) => text.startsWith(surname));
+    if (compoundSurname) {
+      const givenNameLength = text.length - compoundSurname.length;
+      return givenNameLength >= 1 && givenNameLength <= 2;
+    }
+    return CHINESE_SINGLE_SURNAMES.includes(text[0] || '');
+  }
   if (/^[A-Za-z][A-Za-z'-]{1,20}(?:\s+[A-Za-z][A-Za-z'-]{1,20}){1,2}$/.test(text)) return true;
   return false;
 };
@@ -149,12 +172,24 @@ const isLikelyUserObject = (value: unknown): boolean => {
 
 const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
   if (headerIncludes(header, USER_HEADER_HINTS)) return true;
+  if (
+    headerIncludes(header, BUSINESS_TEXT_HEADER_HINTS) ||
+    headerIncludes(header, STATUS_HEADER_HINTS) ||
+    headerIncludes(header, TYPE_TAG_HEADER_HINTS) ||
+    headerIncludes(header, DATE_TIME_HEADER_HINTS) ||
+    headerIncludes(header, NON_NUMERIC_HEADER_HINTS) ||
+    headerIncludes(header, ['操作', 'action', 'actions', 'operation', '服务', 'service', '平台', 'system'])
+  ) {
+    return false;
+  }
   const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '' || isObject(value));
   if (nonEmptyValues.length === 0) return false;
   const avatarLikeCount = nonEmptyValues.filter((value) => isLikelyUserObject(value) || isLikelyPersonNameText(value)).length;
   const avatarLikeRatio = avatarLikeCount / nonEmptyValues.length;
-  return avatarLikeCount >= Math.min(2, nonEmptyValues.length) && avatarLikeRatio >= 0.6;
+  return avatarLikeCount >= Math.min(2, nonEmptyValues.length) && avatarLikeRatio >= 0.8;
 };
+
+const isBusinessTextColumn = (header: string): boolean => headerIncludes(header, BUSINESS_TEXT_HEADER_HINTS);
 
 const isLikelyPlainTypeTagColumn = (header: string, values: unknown[]): boolean => {
   if (headerIncludes(header, STATUS_HEADER_HINTS) || headerIncludes(header, USER_HEADER_HINTS)) return false;
@@ -248,7 +283,8 @@ const AMOUNT_HEADER_HINTS = [
 ];
 
 const NON_NUMERIC_HEADER_HINTS = [
-  '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编'
+  '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编',
+  'ip', 'ip地址', '服务器ip', '地址', 'address', 'host', 'hostname'
 ];
 
 const IDENTIFIER_TEXT_HEADER_HINTS = [
@@ -256,17 +292,54 @@ const IDENTIFIER_TEXT_HEADER_HINTS = [
 ];
 
 const DATE_TIME_HEADER_HINTS = [
-  '时间', '日期', '年月', '时刻', 'timestamp', 'time', 'date', 'datetime', 'createdat', 'updatedat',
+  '时间', '日期', '年月', '时刻', '账期', '期间', '周期', '有效期', '生效', '生效期', '生效周期', '生效期间', '失效', '开始', '结束',
+  'timestamp', 'time', 'date', 'datetime', 'period', 'effective', 'expiry', 'validfrom', 'validto', 'createdat', 'updatedat',
   'create time', 'update time', 'start time', 'end time', 'join date', '入职时间', '入职日期'
 ];
 
-const isDateLikeText = (text: string): boolean => {
-  const normalized = text.trim().replace(/\s*([/-])\s*/g, '$1');
+const normalizeDateLikeToken = (text: string): string => {
+  return text
+    .trim()
+    .replace(/[（(]\s*含\s*[）)]/g, '')
+    .replace(/\s*([/-])\s*/g, '$1')
+    .replace(/[~～—–－]+/g, '~')
+    .replace(/\s*(?:至|到)\s*/g, '~')
+    .replace(/\s+/g, ' ');
+};
+
+const isSingleDateLikeText = (text: string): boolean => {
   return (
-    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(normalized) ||
-    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(normalized) ||
-    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalized)
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(text) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(text) ||
+    /^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)
   );
+};
+
+const isDateLikeText = (text: string): boolean => {
+  const normalized = normalizeDateLikeToken(text);
+  if (!normalized) return false;
+  if (isSingleDateLikeText(normalized)) return true;
+  const rangeParts = normalized.split('~').map((part) => part.trim()).filter(Boolean);
+  if (rangeParts.length === 2) {
+    return rangeParts.every(isSingleDateLikeText);
+  }
+  return false;
+};
+
+const isIpLikeText = (text: string): boolean => {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  return (
+    /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(normalized) ||
+    /^[0-9a-f:]+$/i.test(normalized) && normalized.includes(':')
+  );
+};
+
+const hasMultipleDecimalSeparators = (text: string): boolean => {
+  const normalized = text.trim().replace(/[,\s]/g, '');
+  if (!normalized) return false;
+  const decimalPoints = (normalized.match(/\./g) || []).length;
+  return decimalPoints > 1;
 };
 
 const isDateTimeColumn = (header: string, values: unknown[]): boolean => {
@@ -286,7 +359,7 @@ const isNumericLikeText = (value: unknown): boolean => {
   if (typeof value === 'boolean' || value === null || value === undefined) return false;
 
   const raw = extractCellText(value).trim();
-  if (!raw || isDateLikeText(raw)) return false;
+  if (!raw || isDateLikeText(raw) || isIpLikeText(raw) || hasMultipleDecimalSeparators(raw)) return false;
 
   let normalized = raw
     .replace(/\s+/g, '')
@@ -472,6 +545,8 @@ const inferColumnType = (header: string, values: unknown[]): string => {
   const isActionHeader = headerIncludes(header, ['操作', 'action', 'actions', 'operation']);
   if (isActionHeader) return 'ActionText';
 
+  if (isBusinessTextColumn(header)) return 'Text';
+
   if (isDateTimeColumn(header, values)) return 'Text';
 
   if (isLikelyAvatarColumn(header, values)) return 'Avatar';
@@ -518,6 +593,7 @@ const parseNumberUnitCell = (rawValue: unknown): { value: string; unit: string }
   const text = extractCellText(rawValue).trim();
   if (!text) return { value: '0', unit: '' };
   if (isDateLikeText(text)) return { value: text.replace(/\s*([/-])\s*/g, '$1'), unit: '' };
+  if (isIpLikeText(text) || hasMultipleDecimalSeparators(text)) return { value: text, unit: '' };
 
   const prefixCurrencyMatch = text.match(/^(HK\$|US\$|[¥￥$€£])\s*([+-]?\d[\d,]*(?:\.\d+)?)(?:\s*)(.*)$/);
   if (prefixCurrencyMatch) {
@@ -540,6 +616,12 @@ const inferNumberUnitColumnMeta = (
 ): { shouldUse: boolean; textAlign: 'left' | 'right'; defaultUnit: string } => {
   const nonEmptyValues = values.filter((value) => String(extractCellText(value) || '').trim() !== '');
   if (nonEmptyValues.length === 0) return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+  if (isDateTimeColumn(header, values)) {
+    return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+  }
+  if (headerIncludes(header, NON_NUMERIC_HEADER_HINTS)) {
+    return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
+  }
   if (isIdentifierLikeColumn(header, values)) {
     return { shouldUse: false, textAlign: 'right', defaultUnit: '' };
   }
@@ -586,28 +668,55 @@ export const inferColumnTypesFromRows = (
 
   return headers.map((header, index) => {
     const explicit = normalizedTypes[index];
+    const explicitNormalized = String(explicit || '').toLowerCase();
     const columnValues = rows.map((row) => row?.[index]);
+    if (isBusinessTextColumn(header)) {
+      return 'Text';
+    }
     if (isDateTimeColumn(header, columnValues)) {
       return 'Text';
     }
-    const explicitIsNumberUnit = explicit.toLowerCase() === 'number(unit)' || explicit.toLowerCase() === 'number-unit';
+    const explicitIsNumberUnit = explicitNormalized === 'number(unit)' || explicitNormalized === 'number-unit';
     const explicitIsAvatar =
-      explicit.toLowerCase() === 'avatar' ||
-      explicit.toLowerCase() === 'user' ||
-      explicit.toLowerCase() === 'owner';
+      explicitNormalized === 'avatar' ||
+      explicitNormalized === 'user' ||
+      explicitNormalized === 'owner';
     if (explicitIsNumberUnit && !inferNumberUnitColumnMeta(header, columnValues).shouldUse) {
       return inferColumnType(header, columnValues) || 'Text';
     }
     if (explicitIsAvatar && !isLikelyAvatarColumn(header, columnValues)) {
       return inferColumnType(header, columnValues) || 'Text';
     }
-    if (explicit && explicit.toLowerCase() !== 'text') return explicit;
+    if (explicit && explicitNormalized !== 'text') return explicit;
     const inferred = inferColumnType(header, columnValues);
     return inferred || explicit || 'Text';
   });
 };
 
 const normalizeGroupCellText = (value: unknown): string => extractCellText(value).trim();
+
+const normalizeBodyMergeInferenceMode = (value: unknown): BodyMergeInferenceMode => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'off') return 'off';
+  if (normalized === 'on') return 'on';
+  return 'auto';
+};
+
+const formatTableValidationError = (error: TableMergeValidationError): string => {
+  const parts: string[] = [];
+  if (error.section) parts.push(`section=${error.section}`);
+  if (typeof error.row === 'number') parts.push(`row=${error.row}`);
+  if (typeof error.col === 'number') parts.push(`col=${error.col}`);
+  const location = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  return `${error.message}${location}`;
+};
+
+const buildInvalidTablePayloadReason = (reasons: string[]): string =>
+  reasons.length > 0 ? reasons.join('；') : '未知原因';
+
+type BuildTableComponentResult =
+  | { ok: true; component: any }
+  | { ok: false; reason: string };
 
 const isNonMergeCandidateHeader = (header: string): boolean => {
   return (
@@ -683,6 +792,15 @@ const isGroupMergeCandidateColumn = (header: string, values: unknown[]): boolean
   return true;
 };
 
+const hasMultipleDistinctNonEmptyGroupValues = (values: unknown[]): boolean => {
+  const distinct = new Set(
+    values
+      .map((value) => normalizeGroupCellText(value).toLowerCase())
+      .filter((value) => value !== '')
+  );
+  return distinct.size >= 2;
+};
+
 const inferRepeatedGroupBodyMerges = (input: {
   headers: string[];
   rows: unknown[][];
@@ -705,6 +823,7 @@ const inferRepeatedGroupBodyMerges = (input: {
     const header = String(headers[col] || '');
     const columnValues = rows.map((row) => row?.[col]);
     if (!isGroupMergeCandidateColumn(header, columnValues)) continue;
+    if (!hasMultipleDistinctNonEmptyGroupValues(columnValues)) continue;
 
     const colMerges: NormalizedTableMergeSpec[] = [];
     let row = 0;
@@ -906,30 +1025,265 @@ export const normalizeRowsByHeaders = (
   });
 };
 
+const alignRowsWithBodyMerges = (
+  rows: unknown[][],
+  columnCount: number,
+  merges: NormalizedTableMergeSpec[]
+): unknown[][] => {
+  if (!Array.isArray(rows) || rows.length === 0 || columnCount <= 0) return rows;
+  const bodyMerges = merges.filter((merge) => merge.section === 'body' && Number(merge.rowspan || 1) > 1);
+  if (bodyMerges.length === 0) return rows;
+
+  return rows.map((row, rowIndex) => {
+    const normalizedRow = Array.isArray(row) ? [...row] : [];
+    if (normalizedRow.length >= columnCount) return normalizedRow;
+
+    const coveredCols = new Set<number>();
+    for (const merge of bodyMerges) {
+      const startRow = Number(merge.row ?? 0);
+      const rowspan = Math.max(1, Number(merge.rowspan || 1));
+      const colspan = Math.max(1, Number(merge.colspan || 1));
+      if (rowIndex <= startRow || rowIndex >= startRow + rowspan) continue;
+      const startCol = Number(merge.col ?? 0);
+      for (let offset = 0; offset < colspan; offset += 1) {
+        coveredCols.add(startCol + offset);
+      }
+    }
+
+    if (coveredCols.size === 0) return normalizedRow;
+
+    const aligned: unknown[] = [];
+    let sourceIndex = 0;
+    for (let colIndex = 0; colIndex < columnCount; colIndex += 1) {
+      if (coveredCols.has(colIndex)) {
+        aligned.push('');
+      } else {
+        aligned.push(sourceIndex < normalizedRow.length ? normalizedRow[sourceIndex] : '');
+        sourceIndex += 1;
+      }
+    }
+    return aligned;
+  });
+};
+
 export const getPositiveNumber = (value: unknown): number | null => {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
+const repairMalformedHeaderStructureFromMerges = (
+  source: unknown,
+  fallbackHeaders: string[],
+  merges: NormalizedTableMergeSpec[]
+): { headerRows: string[][]; merges: NormalizedTableMergeSpec[] } | null => {
+  if (!isObject(source)) return null;
+  if (Array.isArray((source as any).headerRows) && (source as any).headerRows.length > 1) return null;
+  const headerMerges = merges.filter((merge) => merge.section === 'header');
+  if (headerMerges.length === 0) return null;
+
+  const pseudoHeaderCells = headerMerges.filter((merge) => {
+    const text = String((merge as any).text ?? '').trim();
+    return text && Number(merge.rowspan || 1) === 1 && Number(merge.colspan || 1) === 1 && Number(merge.row || 0) > 0;
+  });
+  if (pseudoHeaderCells.length === 0) return null;
+
+  const headerDepth = headerMerges.reduce(
+    (max, merge) => Math.max(max, Number(merge.row || 0) + Math.max(1, Number(merge.rowspan || 1))),
+    1
+  );
+  const columnCount = Math.max(
+    fallbackHeaders.length,
+    ...headerMerges.map((merge) => Number(merge.col || 0) + Math.max(1, Number(merge.colspan || 1)))
+  );
+  if (headerDepth <= 1 || columnCount <= 0) return null;
+
+  const headerRows = Array.from({ length: headerDepth }, () => Array.from({ length: columnCount }, () => ''));
+  for (let colIndex = 0; colIndex < fallbackHeaders.length && colIndex < columnCount; colIndex += 1) {
+    headerRows[0][colIndex] = String(fallbackHeaders[colIndex] || '');
+  }
+  for (const merge of pseudoHeaderCells) {
+    const rowIndex = Number(merge.row || 0);
+    const colIndex = Number(merge.col || 0);
+    if (rowIndex >= 0 && rowIndex < headerDepth && colIndex >= 0 && colIndex < columnCount) {
+      headerRows[rowIndex][colIndex] = String((merge as any).text || '').trim();
+    }
+  }
+
+  const structuralHeaderMerges = headerMerges.filter(
+    (merge) => Math.max(1, Number(merge.rowspan || 1)) > 1 || Math.max(1, Number(merge.colspan || 1)) > 1
+  );
+
+  return {
+    headerRows,
+    merges: [
+      ...structuralHeaderMerges,
+      ...merges.filter((merge) => merge.section !== 'header')
+    ]
+  };
+};
+
+const getMaxMergeColumnCount = (merges: NormalizedTableMergeSpec[]): number =>
+  merges.reduce(
+    (max, merge) => Math.max(max, Number(merge.col || 0) + Math.max(1, Number(merge.colspan || 1))),
+    0
+  );
+
+const getMaxMergeHeaderDepth = (merges: NormalizedTableMergeSpec[]): number =>
+  merges
+    .filter((merge) => merge.section === 'header')
+    .reduce(
+      (max, merge) => Math.max(max, Number(merge.row || 0) + Math.max(1, Number(merge.rowspan || 1))),
+      0
+    );
+
+const getMaxArrayRowLength = (rows: unknown): number =>
+  Array.isArray(rows)
+    ? rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+    : 0;
+
+const normalizeHeaderRowsShape = (
+  headerRows: string[][],
+  headerDepth: number,
+  columnCount: number
+): string[][] => {
+  const safeDepth = Math.max(1, headerDepth);
+  const safeColumnCount = Math.max(0, columnCount);
+  return Array.from({ length: safeDepth }, (_, rowIndex) => {
+    const sourceRow = Array.isArray(headerRows[rowIndex]) ? headerRows[rowIndex] : [];
+    const normalizedRow = Array.from({ length: safeColumnCount }, (_, colIndex) => String(sourceRow[colIndex] || ''));
+    return normalizedRow;
+  });
+};
+
+const moveHeaderAnchorText = (
+  headerRows: string[][],
+  fromRow: number,
+  fromCol: number,
+  toRow: number,
+  toCol: number
+): void => {
+  const sourceText = String(headerRows[fromRow]?.[fromCol] || '').trim();
+  if (!sourceText) return;
+  const targetText = String(headerRows[toRow]?.[toCol] || '').trim();
+  if (!targetText && Array.isArray(headerRows[toRow]) && toCol >= 0 && toCol < headerRows[toRow].length) {
+    headerRows[toRow][toCol] = sourceText;
+    headerRows[fromRow][fromCol] = '';
+  }
+};
+
+const promoteCoveredHeaderTextsToAnchor = (
+  headerRows: string[][],
+  merges: NormalizedTableMergeSpec[]
+): void => {
+  const headerMerges = merges.filter((merge) => merge.section === 'header');
+  for (const merge of headerMerges) {
+    if (merge.rowspan <= 1 && merge.colspan <= 1) continue;
+    const coveredTexts: Array<{ row: number; col: number; text: string }> = [];
+    for (let rowOffset = 0; rowOffset < merge.rowspan; rowOffset += 1) {
+      for (let colOffset = 0; colOffset < merge.colspan; colOffset += 1) {
+        if (rowOffset === 0 && colOffset === 0) continue;
+        const rowIndex = merge.row + rowOffset;
+        const colIndex = merge.col + colOffset;
+        const text = String(headerRows[rowIndex]?.[colIndex] || '').trim();
+        if (text) coveredTexts.push({ row: rowIndex, col: colIndex, text });
+      }
+    }
+    const anchorText = String(headerRows[merge.row]?.[merge.col] || '').trim();
+    const uniqueCoveredTexts = Array.from(new Set(coveredTexts.map((item) => item.text)));
+    if (!anchorText && uniqueCoveredTexts.length === 1) {
+      headerRows[merge.row][merge.col] = uniqueCoveredTexts[0];
+    }
+    if (anchorText || uniqueCoveredTexts.length === 1) {
+      for (const item of coveredTexts) {
+        headerRows[item.row][item.col] = '';
+      }
+    }
+  }
+};
+
+const repairHeaderRowsAndMergesByStructure = (input: {
+  headerRows: string[][];
+  merges: NormalizedTableMergeSpec[];
+  columnCount: number;
+}): { headerRows: string[][]; merges: NormalizedTableMergeSpec[] } => {
+  const headerDepth = Math.max(
+    input.headerRows.length,
+    getMaxMergeHeaderDepth(input.merges),
+    1
+  );
+  const headerRows = normalizeHeaderRowsShape(input.headerRows, headerDepth, input.columnCount);
+  const merges = input.merges.map((merge) => ({ ...merge }));
+  const rowStarts = new Map<number, NormalizedTableMergeSpec[]>();
+  for (const merge of merges) {
+    if (merge.section !== 'header') continue;
+    const current = rowStarts.get(merge.row) || [];
+    current.push(merge);
+    rowStarts.set(merge.row, current);
+  }
+
+  for (let rowIndex = 0; rowIndex < headerRows.length; rowIndex += 1) {
+    const rowMerges = (rowStarts.get(rowIndex) || []).sort((a, b) => a.col - b.col);
+    if (rowMerges.length === 0) continue;
+    const rowCoverage = rowMerges.reduce((max, merge) => Math.max(max, merge.col + merge.colspan), 0);
+    const deficit = input.columnCount - rowCoverage;
+    if (deficit <= 0) continue;
+
+    const trailingRowspanMerges: NormalizedTableMergeSpec[] = [];
+    for (let index = rowMerges.length - 1; index >= 0; index -= 1) {
+      const merge = rowMerges[index];
+      if (merge.rowspan <= 1) break;
+      trailingRowspanMerges.unshift(merge);
+    }
+    if (trailingRowspanMerges.length === 0) continue;
+
+    const firstTrailingCol = trailingRowspanMerges[0].col;
+    const expandableMerge = [...rowMerges]
+      .reverse()
+      .find((merge) => merge.col < firstTrailingCol && merge.rowspan === 1 && merge.col + merge.colspan === firstTrailingCol);
+    if (expandableMerge) {
+      expandableMerge.colspan += deficit;
+    }
+    for (const merge of [...trailingRowspanMerges].reverse()) {
+      const oldCol = merge.col;
+      const newCol = oldCol + deficit;
+      merge.col = newCol;
+      moveHeaderAnchorText(headerRows, merge.row, oldCol, merge.row, newCol);
+    }
+  }
+
+  promoteCoveredHeaderTextsToAnchor(headerRows, merges);
+  return { headerRows, merges };
+};
+
+const padLeafHeaders = (headers: string[], fallbackHeaders: string[], columnCount: number): string[] => {
+  const normalized = Array.from({ length: columnCount }, (_, index) => {
+    const inferred = String(headers[index] || '').trim();
+    if (inferred) return inferred;
+    const fallback = String(fallbackHeaders[index] || '').trim();
+    if (fallback) return fallback;
+    return `列${index + 1}`;
+  });
+  return normalized;
+};
+
 // ─── Skill 主体 ───────────────────────────────────────────────────────────────
 
-export const buildTableComponentFromPayload = (
+export const buildTableComponentFromPayloadDetailed = (
   payload: any,
   options?: { minRowCount?: number }
-): any | null => {
+): BuildTableComponentResult => {
   const source = isObject(payload?.schema) ? payload.schema : payload;
-  if (!isObject(source)) return null;
+  if (!isObject(source)) return { ok: false, reason: 'payload 必须是对象' };
 
   const rawColumns = Array.isArray(source.columns) ? source.columns : null;
   const rawHeaders =
     Array.isArray(source.headers) ? source.headers :
     (rawColumns ? rawColumns.map((c: any, i: number) => typeof c === 'string' ? c : (c?.title || c?.header || c?.name || `列${i + 1}`)) : null);
   const fallbackHeaders = (rawHeaders || []).map((h: any, i: number) => String(h || `列${i + 1}`));
-  let headerRows = normalizeHeaderRowsInput(source, fallbackHeaders);
-  let headers = inferLeafHeadersFromHeaderRows(headerRows);
-  if (headers.length === 0) {
-    headers = fallbackHeaders;
-  }
+  const rawExplicitMergesInput = normalizeMergesInput(source);
+  const repairedHeaderStructure = repairMalformedHeaderStructureFromMerges(source, fallbackHeaders, rawExplicitMergesInput);
+  let headerRows = repairedHeaderStructure?.headerRows || normalizeHeaderRowsInput(source, fallbackHeaders);
+  let explicitMergesInput = repairedHeaderStructure?.merges || rawExplicitMergesInput;
 
   // Extract column keys (key/dataIndex) for object-row lookup
   const columnKeys: string[] = rawColumns
@@ -937,6 +1291,31 @@ export const buildTableComponentFromPayload = (
     : [];
 
   const rawRowSource = source.rows ?? source.dataSource ?? source.data ?? [];
+  const structuralColumnCount = Math.max(
+    fallbackHeaders.length,
+    headerRows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0),
+    getMaxMergeColumnCount(explicitMergesInput),
+    getMaxArrayRowLength(rawRowSource),
+    Array.isArray(source.columnTypes) ? source.columnTypes.length : 0,
+    Array.isArray(source.columnWidths) ? source.columnWidths.length : 0
+  );
+  const repairedStructure = repairHeaderRowsAndMergesByStructure({
+    headerRows,
+    merges: explicitMergesInput,
+    columnCount: structuralColumnCount > 0 ? structuralColumnCount : Math.max(fallbackHeaders.length, 1),
+  });
+  headerRows = repairedStructure.headerRows;
+  explicitMergesInput = repairedStructure.merges;
+
+  let headers = padLeafHeaders(
+    inferLeafHeadersFromHeaderRows(headerRows),
+    fallbackHeaders,
+    Math.max(structuralColumnCount, headerRows[0]?.length || 0, fallbackHeaders.length)
+  );
+  if (headers.length === 0) {
+    headers = fallbackHeaders;
+  }
+
   let rows = normalizeRowsByHeaders(rawRowSource, headers, columnKeys);
 
   if ((!headers || headers.length === 0) && rows.length > 0) {
@@ -946,16 +1325,22 @@ export const buildTableComponentFromPayload = (
     }
   }
 
-  if (!headers || headers.length === 0) return null;
+  if (!headers || headers.length === 0) {
+    return { ok: false, reason: '缺少有效表头，headers/headerRows 不能为空' };
+  }
   if (headerRows.length === 0) {
     headerRows = [headers];
   }
-  const explicitMergesInput = normalizeMergesInput(source);
-  const inferredBodyMerges = inferImplicitBodyMerges({
-    headerRows,
-    rows,
-    merges: explicitMergesInput,
-  });
+  const bodyMergeInference = normalizeBodyMergeInferenceMode(source.bodyMergeInference);
+  const allowBlankBasedBodyMergeInference = bodyMergeInference === 'on';
+  const allowRepeatedValueBodyMergeInference = bodyMergeInference === 'on';
+  const inferredBodyMerges = allowBlankBasedBodyMergeInference
+    ? inferImplicitBodyMerges({
+        headerRows,
+        rows,
+        merges: explicitMergesInput,
+      })
+    : [];
   // 兜底推断：最后一行首列出现 合计/小计/总计/Total 且后续单元格为空时，
   // 视为"合计行"，自动生成 body colspan merge（横跨"空"段直到非空单元格停下）
   const inferTotalRowMerges = (): Array<{ section: 'body'; row: number; col: number; rowspan: number; colspan: number }> => {
@@ -994,16 +1379,20 @@ export const buildTableComponentFromPayload = (
     return [{ section: 'body', row: lastRowIndex, col: 0, rowspan: 1, colspan: span }];
   };
   const totalRowMerges = inferTotalRowMerges();
-  const repeatedGroupBodyMerges = inferRepeatedGroupBodyMerges({
-    headers,
-    rows,
-    merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges],
-  });
-  const blankGroupBodyMerges = inferBlankGroupBodyMerges({
-    headers,
-    rows,
-    merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges, ...repeatedGroupBodyMerges],
-  });
+  const repeatedGroupBodyMerges = allowRepeatedValueBodyMergeInference
+    ? inferRepeatedGroupBodyMerges({
+        headers,
+        rows,
+        merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges],
+      })
+    : [];
+  const blankGroupBodyMerges = allowBlankBasedBodyMergeInference
+    ? inferBlankGroupBodyMerges({
+        headers,
+        rows,
+        merges: [...explicitMergesInput, ...inferredBodyMerges, ...totalRowMerges, ...repeatedGroupBodyMerges],
+      })
+    : [];
   let mergesInput = [
     ...explicitMergesInput,
     ...inferredBodyMerges,
@@ -1011,6 +1400,7 @@ export const buildTableComponentFromPayload = (
     ...repeatedGroupBodyMerges,
     ...blankGroupBodyMerges,
   ];
+  rows = alignRowsWithBodyMerges(rows, headers.length, mergesInput);
   const autoMergeRulesInput = normalizeAutoMergeRulesInput(source);
   const isMergeTable = mergesInput.length > 0 || headerRows.length > 1;
 
@@ -1081,11 +1471,17 @@ export const buildTableComponentFromPayload = (
     columnTypes: inferredColumnTypes,
     columnWidths: inferredColumnWidths,
     ...(rowAction ? { rowAction } : {}),
+    bodyMergeInference,
     merges: mergesInput,
     autoMergeRules: autoMergeRulesInput,
   });
   const mergeValidationErrors = validateNormalizedTableGrid(normalizedGrid);
-  if (mergeValidationErrors.length > 0) return null;
+  if (mergeValidationErrors.length > 0) {
+    return {
+      ok: false,
+      reason: buildInvalidTablePayloadReason(mergeValidationErrors.map(formatTableValidationError))
+    };
+  }
   const tableRenderPlan = buildTableRenderPlan(normalizedGrid);
   headerRows = normalizedGrid.headerRows;
   headers = normalizedGrid.leafHeaders;
@@ -1096,6 +1492,7 @@ export const buildTableComponentFromPayload = (
   const autoMergeRules = normalizedGrid.autoMergeRules;
   const effectiveColumnTypes = headers.map((header, colIndex) => {
     const columnValues = rows.map((row) => row[colIndex]);
+    if (isBusinessTextColumn(header)) return 'Text';
     if (isDateTimeColumn(header, columnValues)) return 'Text';
     if (isLikelyAvatarColumn(header, columnValues)) return 'Avatar';
     return columnTypes[colIndex] || 'Text';
@@ -1110,6 +1507,7 @@ export const buildTableComponentFromPayload = (
     const widthRaw = Number(columnWidths[colIndex]);
     const hasWidth = Number.isFinite(widthRaw) && widthRaw > 0;
     const width = hasWidth ? widthRaw : undefined;
+    const hasResolvedWidth = typeof width === 'number' && Number.isFinite(width) && width > 0;
     const tagColumnKind: TagColumnKind | null =
       cellComponentId === 'table-cell-tag' ? resolveTagColumnKind(type, header) : null;
     const headerText = isActionColumn ? '操作' : header;
@@ -1125,7 +1523,7 @@ export const buildTableComponentFromPayload = (
         componentId: 'table-header-cell',
         params: {
           text: headerText,
-          ...(hasWidth && !isActionColumn ? { width } : {}),
+          ...(hasResolvedWidth ? { width } : {}),
           height: headerHeight,
           ...(textAlign ? { textAlign } : {})
         }
@@ -1136,6 +1534,19 @@ export const buildTableComponentFromPayload = (
       const rawValue = row[colIndex];
       const value = extractCellText(rawValue);
       if (cellComponentId === 'table-cell-tag') {
+        const normalizedValue = String(value || '').trim();
+        if (!normalizedValue || normalizedValue === '-' || normalizedValue === '—') {
+          columnChildren.push({
+            componentId: 'table-cell',
+            params: {
+              height: bodyHeight,
+              text: '-',
+              ...(hasResolvedWidth ? { width } : {}),
+              ...(textAlign ? { textAlign } : {})
+            }
+          });
+          return;
+        }
         const columnKind = tagColumnKind || 'type';
         const tagPayload = extractTagCellPayload(rawValue, columnKind);
         const kind: TagColumnKind = columnKind === 'type' ? 'type' : (tagPayload.kind || columnKind);
@@ -1152,7 +1563,7 @@ export const buildTableComponentFromPayload = (
           tagText,
           text: tagText,
           tagColor: isStatus ? tagPayload.tagColor : undefined,
-          ...(hasWidth && !isActionColumn ? { width } : {})
+          ...(hasResolvedWidth ? { width } : {})
         };
 
         if (isStatus) {
@@ -1181,29 +1592,30 @@ export const buildTableComponentFromPayload = (
       if (cellComponentId === 'table-cell-avatar') {
         columnChildren.push({
           componentId: 'table-cell-avatar',
-          params: { height: bodyHeight, text: value || 'User', ...(hasWidth && !isActionColumn ? { width } : {}) }
+          params: { height: bodyHeight, text: value || 'User', ...(hasResolvedWidth ? { width } : {}) }
         });
         return;
       }
       if (cellComponentId === 'table-cell-input') {
         columnChildren.push({
           componentId: 'table-cell-input',
-          params: { height: bodyHeight, value, ...(hasWidth && !isActionColumn ? { width } : {}) }
+          params: { height: bodyHeight, value, ...(hasResolvedWidth ? { width } : {}) }
         });
         return;
       }
       if (cellComponentId === 'table-cell-action-text') {
-        const actionText = (value || '编辑 删除 …').replace(/\s*[|｜／\/]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        const rawActionText = String(value || '').replace(/\s*[|｜／\/]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        const actionText = isActionTextValue(rawActionText) ? rawActionText : '详情';
         columnChildren.push({
           componentId: 'table-cell-action-text',
-          params: { height: bodyHeight, text: actionText }
+          params: { height: bodyHeight, text: actionText, ...(hasResolvedWidth ? { width } : {}) }
         });
         return;
       }
       if (cellComponentId === 'table-cell-action-icon') {
         columnChildren.push({
           componentId: 'table-cell-action-icon',
-          params: { height: bodyHeight, text: value }
+          params: { height: bodyHeight, text: value, ...(hasResolvedWidth ? { width } : {}) }
         });
         return;
       }
@@ -1217,7 +1629,7 @@ export const buildTableComponentFromPayload = (
             value: parsed.value,
             unit: effectiveUnit,
             text: `${parsed.value}${effectiveUnit ? ` ${effectiveUnit}` : ''}`,
-            ...(hasWidth && !isActionColumn ? { width } : {}),
+            ...(hasResolvedWidth ? { width } : {}),
             ...(textAlign ? { textAlign } : {})
           }
         });
@@ -1228,7 +1640,7 @@ export const buildTableComponentFromPayload = (
         params: {
           height: bodyHeight,
           text: value,
-          ...(hasWidth && !isActionColumn ? { width } : {}),
+          ...(hasResolvedWidth ? { width } : {}),
           ...(textAlign ? { textAlign } : {})
         }
       });
@@ -1239,8 +1651,8 @@ export const buildTableComponentFromPayload = (
       params: {
         headerText,
         rowCount: rows.length,
-        ...(hasWidth && !isActionColumn ? { width } : {}),
-        ...(isActionColumn ? { columnWidthMode: 'HUG' } : {}),
+        ...(hasResolvedWidth ? { width } : {}),
+        ...(isActionColumn && !hasResolvedWidth ? { columnWidthMode: 'HUG' } : {}),
         ...(textAlign ? { textAlign } : {}),
         headerHeight,
         bodyHeight
@@ -1249,7 +1661,7 @@ export const buildTableComponentFromPayload = (
     };
   });
 
-  return {
+  return { ok: true, component: {
     componentId: 'table',
     params: {
       columnCount: headers.length,
@@ -1259,6 +1671,7 @@ export const buildTableComponentFromPayload = (
       columnTypes: effectiveColumnTypes,
       merges,
       autoMergeRules,
+      bodyMergeInference,
       tableRenderPlan,
       headerHeight,
       bodyHeight,
@@ -1272,5 +1685,13 @@ export const buildTableComponentFromPayload = (
       ...(rowAction ? { rowAction } : {})
     },
     children
-  };
+  } };
+};
+
+export const buildTableComponentFromPayload = (
+  payload: any,
+  options?: { minRowCount?: number }
+): any | null => {
+  const result = buildTableComponentFromPayloadDetailed(payload, options);
+  return result.ok ? result.component : null;
 };

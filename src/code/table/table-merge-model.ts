@@ -5,6 +5,7 @@ function isObject(value: unknown): value is UnknownRecord {
 }
 
 export type TableMergeSection = 'header' | 'body';
+export type BodyMergeInferenceMode = 'off' | 'auto' | 'on';
 
 export interface NormalizedTableMergeSpec {
   section: TableMergeSection;
@@ -40,6 +41,7 @@ export interface NormalizedTableGrid {
   columnTypes: string[];
   columnWidths: number[];
   rowAction?: string;
+  bodyMergeInference?: BodyMergeInferenceMode;
   merges: NormalizedTableMergeSpec[];
   autoMergeRules: NormalizedAutoMergeRule[];
 }
@@ -58,7 +60,7 @@ export const normalizeHeaderRowsInput = (source: any, fallbackHeaders: string[] 
   const rawHeaderRows = Array.isArray(source?.headerRows) ? source.headerRows : null;
   if (rawHeaderRows && rawHeaderRows.length > 0) {
     const normalized = rawHeaderRows
-      .filter((row) => Array.isArray(row))
+      .filter((row: unknown) => Array.isArray(row))
       .map((row: any[]) => row.map((cell) => (cell === undefined || cell === null ? '' : String(cell))));
     if (normalized.length > 0) return normalized;
   }
@@ -83,7 +85,7 @@ export const inferLeafHeadersFromHeaderRows = (headerRows: string[][]): string[]
 export const normalizeMergesInput = (source: any): NormalizedTableMergeSpec[] => {
   if (!Array.isArray(source?.merges)) return [];
   return source.merges
-    .filter((item) => isObject(item))
+    .filter((item: unknown) => isObject(item))
     .map((item: any, index: number) => {
       // 保留所有 merge 项（即使 row/col 非法），让 validateMergeBounds 在验证阶段统一报告 OUT_OF_BOUNDS。
       // 非法的 row/col 用 -1 兜底，触发 validateMergeBounds 内部 `merge.row < 0 || merge.col < 0` 的越界判定。
@@ -112,7 +114,7 @@ export const normalizeMergesInput = (source: any): NormalizedTableMergeSpec[] =>
 export const normalizeAutoMergeRulesInput = (source: any): NormalizedAutoMergeRule[] => {
   if (!Array.isArray(source?.autoMergeRules)) return [];
   return source.autoMergeRules
-    .filter((item) => isObject(item))
+    .filter((item: unknown) => isObject(item))
     .map((item: any) => {
       const rawSection = String(item.section || '').trim().toLowerCase();
       const section: TableMergeSection = rawSection === 'header' ? 'header' : 'body';
@@ -137,25 +139,58 @@ const isImplicitMergeBlank = (value: unknown): boolean => {
   return false;
 };
 
+const findTopHeaderCoveringMerge = (
+  headerMerges: NormalizedTableMergeSpec[],
+  colIndex: number
+): NormalizedTableMergeSpec | null =>
+  headerMerges.find((merge: NormalizedTableMergeSpec) => {
+    if (merge.section !== 'header' || merge.row !== 0) return false;
+    return colIndex >= merge.col && colIndex < merge.col + merge.colspan;
+  }) || null;
+
+const isLeafOnlyTopHeaderColumn = (headerRows: string[][], colIndex: number): boolean => {
+  const topText = String(headerRows[0]?.[colIndex] || '').trim();
+  if (!topText) return false;
+  for (let rowIndex = 1; rowIndex < headerRows.length; rowIndex += 1) {
+    if (String(headerRows[rowIndex]?.[colIndex] || '').trim()) return false;
+  }
+  return true;
+};
+
+const isEligibleImplicitMergeColumn = (
+  headerRows: string[][],
+  headerMerges: NormalizedTableMergeSpec[],
+  colIndex: number
+): boolean => {
+  if (headerRows.length <= 1) return true;
+  const coveringMerge = findTopHeaderCoveringMerge(headerMerges, colIndex);
+  if (coveringMerge) {
+    return coveringMerge.col === colIndex && coveringMerge.colspan === 1 && coveringMerge.rowspan >= headerRows.length;
+  }
+  return isLeafOnlyTopHeaderColumn(headerRows, colIndex);
+};
+
 export const inferImplicitBodyMerges = (input: {
   headerRows: string[][];
   rows: unknown[][];
   merges?: NormalizedTableMergeSpec[];
 }): NormalizedTableMergeSpec[] => {
   const explicitMerges = Array.isArray(input.merges) ? input.merges : [];
-  const explicitBodyMerges = explicitMerges.filter((item) => item.section === 'body');
+  const explicitBodyMerges = explicitMerges.filter((item: NormalizedTableMergeSpec) => item.section === 'body');
   if (explicitBodyMerges.length > 0) return [];
 
   const hasMergeContext =
     (Array.isArray(input.headerRows) && input.headerRows.length > 1) ||
-    explicitMerges.some((item) => item.section === 'header');
+    explicitMerges.some((item: NormalizedTableMergeSpec) => item.section === 'header');
   if (!hasMergeContext) return [];
 
   const rows = Array.isArray(input.rows) ? input.rows : [];
+  const headerMerges = explicitMerges.filter((item) => item.section === 'header');
   const columnCount = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
   const inferred: NormalizedTableMergeSpec[] = [];
 
   for (let colIndex = 0; colIndex < columnCount; colIndex += 1) {
+    if (!isEligibleImplicitMergeColumn(input.headerRows, headerMerges, colIndex)) continue;
     let rowIndex = 0;
     while (rowIndex < rows.length) {
       const current = Array.isArray(rows[rowIndex]) ? rows[rowIndex][colIndex] : undefined;
@@ -236,6 +271,7 @@ export const buildNormalizedTableGrid = (input: {
   columnTypes?: string[];
   columnWidths?: number[];
   rowAction?: string;
+  bodyMergeInference?: BodyMergeInferenceMode;
   merges?: NormalizedTableMergeSpec[];
   autoMergeRules?: NormalizedAutoMergeRule[];
 }): NormalizedTableGrid => {
@@ -273,6 +309,7 @@ export const buildNormalizedTableGrid = (input: {
     columnTypes: normalizeColumnTypes(input.columnTypes || [], columnCount),
     columnWidths: normalizeColumnWidths(input.columnWidths || [], columnCount),
     ...(input.rowAction ? { rowAction: input.rowAction } : {}),
+    ...(input.bodyMergeInference ? { bodyMergeInference: input.bodyMergeInference } : {}),
     merges: Array.isArray(input.merges) ? input.merges.map((item) => ({ ...item })) : [],
     autoMergeRules: Array.isArray(input.autoMergeRules) ? input.autoMergeRules.map((item) => ({ ...item })) : []
   };

@@ -12,6 +12,7 @@ import { createInspectDrivenTagFallbackNode } from "../theme/volcengine-design/t
 import { buildScenePath, syncSingleNodeMetadata } from "./metadataSync";
 import { resolveComponentDefinition, toUnknownComponentError } from "./registryResolver";
 import type { ApplyContext } from "./types";
+import { normalizeStatusTagThemeInput } from "../statusTagSemantic";
 
 type ParentContainer = BaseNode & ChildrenMixin;
 
@@ -164,16 +165,7 @@ function normalizeStatusTagThemeVariant(
   | "Processing 等待中"
   | "Loading 加载中"
   | "Waiting 待启用" {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (/^已.+/.test(normalized)) return "Success 成功";
-  if (/^待.+/.test(normalized)) return "Waiting 待启用";
-  if (normalized.includes("warning") || normalized.includes("告警")) return "Warning 告警";
-  if (normalized.includes("error") || normalized.includes("错误")) return "Error 错误";
-  if (normalized.includes("stop") || normalized.includes("停止")) return "Stop 停止";
-  if (normalized.includes("processing") || normalized.includes("等待")) return "Processing 等待中";
-  if (normalized.includes("loading") || normalized.includes("加载")) return "Loading 加载中";
-  if (normalized.includes("waiting") || normalized.includes("待启用")) return "Waiting 待启用";
-  return "Success 成功";
+  return normalizeStatusTagThemeInput(value) ?? "Success 成功";
 }
 
 function normalizeStatusTagStateVariant(value: unknown): "Default 默认" | "Hover 悬浮" | "Active 点击" {

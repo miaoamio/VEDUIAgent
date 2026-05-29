@@ -11,7 +11,9 @@ export interface TableMergeValidationError {
     | 'OUT_OF_BOUNDS'
     | 'OVERLAP'
     | 'SPECIAL_CELL_HORIZONTAL_MERGE'
-    | 'AUTO_RULE_INVALID_COLUMN';
+    | 'AUTO_RULE_INVALID_COLUMN'
+    | 'FAKE_MULTI_LEVEL_HEADER'
+    | 'AUTO_BODY_MERGE_UNSUPPORTED';
   message: string;
   mergeId?: string;
   section?: 'header' | 'body';
@@ -149,11 +151,76 @@ export const validateAutoMergeRules = (grid: NormalizedTableGrid): TableMergeVal
   });
 };
 
+const isBlankCell = (value: unknown): boolean => String(value ?? '').trim() === '';
+
+export const validateMultiLevelHeaderStructure = (grid: NormalizedTableGrid): TableMergeValidationError[] => {
+  if (grid.headerRowCount <= 1) return [];
+  const headerMerges = grid.merges.filter((merge) => merge.section === 'header');
+  const hasGroupedHeader = headerMerges.some((merge) => merge.row === 0 && merge.colspan > 1);
+  if (hasGroupedHeader) return [];
+  return [
+    makeError({
+      code: 'FAKE_MULTI_LEVEL_HEADER',
+      message: 'headerRows 看起来是双层表头，但缺少真正的组头 merge；请使用带 colspan>1 的 header merges 表达多级表头。',
+      section: 'header',
+      row: 0,
+      col: 0,
+    })
+  ];
+};
+
+export const validateAutoBodyMerges = (grid: NormalizedTableGrid): TableMergeValidationError[] => {
+  if (grid.bodyMergeInference !== 'auto') return [];
+  return grid.merges.flatMap((merge) => {
+    if (merge.section !== 'body') return [];
+    const errors: TableMergeValidationError[] = [];
+
+    if (merge.rowspan > 1) {
+      for (let row = merge.row + 1; row < merge.row + merge.rowspan; row += 1) {
+        for (let col = merge.col; col < merge.col + merge.colspan; col += 1) {
+          if (!isBlankCell(grid.bodyRows[row]?.[col])) {
+            errors.push(makeError({
+              code: 'AUTO_BODY_MERGE_UNSUPPORTED',
+              message: 'bodyMergeInference=auto 时，body merge 被覆盖区域必须留空；当前 merge 缺少可靠截图依据。',
+              mergeId: merge.id,
+              section: 'body',
+              row,
+              col,
+            }));
+            return errors;
+          }
+        }
+      }
+    }
+
+    if (merge.colspan > 1) {
+      const row = merge.row;
+      for (let col = merge.col + 1; col < merge.col + merge.colspan; col += 1) {
+        if (!isBlankCell(grid.bodyRows[row]?.[col])) {
+          errors.push(makeError({
+            code: 'AUTO_BODY_MERGE_UNSUPPORTED',
+            message: 'bodyMergeInference=auto 时，body colspan 被覆盖区域必须留空；当前 merge 缺少可靠截图依据。',
+            mergeId: merge.id,
+            section: 'body',
+            row,
+            col,
+          }));
+          return errors;
+        }
+      }
+    }
+
+    return errors;
+  });
+};
+
 export const validateNormalizedTableGrid = (grid: NormalizedTableGrid): TableMergeValidationError[] => {
   return [
     ...validateMergeBounds(grid),
     ...validateMergeOverlap(grid),
     ...validateSpecialCellMergeRules(grid),
     ...validateAutoMergeRules(grid),
+    ...validateMultiLevelHeaderStructure(grid),
+    ...validateAutoBodyMerges(grid),
   ];
 };
