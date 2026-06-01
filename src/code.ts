@@ -524,9 +524,14 @@ let lastTableContextCache: {
 type CanvasHint = 'table' | 'form' | 'chart' | 'mixed';
 
 let selectionUpdateSuppressed = false;
+let userInfoSent = false;
 
 // Helper to check selection and notify UI
 async function checkSelection() {
+  // 兜底：如果 handleUiReady 时没发出用户信息，在选区变化时重试
+  if (!userInfoSent && sendCurrentUserInfo()) {
+    userInfoSent = true;
+  }
   if (selectionUpdateSuppressed) {
     return;
   }
@@ -6455,7 +6460,37 @@ async function handleSetGenerationLock(msg: any) {
   }
 }
 
+function sendCurrentUserInfo() {
+  const user = figma.currentUser;
+  if (user && (user.name || user.id)) {
+    figma.ui.postMessage({
+      type: 'current-user-info',
+      data: {
+        userId: user.name || user.id || 'anonymous'
+      }
+    });
+    return true;
+  }
+  return false;
+}
+
 async function handleUiReady(_msg: any) {
+  // UI 就绪后发送当前用户信息，用于埋点
+  // 社区安装版本中 figma.currentUser 可能延迟初始化，需重试
+  if (sendCurrentUserInfo()) {
+    userInfoSent = true;
+  } else {
+    let retries = 0;
+    const retryInterval = setInterval(() => {
+      retries++;
+      if (sendCurrentUserInfo()) {
+        userInfoSent = true;
+        clearInterval(retryInterval);
+      } else if (retries >= 10) {
+        clearInterval(retryInterval);
+      }
+    }, 500);
+  }
   checkSelection();
 }
 
