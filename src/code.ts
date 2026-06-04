@@ -237,6 +237,7 @@ import {
   getTableColumns,
   hasDirectTableColumns,
   resolveTableContentFrame,
+  resolveTableChromeRoot,
   findPaginationRow,
   findTableContentStack,
   detectTableActualState,
@@ -623,7 +624,7 @@ async function checkSelection() {
 
         if (componentId === 'table' && effectiveTarget.type === 'FRAME') {
           scheduleTableCellPrewarm();
-          const actualState = detectTableActualState(effectiveTarget as FrameNode);
+          const actualState = detectTableActualState(resolveTableChromeRoot(effectiveTarget as FrameNode));
           normalizedParams.hasButtonGroup = actualState.hasButtonGroup;
           normalizedParams.hasFilter = actualState.hasFilter;
           normalizedParams.hasTabs = actualState.hasTabs;
@@ -646,7 +647,7 @@ async function checkSelection() {
           let selectedColIdx: number | undefined;
 
           if (componentId === 'table' && effectiveTarget.type === 'FRAME') {
-            tableFrame = effectiveTarget as FrameNode;
+            tableFrame = resolveTableChromeRoot(effectiveTarget as FrameNode);
           } else {
             tableFrame = findTableFrameFromNode(effectiveTarget);
           }
@@ -742,6 +743,15 @@ async function checkSelection() {
           lastTableContextCache = tableContext;
         }
 
+        const isAiMergedSelection =
+          componentId === 'table'
+            ? isAiMergedTableParams(normalizedParams)
+            : isAiGeneratedMergedCellSelection(node);
+
+        // #region debug-point A:selection-update-plugin
+        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"A",location:"code.ts:checkSelection",msg:"[DEBUG] Plugin posting selection-update",data:{selectedNodeName:node.name,effectiveTargetName:effectiveTarget.name,componentId,nodeType:node.type,effectiveTargetType:effectiveTarget.type,isAiMergedSelection,hasPagination:Boolean(normalizedParams?.hasPagination),hasFilter:Boolean(normalizedParams?.hasFilter),hasTabs:Boolean(normalizedParams?.hasTabs),hasButtonGroup:Boolean(normalizedParams?.hasButtonGroup)},ts:Date.now()})}).catch(()=>{});
+        // #endregion
+
         figma.ui.postMessage({
           type: 'selection-update',
           data: {
@@ -753,7 +763,7 @@ async function checkSelection() {
             nodeName: effectiveTarget.name,
             tableContext,
             mergeRole: findMergeRoleFromNode(node),
-            isAiGeneratedMergedCell: isAiGeneratedMergedCellSelection(node)
+            isAiGeneratedMergedCell: isAiMergedSelection
           }
         });
 
@@ -4516,8 +4526,8 @@ async function renderComponent(
       frame.resize(params.width || 1176, 100);
       frame.cornerRadius = params.cornerRadius || 0;
       frame.clipsContent = true;
-      frame.name = 'Table Content';
-      frame.setPluginData('table-role', 'table-content');
+      frame.name = '表格';
+      frame.setPluginData('table-role', '');
       const tableColumnInstances: ComponentInstance[] =
           instance.children && instance.children.length > 0
               ? instance.children
@@ -6662,6 +6672,10 @@ async function handleCreateComponent(msg: any) {
 
 async function handleUpdateComponent(msg: any) {
     const { params } = msg;
+    const changedKeys = Array.isArray(msg?.changedKeys)
+      ? msg.changedKeys.filter((key: unknown): key is string => typeof key === 'string')
+      : [];
+    const changedKeySet = new Set(changedKeys);
     const selection = figma.currentPage.selection;
     if (selection.length === 1) {
       let node = selection[0] as SceneNode;
@@ -6679,6 +6693,9 @@ async function handleUpdateComponent(msg: any) {
 
       const componentId = node.getPluginData('component-id');
       const previousParams = componentId ? readNodeParams(node) : {};
+      // #region debug-point C:update-component-plugin-entry
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"code.ts:handleUpdateComponent:entry",msg:"[DEBUG] Plugin handleUpdateComponent entry",data:{selectedNodeName:node.name,componentId,changedKeys,nodeType:node.type,hasPagination:Boolean(params?.hasPagination),hasFilter:Boolean(params?.hasFilter),hasTabs:Boolean(params?.hasTabs),hasButtonGroup:Boolean(params?.hasButtonGroup)},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       
       if (componentId) {
         let shouldRefreshSelection = true;
@@ -6927,23 +6944,28 @@ async function handleUpdateComponent(msg: any) {
         }
 
 	        if (componentId === 'table' && node.type === 'FRAME') {
-	            let tableRoot = node;
+	            let tableRoot = resolveTableChromeRoot(node);
 	            let tableContent = resolveTableContentFrame(tableRoot);
               let suppressedSelection = false;
+              const tableChromeChanged =
+                changedKeySet.has('hasPagination') ||
+                changedKeySet.has('hasFilter') ||
+                changedKeySet.has('hasTabs') ||
+                changedKeySet.has('hasButtonGroup');
 
 	            // Keep inner table params in sync so sizing / row-action helpers read correct values.
 	            if (tableContent !== tableRoot) {
 	                writeNodeParams(tableContent, params);
             } else {
-                tableRoot.name = 'Table Content';
-                tableRoot.setPluginData('table-role', 'table-content');
+                tableRoot.name = '表格';
+                tableRoot.setPluginData('table-role', '');
 	            }
 
 	            const wantsPagination = params.hasPagination === true;
 	            const wantsFilter = params.hasFilter === true;
 	            const wantsTabs = params.hasTabs === true;
 	            const wantsButtonGroup = params.hasButtonGroup === true;
-            if ((wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) && hasDirectTableColumns(tableRoot)) {
+            if ((wantsPagination || wantsFilter || wantsTabs || wantsButtonGroup) && tableContent === tableRoot) {
                 // If we have an existing filter group in the parent, we should clean it up before wrapping
                 // because the new filter will be placed inside the wrapper's content stack.
                 if (tableRoot.parent && tableRoot.parent.type === 'FRAME') {
@@ -7064,6 +7086,29 @@ async function handleUpdateComponent(msg: any) {
                 selectionUpdateSuppressed = false;
             }
 	            checkSelection();
+              if (tableChromeChanged) {
+                const actualState = detectTableActualState(tableRoot);
+                const toolbarNode = tableRoot.children.find(
+                  (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
+                ) as FrameNode | undefined;
+                const toolbarChildRoles = toolbarNode
+                  ? toolbarNode.children.map((child) => child.getPluginData('table-role') || child.getPluginData('component-id') || child.name).join('|')
+                  : 'none';
+                // #region debug-point C:update-component-plugin-table-result
+                fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"code.ts:handleUpdateComponent:table-result",msg:"[DEBUG] Plugin table chrome result",data:{tableRootName:tableRoot.name,tableContentName:tableContent?.name,wantsPagination,wantsFilter,wantsTabs,wantsButtonGroup,actualState},ts:Date.now()})}).catch(()=>{});
+                // #endregion
+                const mismatches: string[] = [];
+                if (changedKeySet.has('hasPagination') && actualState.hasPagination !== wantsPagination) mismatches.push('分页器');
+                if (changedKeySet.has('hasFilter') && actualState.hasFilter !== wantsFilter) mismatches.push('筛选器');
+                if (changedKeySet.has('hasTabs') && actualState.hasTabs !== wantsTabs) mismatches.push('标签页');
+                if (changedKeySet.has('hasButtonGroup') && actualState.hasButtonGroup !== wantsButtonGroup) mismatches.push('按钮组');
+                figma.ui.postMessage({
+                  type: 'action-done',
+                  message: mismatches.length > 0
+                    ? `表格附加区域更新失败：${mismatches.join('、')} 未生效（root=${tableRoot.name}，toolbar=${toolbarChildRoles}）`
+                    : '表格附加区域已更新'
+                });
+              }
             shouldRefreshSelection = false;
 	        }
 
@@ -7145,10 +7190,13 @@ async function handleUpdateComponent(msg: any) {
             if (typeof params.textDisplay === 'string') {
                 applyCellTextDisplay(node as SceneNode, params.textDisplay as 'ellipsis' | 'lineBreak');
             }
-            if (typeof params.columnWidthMode === 'string') {
+            if (changedKeySet.has('columnWidthMode') || changedKeySet.has('width')) {
+                const widthMode = typeof params.columnWidthMode === 'string'
+                  ? params.columnWidthMode
+                  : previousParams.columnWidthMode;
                 const column = findTableColumnFromNode(node);
-                if (column) {
-                    applyColumnWidthMode(column, params.columnWidthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', params.width);
+                if (column && typeof widthMode === 'string') {
+                    applyColumnWidthMode(column, widthMode.toUpperCase() as 'FIXED' | 'HUG' | 'FILL', params.width);
                 }
             }
             if (typeof params.textDisplay === 'string') {
@@ -7741,5 +7789,13 @@ figma.ui.onmessage = async (msg) => {
     'unmerge-selected-cells': handleUnmergeSelectedCells,
   };
   const handler = handlers[msg.type];
-  if (handler) await handler(msg);
+  if (!handler) return;
+  try {
+    await handler(msg);
+  } catch (error) {
+    const message = error instanceof Error && error.message
+      ? error.message
+      : String(error || '未知错误');
+    figma.ui.postMessage({ type: 'action-done', message: `操作失败：${message}` });
+  }
 };

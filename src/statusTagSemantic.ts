@@ -50,6 +50,7 @@ export function resolveStatusTagThemeFromSemantic(value: unknown): StatusTagThem
   if (isStopWord) return 'Stop 停止';
 
   const isErrorWord =
+    normalized.includes('异常') ||
     normalized.includes('失败') ||
     normalized.includes('禁用') ||
     normalized.includes('驳回') ||

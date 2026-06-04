@@ -32,6 +32,11 @@ const STATUS_HEADER_HINTS = ['状态', '级别', 'status', 'state', 'level'];
 const TYPE_TAG_HEADER_HINTS = ['类型', '分类', '品类', '地域', '环境', '分组', '标签', 'type', 'category', 'tag', 'region', 'zone', 'env', 'group'];
 const USER_HEADER_HINTS = ['负责人', '创建人', '成员', '用户', '姓名', 'owner', 'user', 'member', 'assignee', 'creator'];
 const BUSINESS_TEXT_HEADER_HINTS = ['业务', '业务组', '业务分组', '业务域', '业务线', '事业部', '部门'];
+const NARRATIVE_TEXT_HEADER_HINTS = [
+  '原因', '说明', '备注', '建议', '描述', '详情', '详细说明', '异常原因', '问题原因', '问题描述',
+  '处理建议', '诊断建议', 'reason', 'description', 'desc', 'remark', 'remarks', 'note', 'notes',
+  'comment', 'comments', 'advice', 'suggestion', 'suggestions', 'details'
+];
 const CHINESE_COMPOUND_SURNAMES = [
   '欧阳', '太史', '端木', '上官', '司马', '东方', '独孤', '南宫', '万俟', '闻人', '夏侯', '诸葛',
   '尉迟', '公羊', '赫连', '澹台', '皇甫', '宗政', '濮阳', '公冶', '太叔', '申屠', '公孙', '慕容',
@@ -144,6 +149,26 @@ const isShortTagTextValue = (value: unknown): boolean => {
   return text.length <= 24;
 };
 
+const isLongNarrativeTextValue = (value: unknown): boolean => {
+  const text = extractCellText(value).trim();
+  if (!text) return false;
+  if (looksLikeIdentifierText(text)) return false;
+  if (isShortTagTextValue(text)) return false;
+  if (text.length >= 30) return true;
+  return (
+    text.length >= 20 &&
+    /[，。,.;；:：!?！？]/.test(text) &&
+    /[\u4e00-\u9fa5A-Za-z]/.test(text)
+  );
+};
+
+const isLikelyLongTextColumn = (values: unknown[]): boolean => {
+  const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
+  if (nonEmptyValues.length === 0) return false;
+  const longTextCount = nonEmptyValues.filter(isLongNarrativeTextValue).length;
+  return longTextCount >= 1 && longTextCount / nonEmptyValues.length >= 0.6;
+};
+
 const isLikelyPersonNameText = (value: unknown): boolean => {
   const text = extractCellText(value).trim();
   if (!text) return false;
@@ -174,6 +199,7 @@ const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
   if (headerIncludes(header, USER_HEADER_HINTS)) return true;
   if (
     headerIncludes(header, BUSINESS_TEXT_HEADER_HINTS) ||
+    headerIncludes(header, NARRATIVE_TEXT_HEADER_HINTS) ||
     headerIncludes(header, STATUS_HEADER_HINTS) ||
     headerIncludes(header, TYPE_TAG_HEADER_HINTS) ||
     headerIncludes(header, DATE_TIME_HEADER_HINTS) ||
@@ -190,6 +216,7 @@ const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
 };
 
 const isBusinessTextColumn = (header: string): boolean => headerIncludes(header, BUSINESS_TEXT_HEADER_HINTS);
+const isNarrativeTextHeader = (header: string): boolean => headerIncludes(header, NARRATIVE_TEXT_HEADER_HINTS);
 
 const isLikelyPlainTypeTagColumn = (header: string, values: unknown[]): boolean => {
   if (headerIncludes(header, STATUS_HEADER_HINTS) || headerIncludes(header, USER_HEADER_HINTS)) return false;
@@ -224,6 +251,7 @@ const columnHasTagObject = (values: unknown[]): boolean => {
 const inferVisualTagColumnKind = (header: string, values: unknown[]): TagColumnKind | null => {
   const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '');
   if (nonEmptyValues.length === 0) return null;
+  if (isLikelyLongTextColumn(values)) return null;
 
   const visualMarkerCount = nonEmptyValues.filter(isVisualTagObject).length;
   if (visualMarkerCount === 0) return null;
@@ -546,8 +574,11 @@ const inferColumnType = (header: string, values: unknown[]): string => {
   if (isActionHeader) return 'ActionText';
 
   if (isBusinessTextColumn(header)) return 'Text';
+  if (isNarrativeTextHeader(header)) return 'Text';
 
   if (isDateTimeColumn(header, values)) return 'Text';
+
+  if (isLikelyLongTextColumn(values)) return 'Text';
 
   if (isLikelyAvatarColumn(header, values)) return 'Avatar';
 
@@ -660,20 +691,39 @@ const inferNumberUnitColumnMeta = (
 export const inferColumnTypesFromRows = (
   headers: string[],
   rows: unknown[][],
-  currentTypes?: string[]
+  currentTypes?: string[],
+  explicitTypeMask?: boolean[]
 ): string[] => {
   const normalizedTypes = Array.isArray(currentTypes)
     ? currentTypes.map((t) => String(t || '').trim())
     : [];
+  const normalizedExplicitTypeMask = Array.isArray(explicitTypeMask)
+    ? explicitTypeMask.map((flag) => Boolean(flag))
+    : [];
 
   return headers.map((header, index) => {
     const explicit = normalizedTypes[index];
+    const hasExplicitType = Boolean(normalizedExplicitTypeMask[index]);
     const explicitNormalized = String(explicit || '').toLowerCase();
     const columnValues = rows.map((row) => row?.[index]);
+    const explicitLooksTag =
+      explicitNormalized.includes('tag') ||
+      explicitNormalized.includes('badge') ||
+      explicitNormalized.includes('status') ||
+      explicitNormalized.includes('state');
     if (isBusinessTextColumn(header)) {
       return 'Text';
     }
+    if (isNarrativeTextHeader(header)) {
+      return 'Text';
+    }
     if (isDateTimeColumn(header, columnValues)) {
+      return 'Text';
+    }
+    if (hasExplicitType && explicitNormalized === 'text') {
+      return 'Text';
+    }
+    if (explicitLooksTag && isLikelyLongTextColumn(columnValues)) {
       return 'Text';
     }
     const explicitIsNumberUnit = explicitNormalized === 'number(unit)' || explicitNormalized === 'number-unit';
@@ -1444,14 +1494,31 @@ export const buildTableComponentFromPayloadDetailed = (
   const columnTypesBase: string[] =
     Array.isArray(source.columnTypes) ? source.columnTypes.map((t: any) => String(t)) :
     (rawColumns ? rawColumns.map((c: any) => String(c?.type || 'Text')) : headers.map(() => 'Text'));
-  const inferredColumnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase);
+  const explicitTypeMask: boolean[] =
+    Array.isArray(source.columnTypes)
+      ? headers.map((_, index) => {
+        const value = source.columnTypes[index];
+        return value !== undefined && value !== null && String(value).trim() !== '';
+      })
+      : (
+        rawColumns
+          ? headers.map((_, index) => {
+            const value = rawColumns[index]?.type;
+            return value !== undefined && value !== null && String(value).trim() !== '';
+          })
+          : headers.map(() => false)
+      );
+  const inferredColumnTypes = inferColumnTypesFromRows(headers, rows, columnTypesBase, explicitTypeMask);
   const inferredColumnWidths: number[] =
     Array.isArray(source.columnWidths) ? source.columnWidths.map((w: any) => Number(w)) :
     (rawColumns ? rawColumns.map((c: any) => Number(c?.width || 0)) : headers.map(() => 0));
-  const hasPagination = source.pagination === undefined ? !isMergeTable : Boolean(source.pagination);
-  const hasFilter = Boolean(source.filters);
-  const hasTabs = Boolean(source.hasTabs || source.tabs);
-  const hasButtonGroup = Boolean(source.hasButtonGroup || source.buttonGroup);
+  // Keep draw_table defaults aligned with runtime prompt:
+  // pagination is on by default for all tables, including merged/image-restored ones.
+  const hasPagination = source.pagination === undefined ? true : Boolean(source.pagination);
+  const hasFilter = source.hasFilter === undefined ? Boolean(source.filters) : Boolean(source.hasFilter);
+  const hasTabs = source.hasTabs === undefined ? Boolean(source.tabs) : Boolean(source.hasTabs);
+  const hasButtonGroup =
+    source.hasButtonGroup === undefined ? Boolean(source.buttonGroup) : Boolean(source.hasButtonGroup);
   const buttonGroup = isObject(source.buttonGroup) ? source.buttonGroup : null;
   const primaryButtonText =
     source.primaryButtonText ?? buttonGroup?.primaryText ?? buttonGroup?.primary ?? buttonGroup?.primaryLabel;

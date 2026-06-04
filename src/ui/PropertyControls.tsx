@@ -107,16 +107,19 @@ export const SwitchControl = ({
 export const SelectControl = ({
   value,
   onChange,
-  children
+  children,
+  disabled = false
 }: {
   value: string;
   onChange: (value: string) => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }) => (
-  <div className="select-control">
+  <div className={`select-control ${disabled ? 'is-disabled' : ''}`}>
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
     >
       {children}
     </select>

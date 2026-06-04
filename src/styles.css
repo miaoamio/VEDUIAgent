@@ -2302,6 +2302,25 @@ button:disabled {
   display: block;
 }
 
+.select-control.is-disabled {
+  cursor: not-allowed;
+}
+
+.select-control.is-disabled select {
+  color: var(--ved-text-disabled, #A1A1AA);
+  background: #F4F4F5;
+  border-color: #E4E4E7;
+  cursor: not-allowed;
+}
+
+.select-control.is-disabled .select-icon-wrapper {
+  color: var(--ved-icon-disabled, var(--ved-text-disabled, #A1A1AA));
+}
+
+.selection-control-disabled {
+  cursor: not-allowed;
+}
+
 .field-row {
   display: flex;
   flex-direction: column;

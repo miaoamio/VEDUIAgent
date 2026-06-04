@@ -121,7 +121,7 @@ export function ensureTableContentStack(tableRoot: FrameNode, tableContent: Fram
     }
 
     if (tableContent !== tableRoot) {
-        tableRoot.name = 'Table';
+        tableRoot.name = '表格';
         tableContent.name = 'Table Content';
         tableContent.setPluginData('table-role', 'table-content');
     }
@@ -199,10 +199,10 @@ export function createTableWrapperFromTableFrame(
     }
 
     const parent = tableFrame.parent;
-    if (!parent || !('insertChild' in parent) || !('children' in parent)) return null;
+    const hasWritableParent = Boolean(parent && 'insertChild' in parent && 'children' in parent);
 
     const wrapper = figma.createFrame();
-    wrapper.name = 'Table';
+    wrapper.name = '表格';
     wrapper.layoutMode = 'VERTICAL';
     wrapper.primaryAxisSizingMode = 'AUTO';
     wrapper.counterAxisSizingMode = 'FIXED';
@@ -231,15 +231,17 @@ export function createTableWrapperFromTableFrame(
         }
     }
 
-    try {
-        wrapper.x = tableFrame.x;
-        wrapper.y = tableFrame.y;
-    } catch {
-        // ignore (e.g. autolayout parent)
-    }
+    if (hasWritableParent) {
+        try {
+            wrapper.x = tableFrame.x;
+            wrapper.y = tableFrame.y;
+        } catch {
+            // ignore (e.g. autolayout parent)
+        }
 
-    const index = (parent as any).children.indexOf(tableFrame);
-    (parent as any).insertChild(index >= 0 ? index : (parent as any).children.length, wrapper);
+        const index = (parent as any).children.indexOf(tableFrame);
+        (parent as any).insertChild(index >= 0 ? index : (parent as any).children.length, wrapper);
+    }
 
     // Move existing table frame into the wrapper.
     wrapper.appendChild(tableFrame);
@@ -275,6 +277,9 @@ export function createTableWrapperFromTableFrame(
     // Keep the inner table addressable as a "table" for helpers, but avoid double "AI component" roots.
     try {
         tableFrame.setPluginData('is-ai-component', '');
+        tableFrame.setPluginData('component-id', 'table');
+        tableFrame.setPluginData('table-role', 'table-content');
+        tableFrame.name = 'Table Content';
     } catch {}
 
     // Wrapper becomes the new AI component root.
@@ -788,7 +793,7 @@ export function applyCellTextDisplay(cell: SceneNode, mode: 'ellipsis' | 'lineBr
     } catch {}
     if ('resize' in cell) {
       try {
-        const w = Math.max(1, Math.round((cell as any).width || anchorSnapshot.width));
+        const w = Math.max(1, anchorSnapshot.width);
         (cell as any).resize(w, anchorSnapshot.height);
       } catch {}
     }

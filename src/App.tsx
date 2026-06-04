@@ -2405,6 +2405,9 @@ function App() {
     };
   } | null;
 
+  const MERGED_TABLE_LOCKED_PARAM_KEYS = new Set(['size', 'rowCount', 'rowAction']);
+  const MERGED_TABLE_LOCK_TOOLTIP = '含合并单元格的表格暂不支持修改';
+
   const isTableSelectionLike = (value: SelectedComponentState) =>
     Boolean(
       value?.tableContext ||
@@ -2524,6 +2527,9 @@ function App() {
         return;
       }
       if (type === 'selection-update') {
+        // #region debug-point B:selection-update-ui
+        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:selection-update",msg:"[DEBUG] UI received selection-update",data:{componentId:data?.componentId,nodeName:data?.nodeName,isAiGeneratedMergedCell:Boolean(data?.isAiGeneratedMergedCell),hasPagination:Boolean(data?.params?.hasPagination),hasFilter:Boolean(data?.params?.hasFilter),hasTabs:Boolean(data?.params?.hasTabs),hasButtonGroup:Boolean(data?.params?.hasButtonGroup),selectionCount:data?.selectionCount},ts:Date.now()})}).catch(()=>{});
+        // #endregion
         try { console.log('[merge] selection-update mergeRole=', (data as any)?.mergeRole, 'componentId=', data?.componentId, 'nodeName=', data?.nodeName); } catch {}
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
@@ -2593,6 +2599,12 @@ function App() {
 
       if (type === 'figma-instance-info') {
         setFigmaInstanceInfo(data?.componentKey || data?.componentNodeId ? data : null);
+      }
+
+      if (type === 'action-done') {
+        // #region debug-point B:action-done-ui
+        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:action-done",msg:"[DEBUG] UI received action-done",data:{message:String(message||"")},ts:Date.now()})}).catch(()=>{});
+        // #endregion
       }
 
     };
@@ -2727,9 +2739,25 @@ function App() {
 
   const updateParams = (next: Record<string, any>) => {
     if (!selectedComponent) return;
-    const newParams = { ...selectedComponent.params, ...next };
+    // #region debug-point C:update-params-ui
+    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:updateParams",msg:"[DEBUG] UI sending update-component",data:{selectedComponentId:selectedComponent.componentId,nodeName:selectedComponent.nodeName,isAiGeneratedMergedCell:Boolean(selectedComponent.isAiGeneratedMergedCell),nextKeys:Object.keys(next||{}),next},ts:Date.now()})}).catch(()=>{});
+    // #endregion
+    const filteredEntries = Object.entries(next).filter(([key]) => {
+      if (selectedComponent.componentId !== 'table') return true;
+      if (!selectedComponent.isAiGeneratedMergedCell) return true;
+      return !MERGED_TABLE_LOCKED_PARAM_KEYS.has(key);
+    });
+    if (filteredEntries.length === 0) return;
+    const filteredNext = Object.fromEntries(filteredEntries);
+    const newParams = { ...selectedComponent.params, ...filteredNext };
     setSelectedComponent({ ...selectedComponent, params: newParams });
-    parent.postMessage({ pluginMessage: { type: 'update-component', params: newParams } }, '*');
+    parent.postMessage({
+      pluginMessage: {
+        type: 'update-component',
+        params: newParams,
+        changedKeys: Object.keys(filteredNext)
+      }
+    }, '*');
   };
 
   const updateParam = (key: string, value: any) => {
@@ -3213,7 +3241,7 @@ function App() {
 - ⚠️ **环形图是饼图（chart-pie）的变体，必须设置 "类型 Type":"环形图 DonutChart"。属性名必须完整包含英文后缀：分类数量 Item / 数值标注 Data Annotation / 总数值 Sum / 类型 Type。**
 - 创建新表格时优先 draw_table，避免输出冗长 table 子树。
 - 新建表格时不要使用 apply_scene，直接 draw_table/draw_tabl。
-- draw_table payload 必须使用紧凑结构。单层表头优先使用 headers + rows；若存在多级表头或合并单元格，优先使用 headerRows + rows + merges。示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。普通表格下 rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串；但合并单元格表格中，被 merges 覆盖的占位单元格允许使用空字符串。禁止使用 columns 字段代替 headers。支持 payload 顶层字段 "bodyMergeInference"，可选值仅有 "off" | "auto" | "on"："off" = 不做本地自动 body merge 推断；"auto" = 只按截图中明确可见的合并结构保守还原，不因重复值相同、空白占位或推测的分组关系主动补本地 body merge；"on" = 允许按重复值和分组语义主动推断 body merge。若用户未明确说明，普通 prompt 生成表格默认用 "off"，截图/图片还原默认用 "auto"；只有用户明确提到“按组展示 / 相同值合并 / 同类项合并”时才用 "on"。merges 每项使用 { "section":"header|body", "row":0, "col":0, "rowspan":2, "colspan":1 }；支持 Header Colspan / Header Rowspan / Body Rowspan / Body Colspan（如订单表最后一行"合计"横向合并前 4 列）。Body Colspan 示例：表格最后追加"合计行"时，rows 末尾追加一行 ["合计","","","","¥12,345"]，并加 merges: [{"section":"body","row":<最后一行索引>,"col":0,"rowspan":1,"colspan":4}]。**只要用户提到"追加合计行/小计行/总计行/在最后一行合并/合并前 N 列为合计"，必须同时满足三件事：① rows 末尾真实追加一行（首格写"合计/小计/总计"，被合并的中间格留空字符串，最后一格写汇总值）；② merges 数组里加一条对应的 body colspan；③ 不要让 rowCount 把这一行覆盖掉，rowCount 应等于真实 rows.length。** 若输入包含截图/图片，且图片里能看出多级表头、重复指标组、或 body 分组跨行合并，**必须保留原始结构**：优先输出 \`headerRows + merges\`，不得压缩成单层 \`headers\`，不得省略重复指标组，不得把多个叶子列的值拼进同一个单元格文本。**只要截图里看得出多层表头，就必须显式输出完整 \`headerRows\` 与对应 \`merges\`；禁止把截图中的双层/多层表头压平成单层 \`headers\`。只要存在 header merges 或多级表头，headerRows 必须完整给出每一层表头文案；禁止用 headers 承载第一层组头，再用空字符串占位去“模拟”第二层。headers 如果同时提供，只能是叶子表头，不得写组头名称加空串。错误反例：\`headers: ["原始价格信息","","","折扣/溢价信息","",""]\`；错误反例：截图明明是双层表头，却只输出 \`headers: ["生效期","商品名称","计价类型","价格","单位","操作"]\`。** 如果图片中某个左侧维度列（如 Topic/业务/ID/Name 等）视觉上一个单元格跨多行，即使 OCR 识别成每行重复文本，也必须转为 body rowspan merge：rows 仅第一行保留该文本，被覆盖行写空字符串，并在 merges 添加对应 {"section":"body","row":起始行,"col":列索引,"rowspan":跨度,"colspan":1}；禁止用重复文本模拟合并。Topic/ID/Name/Key 等长标识列默认按 Text，不要因包含 setting/config/update/open/close 等子串判为操作列；只有真实操作按钮列或短操作短语才使用 ActionText/ActionIcon。 若截图/图片中的表格单元格呈现 Tag/Badge/Pill/Chip 视觉形态，必须按标签列生成而不是普通 Text：包括圆角浅灰/浅色背景短标签、描边/线框标签、胶囊标签、彩色圆点/方块/短线 + 彩色文字的状态标识、带小图标/箭头/角标 + 文案的标签、数字/状态徽标。截图语境下，视觉型标签单元格优先输出结构化对象而不是纯字符串，例如 {"text":"China-North","appearance":"pill","tagKind":"type"}、{"text":"可用","appearance":"badge","tagKind":"status","statusSemantic":"enabled"}。通用视觉 Tag 默认走 TypeTag，只有存在明确状态语义或显式 statusSemantic/statusTheme/tagKind=status 时才走 StatusTag；不要仅因列名推断。不要把没有标签容器或状态语义的国旗+国家、头像+姓名、普通图标+长文本误判为 Tag。 同理，不要把站点/地域/环境/分组这类“圆点/徽标 + 文本”误判为 Avatar；Avatar 仅用于明确的人/用户列，且值应主要是人名或用户对象。
+- draw_table payload 必须使用紧凑结构。单层表头优先使用 headers + rows；若存在多级表头或合并单元格，优先使用 headerRows + rows + merges。示例：{"headers":["名称","状态","创建人","操作"],"rowCount":10,"rows":[["服务A",{"text":"运行中","statusTheme":"Success 成功"},"林晓然","编辑 删除"],["服务B",{"text":"已停止","statusTheme":"Stop 停止"},"周思远","编辑 删除"]],"columnTypes":["Text","StatusTag","Avatar","ActionText"]}。普通表格下 rows 必须至少 2 行且每个单元格填具体内容，禁止空数组或空字符串；但合并单元格表格中，被 merges 覆盖的占位单元格允许使用空字符串。禁止使用 columns 字段代替 headers。支持 payload 顶层字段 "bodyMergeInference"，可选值仅有 "off" | "auto" | "on"："off" = 不做本地自动 body merge 推断；"auto" = 只按截图中明确可见的合并结构保守还原，不因重复值相同、空白占位或推测的分组关系主动补本地 body merge；"on" = 允许按重复值和分组语义主动推断 body merge。若用户未明确说明，普通 prompt 生成表格默认用 "off"，截图/图片还原默认用 "auto"；只有用户明确提到“按组展示 / 相同值合并 / 同类项合并”时才用 "on"。表格工具栏与分页规则对普通表格、合并单元格表格、多级表头表格、截图/图片还原表格一视同仁：分页器默认启用，若需关闭显式设置 "pagination": false；筛选器可用 "filters" 或 "hasFilter": true；标签页可用 "tabs" 或 "hasTabs": true；按钮组可用 "buttonGroup" 或 "hasButtonGroup": true。除非用户明确要求，或截图里明确可见这些区域，否则不要自行补筛选器/标签页/按钮组。merges 每项使用 { "section":"header|body", "row":0, "col":0, "rowspan":2, "colspan":1 }；支持 Header Colspan / Header Rowspan / Body Rowspan / Body Colspan（如订单表最后一行"合计"横向合并前 4 列）。Body Colspan 示例：表格最后追加"合计行"时，rows 末尾追加一行 ["合计","","","","¥12,345"]，并加 merges: [{"section":"body","row":<最后一行索引>,"col":0,"rowspan":1,"colspan":4}]。**只要用户提到"追加合计行/小计行/总计行/在最后一行合并/合并前 N 列为合计"，必须同时满足三件事：① rows 末尾真实追加一行（首格写"合计/小计/总计"，被合并的中间格留空字符串，最后一格写汇总值）；② merges 数组里加一条对应的 body colspan；③ 不要让 rowCount 把这一行覆盖掉，rowCount 应等于真实 rows.length。** 若输入包含截图/图片，且图片里能看出多级表头、重复指标组、或 body 分组跨行合并，**必须保留原始结构**：优先输出 \`headerRows + merges\`，不得压缩成单层 \`headers\`，不得省略重复指标组，不得把多个叶子列的值拼进同一个单元格文本。**只要截图里看得出多层表头，就必须显式输出完整 \`headerRows\` 与对应 \`merges\`；禁止把截图中的双层/多层表头压平成单层 \`headers\`。只要存在 header merges 或多级表头，headerRows 必须完整给出每一层表头文案；禁止用 headers 承载第一层组头，再用空字符串占位去“模拟”第二层。headers 如果同时提供，只能是叶子表头，不得写组头名称加空串。错误反例：\`headers: ["原始价格信息","","","折扣/溢价信息","",""]\`；错误反例：截图明明是双层表头，却只输出 \`headers: ["生效期","商品名称","计价类型","价格","单位","操作"]\`。** 如果图片中某个左侧维度列（如 Topic/业务/ID/Name 等）视觉上一个单元格跨多行，即使 OCR 识别成每行重复文本，也必须转为 body rowspan merge：rows 仅第一行保留该文本，被覆盖行写空字符串，并在 merges 添加对应 {"section":"body","row":起始行,"col":列索引,"rowspan":跨度,"colspan":1}；禁止用重复文本模拟合并。Topic/ID/Name/Key 等长标识列默认按 Text，不要因包含 setting/config/update/open/close 等子串判为操作列；只有真实操作按钮列或短操作短语才使用 ActionText/ActionIcon。 若截图/图片中的表格单元格呈现 Tag/Badge/Pill/Chip 视觉形态，必须按标签列生成而不是普通 Text：包括圆角浅灰/浅色背景短标签、描边/线框标签、胶囊标签、彩色圆点/方块/短线 + 彩色文字的状态标识、带小图标/箭头/角标 + 文案的标签、数字/状态徽标。截图语境下，视觉型标签单元格优先输出结构化对象而不是纯字符串，例如 {"text":"China-North","appearance":"pill","tagKind":"type"}、{"text":"可用","appearance":"badge","tagKind":"status","statusSemantic":"enabled"}。通用视觉 Tag 默认走 TypeTag，只有存在明确状态语义或显式 statusSemantic/statusTheme/tagKind=status 时才走 StatusTag；不要仅因列名推断。**但长句说明、原因描述、备注、策略说明、规则说明、问题描述这类叙述性文本列，即使被 OCR 包进对象，或对象上带了 appearance/tagKind 等字段，也必须按普通 Text 输出，不得标成 Tag。只要单元格文本明显是长句、包含逗号句号分号等叙述性标点，或多数行文本长度明显超过常规标签长度，就一律按 Text。** 不要把没有标签容器或状态语义的国旗+国家、头像+姓名、普通图标+长文本误判为 Tag。 同理，不要把站点/地域/环境/分组这类“圆点/徽标 + 文本”误判为 Avatar；Avatar 仅用于明确的人/用户列，且值应主要是人名或用户对象。
 - columnTypes 可选值：Text（普通文本）、Number(unit)（数值+单位，支持 {"value":"123","unit":"ms"} 或 "123ms"）、StatusTag（状态标签，单元格用对象 {"text":"xxx","statusTheme":"Success 成功"}）、Avatar（头像+姓名）、ActionText（操作按钮文字）、ActionIcon（操作图标）。创建人/负责人列用 Avatar，状态列用 StatusTag，操作列用 ActionText。
 - 所有单元格值必须是字符串；StatusTag 和 Number(unit) 列可用对象。操作列多个按钮用空格分隔如 "编辑 删除"，禁止用数组或 | 分隔。创建人列直接写姓名字符串如 "林晓然"，禁止用对象。
 - 人名禁止使用张三、李四等占位名，使用自然姓名如：林晓然、周思远、苏瑾瑶、赵桐宇、沈清和、韩冬梅、方远哲、叶舟行、卢皓宇、陈默涵。
@@ -3316,11 +3344,12 @@ function App() {
      - "auto"：按截图/结构保守判断，只保留明确可见的 merge 线索，不因重复值相同主动合并。
      - "on"：允许根据重复值和分组语义主动推断 body merge。
      - 普通 prompt 生成表格默认用 "off"；截图/图片还原默认用 "auto"；只有用户明确提到“按组展示 / 相同值合并 / 同类项合并”时才用 "on"。
-   - **支持直接定义表格工具栏与分页**：
-     - 若需标签页，请在 payload 中添加 "tabs": ["全部", "进行中"] 或 "hasTabs": true。
-     - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"] 或字符串。
-     - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true。
-     - 分页器默认启用；若需关闭，请显式设置 "pagination": false。
+  - **支持直接定义表格工具栏与分页**：
+    - 这条规则对普通表格、合并单元格表格、多级表头表格、截图/图片还原表格都生效。
+    - 若需标签页，请在 payload 中添加 "tabs": ["全部", "进行中"] 或 "hasTabs": true；未明确要求或截图未明显出现时，默认不要补标签页。
+    - 若需筛选器，请在 payload 中添加 "filters": ["状态", "城市", "关键词"]、字符串，或 "hasFilter": true；未明确要求或截图未明显出现时，默认不要补筛选器。
+    - 若需按钮组，请在 payload 中添加 "buttonGroup": { "primaryText": "新建", "secondaryText": "导出" } 或 "hasButtonGroup": true；未明确要求或截图未明显出现时，默认不要补按钮组。
+    - 分页器默认启用；合并单元格/多级表头/截图还原表格也默认启用。若需关闭，请显式设置 "pagination": false。
      - **不要**为此拆分任务，直接在一个 draw_table 动作中完成。
   - **行数精简**：通过 rowCount 指定表格总行数（默认 10），rows 只需提供 2–3 行样本数据，插件会自动循环复制填充到 rowCount 行。**禁止逐行重复输出相似数据**。普通表格下 **rows 不能为空数组**，必须至少提供 2 行数据，且每个单元格都必须填入贴合业务场景的具体内容（人名、日期、状态词、金额等），不能是空字符串。如果 rows 为空，表格会全部显示占位符。**但合并单元格表格中，被 merges 覆盖的占位单元格允许保留空字符串，不要自动补成 "-"、"—" 或其他占位内容。** 若输入是截图/图片中的复杂表格，**不要为了省 token 而压缩结构**：可以精简 body 的可见行数，但必须保留截图里可见的表头层级、重复指标组、以及 body 的分组/汇总 merge 关系。
   - payload 使用紧凑结构即可。单层表头优先用 headers；多级表头或合并单元格优先用 headerRows + merges，例如：
@@ -3669,10 +3698,16 @@ function App() {
     if (headers.length === 0) return null;
     const rows = Array.isArray(event.rows) ? event.rows : [];
     const normalizedRows = normalizeRowsByHeaders(rows, headers);
+    const explicitTypeMask = Array.isArray(event.columnTypes)
+      ? headers.map((_, index) => {
+        const value = event.columnTypes?.[index];
+        return value !== undefined && value !== null && String(value).trim() !== '';
+      })
+      : headers.map(() => false);
     const columnTypesBase = Array.isArray(event.columnTypes)
       ? event.columnTypes.map((t: any) => String(t))
       : headers.map(() => 'Text');
-    const columnTypes = inferColumnTypesFromRows(headers, normalizedRows, columnTypesBase);
+    const columnTypes = inferColumnTypesFromRows(headers, normalizedRows, columnTypesBase, explicitTypeMask);
     const columnWidths = Array.isArray(event.columnWidths)
       ? event.columnWidths.map((w: any) => Number(w))
       : headers.map(() => 0);
@@ -9360,6 +9395,8 @@ StepB:\n`;
   const renderTablePropertyEditor = () => {
     if (!selectedComponent) return null;
     const params = selectedComponent.params || {};
+    const disableMergedTableEditing = Boolean(selectedComponent.isAiGeneratedMergedCell);
+    const mergedTableTooltip = disableMergedTableEditing ? MERGED_TABLE_LOCK_TOOLTIP : undefined;
     const sizeValue = params.size || 'default';
     const rowCountValue = typeof params.rowCount === 'number' ? params.rowCount : 10;
     const rowActionValue = params.rowAction || 'none';
@@ -9383,38 +9420,53 @@ StepB:\n`;
       <div className="selection-panel">
         <div className="section-title">表格尺寸</div>
         <div className="row">
-          <div className="col">
-            <SelectControl value={sizeValue} onChange={(value) => updateParam('size', value)}>
-              {sizeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </SelectControl>
-          </div>
+          <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-size */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-size",msg:"[DEBUG] Hover size control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+              <SelectControl
+                value={sizeValue}
+                onChange={(value) => updateParam('size', value)}
+                disabled={disableMergedTableEditing}
+              >
+                {sizeOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </SelectControl>
+            </div>
+          </Tooltip>
         </div>
 
         <div className="section-title">表格行数</div>
         <div className="row">
-          <div className="col">
-            <SelectControl
-              value={String(rowCountValue)}
-              onChange={(value) => updateParam('rowCount', Number(value))}
-            >
-              {rowCountOptions.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </SelectControl>
-          </div>
+          <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-row-count */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-row-count",msg:"[DEBUG] Hover row-count control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+              <SelectControl
+                value={String(rowCountValue)}
+                onChange={(value) => updateParam('rowCount', Number(value))}
+                disabled={disableMergedTableEditing}
+              >
+                {rowCountOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </SelectControl>
+            </div>
+          </Tooltip>
         </div>
 
         <div className="section-title">表格行操作</div>
         <div className="row">
-          <div className="col">
-            <SelectControl value={rowActionValue} onChange={(value) => updateParam('rowAction', value)}>
-              {rowActionOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </SelectControl>
-          </div>
+          <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-row-action */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-row-action",msg:"[DEBUG] Hover row-action control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+              <SelectControl
+                value={rowActionValue}
+                onChange={(value) => updateParam('rowAction', value)}
+                disabled={disableMergedTableEditing}
+              >
+                {rowActionOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </SelectControl>
+            </div>
+          </Tooltip>
         </div>
 
           <div style={{ marginTop: '4px' }}>
@@ -10311,7 +10363,7 @@ StepB:\n`;
                     type="button"
                     className="chat-empty-guide-tag"
                     onClick={() => {
-                      replaceQuickPrompt('绘制一个含合并单元格的表格，包含多业务分组，实例ID，实例名称，状态，CPU和内存，其中实例ID，实例名称，状态组合成一个双层表头“基础信息”，并将业务分组纵向合并');
+                      replaceQuickPrompt('绘制一个含合并单元格的表格，默认带分页器，包含多业务分组，实例ID，实例名称，状态，CPU和内存，其中实例ID、实例名称、状态组合成一个双层表头“基础信息”，并将业务分组纵向合并；如有需要可再加筛选器、标签页和按钮组');
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
                       setChartExtraOptions({});

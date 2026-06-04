@@ -192,6 +192,8 @@ export function hasDirectTableColumns(node: FrameNode): boolean {
 export function resolveTableContentFrame(table: FrameNode): FrameNode {
     if (hasDirectTableColumns(table)) return table;
     const directFrames = table.children.filter((child): child is FrameNode => child.type === 'FRAME') as FrameNode[];
+    const managedContent = directFrames.find((child) => child.getPluginData('table-role') === 'table-content');
+    if (managedContent) return managedContent;
     for (const frame of directFrames) {
         if (hasDirectTableColumns(frame)) return frame;
     }
@@ -205,6 +207,22 @@ export function resolveTableContentFrame(table: FrameNode): FrameNode {
         // ignore
     }
     return table;
+}
+
+export function resolveTableChromeRoot(tableRoot: FrameNode): FrameNode {
+    const parent = tableRoot.parent;
+    if (!parent || parent.type !== 'FRAME') return tableRoot;
+    if (parent.getPluginData('component-id') !== 'table') return tableRoot;
+    const selfRole = tableRoot.getPluginData('table-role');
+    const parentHasManagedTableParts = parent.children.some((child) => {
+        if (child.type !== 'FRAME') return false;
+        const role = child.getPluginData('table-role');
+        return role === 'toolbar' || role === 'pagination-row' || role === 'table-content';
+    });
+    if (selfRole === 'table-content' || parentHasManagedTableParts) {
+        return parent;
+    }
+    return tableRoot;
 }
 
 function isFigmaComponentWithToken(node: BaseNode, token: string): boolean {
@@ -254,6 +272,7 @@ export function detectTableActualState(tableRoot: FrameNode): {
     hasTabs: boolean;
     hasPagination: boolean;
 } {
+    const chromeRoot = resolveTableChromeRoot(tableRoot);
     const result = {
         hasButtonGroup: false,
         hasFilter: false,
@@ -261,16 +280,37 @@ export function detectTableActualState(tableRoot: FrameNode): {
         hasPagination: false
     };
 
-    const toolbar = tableRoot.children.find(
+    const toolbar = chromeRoot.children.find(
         (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
     ) as FrameNode | undefined;
+    const hasDescendantRole = (root: FrameNode, role: string): boolean => {
+        try {
+            return Boolean(root.findOne((node) => 'getPluginData' in node && node.getPluginData('table-role') === role));
+        } catch {
+            return false;
+        }
+    };
+    const hasDescendantComponentId = (root: FrameNode, componentId: string): boolean => {
+        try {
+            return Boolean(root.findOne((node) => 'getPluginData' in node && node.getPluginData('component-id') === componentId));
+        } catch {
+            return false;
+        }
+    };
     if (toolbar) {
-        result.hasButtonGroup = toolbar.children.some(c => c.getPluginData('table-role') === 'button-group');
-        result.hasFilter = toolbar.children.some(c => c.getPluginData('table-role') === 'filter-group');
-        result.hasTabs = toolbar.children.some(c => c.getPluginData('table-role') === 'tabs');
+        result.hasButtonGroup =
+            toolbar.children.some(c => c.getPluginData('table-role') === 'button-group')
+            || hasDescendantRole(toolbar, 'button-group');
+        result.hasFilter =
+            toolbar.children.some(c => c.getPluginData('table-role') === 'filter-group')
+            || hasDescendantRole(toolbar, 'filter-group')
+            || hasDescendantComponentId(toolbar, 'filter-group');
+        result.hasTabs =
+            toolbar.children.some(c => c.getPluginData('table-role') === 'tabs')
+            || hasDescendantRole(toolbar, 'tabs');
     }
 
-    result.hasPagination = !!findPaginationRow(tableRoot);
+    result.hasPagination = !!findPaginationRow(chromeRoot);
 
     return result;
 }
