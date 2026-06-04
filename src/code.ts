@@ -748,10 +748,6 @@ async function checkSelection() {
             ? isAiMergedTableParams(normalizedParams)
             : isAiGeneratedMergedCellSelection(node);
 
-        // #region debug-point A:selection-update-plugin
-        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"A",location:"code.ts:checkSelection",msg:"[DEBUG] Plugin posting selection-update",data:{selectedNodeName:node.name,effectiveTargetName:effectiveTarget.name,componentId,nodeType:node.type,effectiveTargetType:effectiveTarget.type,isAiMergedSelection,hasPagination:Boolean(normalizedParams?.hasPagination),hasFilter:Boolean(normalizedParams?.hasFilter),hasTabs:Boolean(normalizedParams?.hasTabs),hasButtonGroup:Boolean(normalizedParams?.hasButtonGroup)},ts:Date.now()})}).catch(()=>{});
-        // #endregion
-
         figma.ui.postMessage({
           type: 'selection-update',
           data: {
@@ -6693,9 +6689,6 @@ async function handleUpdateComponent(msg: any) {
 
       const componentId = node.getPluginData('component-id');
       const previousParams = componentId ? readNodeParams(node) : {};
-      // #region debug-point C:update-component-plugin-entry
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"code.ts:handleUpdateComponent:entry",msg:"[DEBUG] Plugin handleUpdateComponent entry",data:{selectedNodeName:node.name,componentId,changedKeys,nodeType:node.type,hasPagination:Boolean(params?.hasPagination),hasFilter:Boolean(params?.hasFilter),hasTabs:Boolean(params?.hasTabs),hasButtonGroup:Boolean(params?.hasButtonGroup)},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       
       if (componentId) {
         let shouldRefreshSelection = true;
@@ -7088,15 +7081,6 @@ async function handleUpdateComponent(msg: any) {
 	            checkSelection();
               if (tableChromeChanged) {
                 const actualState = detectTableActualState(tableRoot);
-                const toolbarNode = tableRoot.children.find(
-                  (child) => child.type === 'FRAME' && (child as FrameNode).getPluginData('table-role') === 'toolbar'
-                ) as FrameNode | undefined;
-                const toolbarChildRoles = toolbarNode
-                  ? toolbarNode.children.map((child) => child.getPluginData('table-role') || child.getPluginData('component-id') || child.name).join('|')
-                  : 'none';
-                // #region debug-point C:update-component-plugin-table-result
-                fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"code.ts:handleUpdateComponent:table-result",msg:"[DEBUG] Plugin table chrome result",data:{tableRootName:tableRoot.name,tableContentName:tableContent?.name,wantsPagination,wantsFilter,wantsTabs,wantsButtonGroup,actualState},ts:Date.now()})}).catch(()=>{});
-                // #endregion
                 const mismatches: string[] = [];
                 if (changedKeySet.has('hasPagination') && actualState.hasPagination !== wantsPagination) mismatches.push('分页器');
                 if (changedKeySet.has('hasFilter') && actualState.hasFilter !== wantsFilter) mismatches.push('筛选器');
@@ -7105,7 +7089,7 @@ async function handleUpdateComponent(msg: any) {
                 figma.ui.postMessage({
                   type: 'action-done',
                   message: mismatches.length > 0
-                    ? `表格附加区域更新失败：${mismatches.join('、')} 未生效（root=${tableRoot.name}，toolbar=${toolbarChildRoles}）`
+                    ? `表格附加区域更新失败：${mismatches.join('、')} 未生效（root=${tableRoot.name}）`
                     : '表格附加区域已更新'
                 });
               }

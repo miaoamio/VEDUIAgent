@@ -2518,7 +2518,7 @@ function App() {
     window.onmessage = (event) => {
       const pluginMessage = event?.data?.pluginMessage;
       if (!pluginMessage || typeof pluginMessage !== 'object') return;
-      const { type, message, data } = pluginMessage as any;
+      const { type, data } = pluginMessage as any;
       
       if (type === 'current-user-info') {
         if (data?.userId) {
@@ -2527,10 +2527,6 @@ function App() {
         return;
       }
       if (type === 'selection-update') {
-        // #region debug-point B:selection-update-ui
-        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:selection-update",msg:"[DEBUG] UI received selection-update",data:{componentId:data?.componentId,nodeName:data?.nodeName,isAiGeneratedMergedCell:Boolean(data?.isAiGeneratedMergedCell),hasPagination:Boolean(data?.params?.hasPagination),hasFilter:Boolean(data?.params?.hasFilter),hasTabs:Boolean(data?.params?.hasTabs),hasButtonGroup:Boolean(data?.params?.hasButtonGroup),selectionCount:data?.selectionCount},ts:Date.now()})}).catch(()=>{});
-        // #endregion
-        try { console.log('[merge] selection-update mergeRole=', (data as any)?.mergeRole, 'componentId=', data?.componentId, 'nodeName=', data?.nodeName); } catch {}
         setUserInput('');
         setSelectionCount(data?.selectionCount ?? 1);
         setCanvasHint(data?.canvasHint ?? 'mixed');
@@ -2602,9 +2598,6 @@ function App() {
       }
 
       if (type === 'action-done') {
-        // #region debug-point B:action-done-ui
-        fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"B",location:"App.tsx:action-done",msg:"[DEBUG] UI received action-done",data:{message:String(message||"")},ts:Date.now()})}).catch(()=>{});
-        // #endregion
       }
 
     };
@@ -2739,9 +2732,6 @@ function App() {
 
   const updateParams = (next: Record<string, any>) => {
     if (!selectedComponent) return;
-    // #region debug-point C:update-params-ui
-    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"C",location:"App.tsx:updateParams",msg:"[DEBUG] UI sending update-component",data:{selectedComponentId:selectedComponent.componentId,nodeName:selectedComponent.nodeName,isAiGeneratedMergedCell:Boolean(selectedComponent.isAiGeneratedMergedCell),nextKeys:Object.keys(next||{}),next},ts:Date.now()})}).catch(()=>{});
-    // #endregion
     const filteredEntries = Object.entries(next).filter(([key]) => {
       if (selectedComponent.componentId !== 'table') return true;
       if (!selectedComponent.isAiGeneratedMergedCell) return true;
@@ -5643,8 +5633,6 @@ function App() {
           parentId: parentIdVal
         }
       }, '*');
-      // #region debug-point B:create-component-send
-      // #endregion
     });
   };
 
@@ -5657,8 +5645,6 @@ function App() {
       const abortSignal = llmAbortRef.current?.signal;
       const handler = (event: MessageEvent) => {
         const data = event.data.pluginMessage || {};
-        // #region debug-point C:apply-envelope-recv
-        // #endregion
         if (data.type === 'apply-result') {
           window.removeEventListener('message', handler);
           abortSignal?.removeEventListener('abort', onAbort);
@@ -5691,8 +5677,6 @@ function App() {
           parentId
         }
       }, '*');
-      // #region debug-point C:apply-envelope-send
-      // #endregion
     });
   };
 
@@ -9421,7 +9405,7 @@ StepB:\n`;
         <div className="section-title">表格尺寸</div>
         <div className="row">
           <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
-            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-size */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-size",msg:"[DEBUG] Hover size control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`}>
               <SelectControl
                 value={sizeValue}
                 onChange={(value) => updateParam('size', value)}
@@ -9438,7 +9422,7 @@ StepB:\n`;
         <div className="section-title">表格行数</div>
         <div className="row">
           <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
-            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-row-count */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-row-count",msg:"[DEBUG] Hover row-count control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`}>
               <SelectControl
                 value={String(rowCountValue)}
                 onChange={(value) => updateParam('rowCount', Number(value))}
@@ -9455,7 +9439,7 @@ StepB:\n`;
         <div className="section-title">表格行操作</div>
         <div className="row">
           <Tooltip content={mergedTableTooltip} enabled={disableMergedTableEditing} placement="top-start">
-            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`} onMouseEnter={() => { if (!disableMergedTableEditing) return; /* #region debug-point D:hover-row-action */ fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"merged-table-panel",runId:"pre-fix",hypothesisId:"D",location:"App.tsx:hover-row-action",msg:"[DEBUG] Hover row-action control",data:{nodeName:selectedComponent?.nodeName,componentId:selectedComponent?.componentId,isAiGeneratedMergedCell:Boolean(selectedComponent?.isAiGeneratedMergedCell)},ts:Date.now()})}).catch(()=>{}); /* #endregion */ }}>
+            <div className={`col ${disableMergedTableEditing ? 'selection-control-disabled' : ''}`}>
               <SelectControl
                 value={rowActionValue}
                 onChange={(value) => updateParam('rowAction', value)}
