@@ -1171,12 +1171,12 @@ export const tableComponents: ComponentRegistry["components"] = {
     "id": "table-cell-action-text",
     "name": "ActionText 操作文字",
     "category": "Table",
-    "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认右对齐；仅在存在更多语义时展示更多图标。",
+    "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认左对齐；仅在存在更多语义时展示更多图标。",
     "schemaVersion": "2.0.0",
     "family": "table-cell",
     "prompts": {
-      "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认右对齐；仅在存在更多语义时展示更多图标。",
-      "usage": "用于表格“操作/Action”列：用文字链接样式展示操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除”），**严禁使用斜杠/分割**。只有当包含“…”/“...”/“更多”或操作数 > 3 时，才在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认右对齐。",
+      "description": "以文字形式承载操作（如“详情”或“编辑 删除”），默认左对齐；仅在存在更多语义时展示更多图标。",
+      "usage": "用于表格“操作/Action”列：用文字链接样式展示操作。`text` 参数支持用空格分隔多个操作词（例如“编辑 删除”），**严禁使用斜杠/分割**。只有当包含“…”/“...”/“更多”或操作数 > 3 时，才在末尾追加更多图标。包含“删除/Delete”的操作使用 danger 色，其余使用 link 主色；整体默认左对齐。",
       "examples": [
         "操作列(文字): { \"componentId\": \"table-cell-action-text\", \"params\": { \"text\": \"详情\", \"width\": 0 } }"
       ]
@@ -1219,7 +1219,7 @@ export const tableComponents: ComponentRegistry["components"] = {
       },
       "textAlign": {
         "type": "select",
-        "default": "right",
+        "default": "left",
         "description": "对齐方式",
         "enumValues": [
           "left",
@@ -1347,12 +1347,12 @@ export const tableComponents: ComponentRegistry["components"] = {
     "id": "table-cell-action-icon",
     "name": "ActionIcon 操作图标",
     "category": "Table",
-    "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。",
+    "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认左对齐。",
     "schemaVersion": "2.0.0",
     "family": "table-cell",
     "prompts": {
-      "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认右对齐。",
-      "usage": "用于表格“操作/Action”列：用 3 个图标（编辑、删除、更多）展示操作，图标默认 16px，图标间距 24px，整体默认右对齐。优先复用 Figma token：`table-cell-icon-edit`、`table-cell-icon-delete`、`table-cell-icon-action-more`。",
+      "description": "以图标形式承载操作（编辑 / 删除 / 更多），默认左对齐。",
+      "usage": "用于表格“操作/Action”列：用 3 个图标（编辑、删除、更多）展示操作，图标默认 16px，图标间距 24px，整体默认左对齐。优先复用 Figma token：`table-cell-icon-edit`、`table-cell-icon-delete`、`table-cell-icon-action-more`。",
       "examples": [
         "操作列(图标): { \"componentId\": \"table-cell-action-icon\", \"params\": { \"width\": 0 } }"
       ]
@@ -1395,7 +1395,7 @@ export const tableComponents: ComponentRegistry["components"] = {
       },
       "textAlign": {
         "type": "select",
-        "default": "right",
+        "default": "left",
         "description": "对齐方式",
         "enumValues": [
           "left",

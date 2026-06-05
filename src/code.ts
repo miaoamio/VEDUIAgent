@@ -4645,9 +4645,26 @@ async function renderComponent(
               // 取 skill 已构造好的 headerChild（含 textAlign='right' 等），仅在 colspan===1 的叶子表头才用
               const leafColForHeader = Number(cell.col ?? 0);
               const reachedLeaf = colspan === 1 && Boolean(cell.reachesLeaf);
-              const headerChild = reachedLeaf ? lightweightColumnData[leafColForHeader]?.headerChild : undefined;
+              const leafColumnData = reachedLeaf ? lightweightColumnData[leafColForHeader] : undefined;
+              const headerChild = leafColumnData?.headerChild;
+              const firstBodyChild = Array.isArray(leafColumnData?.bodyChildren)
+                ? leafColumnData.bodyChildren.find((child: any) => child && typeof child === 'object')
+                : undefined;
               const headerChildParams: any = headerChild ? { ...(headerChild.params || {}) } : {};
-              const finalTextAlign = shouldCenterHeader ? 'center' : (headerChildParams.textAlign as any);
+              const firstBodyChildParams: any = firstBodyChild ? { ...(firstBodyChild.params || {}) } : {};
+              const inheritedLeafTextAlign =
+                typeof headerChildParams.textAlign === 'string' && headerChildParams.textAlign
+                  ? headerChildParams.textAlign
+                  : (
+                    typeof leafColumnData?.mergedParams?.textAlign === 'string' && leafColumnData.mergedParams.textAlign
+                      ? leafColumnData.mergedParams.textAlign
+                      : (
+                        typeof firstBodyChildParams.textAlign === 'string' && firstBodyChildParams.textAlign
+                          ? firstBodyChildParams.textAlign
+                          : undefined
+                      )
+                  );
+              const finalTextAlign = shouldCenterHeader ? 'center' : (inheritedLeafTextAlign as any);
               const finalText = String(cell.text || headerChildParams.text || '');
               // 调试：表头 anchor 文案为空时报告位置，便于排查 payload 缺字段
               try {

@@ -10347,7 +10347,7 @@ StepB:\n`;
                     type="button"
                     className="chat-empty-guide-tag"
                     onClick={() => {
-                      replaceQuickPrompt('绘制一个含合并单元格的表格，默认带分页器，包含多业务分组，实例ID，实例名称，状态，CPU和内存，其中实例ID、实例名称、状态组合成一个双层表头“基础信息”，并将业务分组纵向合并；如有需要可再加筛选器、标签页和按钮组');
+                      replaceQuickPrompt('绘制一个含合并单元格的表格，包含多业务分组，实例ID，实例名称，状态，CPU和内存，其中实例ID、实例名称、状态组合成一个双层表头“基础信息”，并将业务分组纵向合并');
                       setChartPromptMode(false);
                       setChartShortcutActive(null);
                       setChartExtraOptions({});
