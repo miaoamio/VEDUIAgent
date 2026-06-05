@@ -4652,18 +4652,17 @@ async function renderComponent(
                 : undefined;
               const headerChildParams: any = headerChild ? { ...(headerChild.params || {}) } : {};
               const firstBodyChildParams: any = firstBodyChild ? { ...(firstBodyChild.params || {}) } : {};
-              const inheritedLeafTextAlign =
-                typeof headerChildParams.textAlign === 'string' && headerChildParams.textAlign
-                  ? headerChildParams.textAlign
-                  : (
-                    typeof leafColumnData?.mergedParams?.textAlign === 'string' && leafColumnData.mergedParams.textAlign
-                      ? leafColumnData.mergedParams.textAlign
-                      : (
-                        typeof firstBodyChildParams.textAlign === 'string' && firstBodyChildParams.textAlign
-                          ? firstBodyChildParams.textAlign
-                          : undefined
-                      )
-                  );
+              let inheritedLeafTextAlign: string | undefined;
+              if (typeof headerChildParams.textAlign === 'string' && headerChildParams.textAlign) {
+                inheritedLeafTextAlign = headerChildParams.textAlign;
+              } else if (
+                typeof leafColumnData?.mergedParams?.textAlign === 'string' &&
+                leafColumnData.mergedParams.textAlign
+              ) {
+                inheritedLeafTextAlign = leafColumnData.mergedParams.textAlign;
+              } else if (typeof firstBodyChildParams.textAlign === 'string' && firstBodyChildParams.textAlign) {
+                inheritedLeafTextAlign = firstBodyChildParams.textAlign;
+              }
               const finalTextAlign = shouldCenterHeader ? 'center' : (inheritedLeafTextAlign as any);
               const finalText = String(cell.text || headerChildParams.text || '');
               // 调试：表头 anchor 文案为空时报告位置，便于排查 payload 缺字段
