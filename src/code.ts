@@ -1090,6 +1090,63 @@ function toPositiveNumber(value: unknown): number | null {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function estimateTableTextWidth(text: unknown): number {
+    const value = String(text || '');
+    let width = 0;
+    for (const ch of value) {
+        if (/\s/.test(ch)) {
+            width += 4;
+        } else if (/[\u0000-\u00ff]/.test(ch)) {
+            width += /[A-Z0-9]/.test(ch) ? 8 : 7;
+        } else {
+            width += 13;
+        }
+    }
+    return Math.max(0, Math.ceil(width));
+}
+
+function estimateMergedActionColumnWidth(
+    headerText: unknown,
+    bodyChildren: any[],
+    componentId: string
+): number {
+    const actionDefaults = getDefaultParams(componentId);
+    const paddingLeft = toPositiveNumber(actionDefaults?.paddingLeft) ?? 16;
+    const paddingRight = toPositiveNumber(actionDefaults?.paddingRight) ?? 16;
+    const itemSpacing = componentId === 'table-cell-action-icon' ? 24 : 16;
+    const minimumWidth = 72;
+    const headerWidth = estimateTableTextWidth(headerText) + paddingLeft + paddingRight;
+
+    if (componentId === 'table-cell-action-icon') {
+        const iconCount = 3;
+        const iconSize = 16;
+        return Math.max(minimumWidth, paddingLeft + paddingRight + iconCount * iconSize + (iconCount - 1) * itemSpacing);
+    }
+
+    let maxWidth = headerWidth;
+    for (const child of Array.isArray(bodyChildren) ? bodyChildren : []) {
+        const rawText = String(child?.params?.text || '').trim() || '详情';
+        const parts = rawText
+            .split(/[\s,，、\/]+/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+        const ellipsisIndex = parts.findIndex((part) => part === '…' || part === '...' || part === '更多' || part.toLowerCase() === 'more');
+        const showMore = ellipsisIndex !== -1 || parts.length > 3;
+        const visibleParts =
+            ellipsisIndex !== -1
+                ? parts.slice(0, ellipsisIndex)
+                : parts.length > 3
+                    ? parts.slice(0, 2)
+                    : parts;
+        const textWidth = visibleParts.reduce((sum, part) => sum + estimateTableTextWidth(part), 0);
+        const gaps = visibleParts.length > 1 ? (visibleParts.length - 1) * itemSpacing : 0;
+        const moreWidth = showMore ? 16 + (visibleParts.length > 0 ? itemSpacing : 0) : 0;
+        maxWidth = Math.max(maxWidth, paddingLeft + paddingRight + textWidth + gaps + moreWidth);
+    }
+
+    return Math.max(minimumWidth, Math.ceil(maxWidth));
+}
+
 const TABLE_EMPTY_PLACEHOLDER = '-';
 
 
@@ -3387,7 +3444,10 @@ function parseTableNumberUnitText(rawValue: unknown): { value: string; unit: str
 function buildColumnApplyParamsForCell(
   targetCellParams: Record<string, any>,
   templateParams: Record<string, any>,
-  nextComponentId: string
+  nextComponentId: string,
+  options?: {
+    preserveTargetText?: boolean;
+  }
 ): Record<string, any> | null {
   const def = COMPONENT_DEFS[nextComponentId];
   if (!def) return null;
@@ -3398,10 +3458,13 @@ function buildColumnApplyParamsForCell(
     }
   }
 
+  const preserveTargetText = options?.preserveTargetText !== false;
   const currentText = extractTableCellParamText(targetCellParams);
-  if (currentText) {
+  const templateText = extractTableCellParamText(templateParams);
+  const effectiveText = preserveTargetText ? currentText : (templateText || currentText);
+  if (effectiveText) {
     if (nextComponentId === 'table-cell-number-unit') {
-      const parsed = parseTableNumberUnitText(currentText);
+      const parsed = parseTableNumberUnitText(effectiveText);
       if (def.params.value) {
         nextParams.value = parsed.value;
       }
@@ -3413,17 +3476,17 @@ function buildColumnApplyParamsForCell(
       }
     } else {
       if (def.params.text) {
-        nextParams.text = currentText;
+        nextParams.text = effectiveText;
       }
       if (def.params.tagText) {
-        nextParams.tagText = currentText;
+        nextParams.tagText = effectiveText;
       }
       if (def.params.value && !nextParams.value) {
-        nextParams.value = currentText;
+        nextParams.value = effectiveText;
       }
     }
   }
-  if (!currentText && targetCellParams.value !== undefined && def.params.value) {
+  if (preserveTargetText && !currentText && targetCellParams.value !== undefined && def.params.value) {
     nextParams.value = targetCellParams.value;
   }
   if (isTableActionCellComponentId(nextComponentId)) {
@@ -3496,7 +3559,9 @@ function patchMergedTableInstanceForColumnApply(
     }
 
     if (nextComponentId) {
-      const patchedParams = buildColumnApplyParamsForCell(nextChild.params || {}, templateParams, nextComponentId);
+      const patchedParams = buildColumnApplyParamsForCell(nextChild.params || {}, templateParams, nextComponentId, {
+        preserveTargetText: !isTableActionCellComponentId(nextComponentId)
+      });
       if (patchedParams) {
         nextChild.componentId = nextComponentId;
         nextChild.params = patchedParams;
@@ -4570,23 +4635,46 @@ async function renderComponent(
                   headerHeight: toPositiveNumber(colInstance.params?.headerHeight) ?? headerHeight,
                   bodyHeight: toPositiveNumber(colInstance.params?.bodyHeight) ?? bodyHeight
               };
-              const columnWidth = toPositiveNumber(mergedParams.width) ?? 150;
+              const headerChild =
+                  Array.isArray(colInstance.children)
+                      ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
+                      : undefined;
+              const bodyChildren =
+                  Array.isArray(colInstance.children)
+                      ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
+                      : [];
+              const explicitColumnWidth = toPositiveNumber(colInstance.params?.width);
+              const widthMode =
+                  typeof mergedParams.columnWidthMode === 'string'
+                      ? mergedParams.columnWidthMode
+                      : 'FILL';
+              const firstBodyComponentId = bodyChildren.find((child) => child && typeof child === 'object')?.componentId;
+              const fallbackActionComponentId =
+                  typeof firstBodyComponentId === 'string' && isTableActionCellComponentId(firstBodyComponentId)
+                      ? firstBodyComponentId
+                      : (
+                        typeof mergedParams.cellType === 'string' && isTableActionCellComponentId(mergedParams.cellType)
+                            ? mergedParams.cellType
+                            : undefined
+                      );
+              const columnWidth =
+                  explicitColumnWidth ??
+                  (
+                    widthMode === 'HUG' && fallbackActionComponentId
+                        ? estimateMergedActionColumnWidth(
+                            headerChild?.params?.text ?? mergedParams.headerText,
+                            bodyChildren,
+                            fallbackActionComponentId
+                        )
+                        : 150
+                  );
               return {
                   colInstance,
                   mergedParams,
                   columnWidth,
-                  widthMode:
-                      typeof mergedParams.columnWidthMode === 'string'
-                          ? mergedParams.columnWidthMode
-                          : 'FILL',
-                  headerChild:
-                      Array.isArray(colInstance.children)
-                          ? colInstance.children.find((child) => child.componentId === 'table-header-cell')
-                          : undefined,
-                  bodyChildren:
-                      Array.isArray(colInstance.children)
-                          ? colInstance.children.filter((child) => child.componentId !== 'table-header-cell')
-                          : []
+                  widthMode,
+                  headerChild,
+                  bodyChildren
               };
           });
 
@@ -4925,7 +5013,9 @@ async function renderComponent(
                   baseParams.width = cellWidth;
                   baseParams.height = cellHeight;
               } else {
-                  baseParams.width = explicitHugWidth ? 0 : cellWidth;
+                  const shouldUseResolvedCellWidth =
+                    explicitHugWidth && typeof baseComponentId === 'string' && isTableActionCellComponentId(baseComponentId);
+                  baseParams.width = shouldUseResolvedCellWidth ? cellWidth : (explicitHugWidth ? 0 : cellWidth);
                   baseParams.height = bodyHeight;
               }
               baseParams.disableStretch = true;
@@ -7291,7 +7381,11 @@ async function handleApplyColumnSettings(msg: any) {
           }
 
           const templateComponentId = sourceCell?.getPluginData?.('component-id') || componentId;
-          if (sourceCell && templateComponentId === componentId) {
+          const shouldCloneSourceCell =
+            Boolean(sourceCell)
+            && templateComponentId === componentId
+            && isActionCell;
+          if (sourceCell && shouldCloneSourceCell) {
             const offset = getTableHeaderOffset(column);
             const children = [...column.children];
             for (let index = offset; index < children.length; index += 1) {
