@@ -93,6 +93,41 @@ export default {
 
     const url = new URL(request.url);
 
+    // ── 独立用户列表接口 GET /api/users ──
+    if (url.pathname === "/api/users" && request.method === "GET") {
+      try {
+        if (!env.DB) {
+          throw new Error("DB binding not found");
+        }
+        const usersResult = await env.DB.prepare(`
+          SELECT 
+            user_id,
+            COUNT(*) as event_count,
+            SUM(session_count) as total_sessions,
+            SUM(gen_count) as total_generations,
+            SUM(token_count) as total_tokens,
+            MIN(created_at) as first_seen,
+            MAX(created_at) as last_seen
+          FROM user_metrics
+          GROUP BY user_id
+          ORDER BY last_seen DESC
+        `).all();
+
+        return new Response(JSON.stringify({
+          total: usersResult.results?.length || 0,
+          users: usersResult.results || []
+        }), {
+          status: 200,
+          headers: { ...cors, "Content-Type": "application/json" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" }
+        });
+      }
+    }
+
     // ── 埋点数据查询接口 GET /api/metrics ──
     if (url.pathname === "/api/metrics" && request.method === "GET") {
       try {
@@ -113,7 +148,7 @@ export default {
           FROM user_metrics
         `).first();
 
-        // 2. 获取按天统计的趋势 (最近30天)
+        // 2. 获取按天统计的趋势 (全部)
         const dailyResult = await env.DB.prepare(`
           SELECT 
             date(datetime(created_at / 1000, 'unixepoch')) as date,
@@ -126,14 +161,13 @@ export default {
           FROM user_metrics
           GROUP BY date
           ORDER BY date DESC
-          LIMIT 30
         `).all();
 
         // 3. 获取最近的事件流
         const recentResult = await env.DB.prepare(`
           SELECT * FROM user_metrics 
           ORDER BY created_at DESC 
-          LIMIT 50
+          LIMIT 200
         `).all();
 
         return new Response(JSON.stringify({
