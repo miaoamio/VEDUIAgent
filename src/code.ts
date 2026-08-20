@@ -7509,7 +7509,7 @@ async function handleApplyColumnSettings(msg: any) {
 }
 
 async function handleSwapComponent(msg: any) {
-    const { componentId } = msg;
+    const { componentId, columnMode } = msg;
     const selection = figma.currentPage.selection;
     if (selection.length === 1) {
       const rawNode = selection[0] as SceneNode;
@@ -7527,6 +7527,15 @@ async function handleSwapComponent(msg: any) {
       const formFieldAncestor = findAncestorFormFieldNode(node);
       if (formFieldAncestor) {
         node = formFieldAncestor;
+      }
+
+      // When UI is in column mode but Figma selection resolved to a cell,
+      // promote to the parent column so all cells get swapped.
+      if (columnMode && node.getPluginData('component-id') !== 'table-column') {
+        const column = findTableColumnFromNode(node);
+        if (column) {
+          node = column as SceneNode;
+        }
       }
 
       const currentId = node.getPluginData('component-id');

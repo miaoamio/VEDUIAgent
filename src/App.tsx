@@ -2760,7 +2760,8 @@ function App() {
     parent.postMessage({ 
         pluginMessage: { 
             type: 'swap-component', 
-            componentId: newType 
+            componentId: newType,
+            columnMode: selectedComponent.componentId === 'table-column'
         } 
     }, '*');
   };

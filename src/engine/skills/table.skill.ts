@@ -94,9 +94,10 @@ const ENGLISH_ACTION_TOKENS = [
 
 const looksLikeIdentifierText = (text: string): boolean => {
   const trimmed = text.trim();
-  if (trimmed.length < 24) return false;
   if (/[\u4e00-\u9fa5]/.test(trimmed)) return false;
-  return /[_./:-]/.test(trimmed) || /^[a-z0-9_-]+$/i.test(trimmed);
+  if (/[_./:-]/.test(trimmed)) return true;
+  if (trimmed.length < 24) return false;
+  return /^[a-z0-9_-]+$/i.test(trimmed);
 };
 
 const isActionTextValue = (value: unknown): boolean => {
