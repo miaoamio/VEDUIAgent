@@ -512,6 +512,33 @@ function extractFirstTextContent(node: SceneNode): string {
   return '';
 }
 
+async function applyFirstTextContent(node: SceneNode, text: string): Promise<void> {
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode;
+    const len = Math.max(1, textNode.characters.length);
+    const fonts = textNode.getRangeAllFontNames(0, len);
+    for (const font of fonts) {
+      await figma.loadFontAsync(font).catch(() => {});
+    }
+    try { textNode.characters = text; } catch {}
+    return;
+  }
+  if ('children' in node) {
+    for (const child of (node as any).children) {
+      if (child.type === 'TEXT') {
+        await applyFirstTextContent(child as SceneNode, text);
+        return;
+      }
+    }
+    for (const child of (node as any).children) {
+      if ('children' in child || child.type === 'TEXT') {
+        await applyFirstTextContent(child as SceneNode, text);
+        return;
+      }
+    }
+  }
+}
+
 // 缓存最近一次有效的表格上下文，用于用户点击输入框导致选区清空时兜底
 let lastTableContextCache: {
   headers: string[];
@@ -5020,7 +5047,7 @@ async function renderComponent(
               }
               baseParams.disableStretch = true;
               baseParams.borderBottomOnly = true;
-              baseParams.borderWidth = mergedBorderWidth;
+              baseParams.borderWidth = (rowIndex === bodyRowCount - 1) ? 0 : mergedBorderWidth;
               baseParams.borderColor = mergedBorderColor;
               if (baseParams.paddingTop === undefined) baseParams.paddingTop = 0;
               if (baseParams.paddingBottom === undefined) baseParams.paddingBottom = 0;
@@ -5515,6 +5542,7 @@ async function renderComponent(
           }, 0);
 
           for (let rowIndex = 0; rowIndex < maxRowCount; rowIndex++) {
+              const isLastRow = rowIndex === maxRowCount - 1;
               for (const col of columnData) {
                   const hasCustomRows = col.bodyChildren.length > 0;
                   const bodyChild = col.bodyChildren[rowIndex];
@@ -5523,6 +5551,7 @@ async function renderComponent(
                   }
                   const widthParam = (bodyChild?.params as any)?.width;
                   const explicitHugWidth = widthParam === 0 || widthParam === '0';
+                  const lastRowBorderOverride = isLastRow ? { borderWidth: 0 } : {};
                   const cellNode = await renderComponent(
                       bodyChild
                           ? {
@@ -5532,7 +5561,8 @@ async function renderComponent(
                                     width: explicitHugWidth ? 0 : (toPositiveNumber(widthParam) ?? col.columnWidth),
                                     height: col.autoHeightMode ? 0 : (toPositiveNumber(bodyChild.params?.height) ?? bodyHeight),
                                     paddingTop: bodyChild.params?.paddingTop ?? 0,
-                                    paddingBottom: bodyChild.params?.paddingBottom ?? 0
+                                    paddingBottom: bodyChild.params?.paddingBottom ?? 0,
+                                    ...lastRowBorderOverride
                                 }
                             }
                           : {
@@ -5541,7 +5571,8 @@ async function renderComponent(
                                 params: {
                                     text: `Cell ${rowIndex + 1}`,
                                     width: col.columnWidth,
-                                    height: col.autoHeightMode ? 0 : bodyHeight
+                                    height: col.autoHeightMode ? 0 : bodyHeight,
+                                    ...lastRowBorderOverride
                                 }
                             },
                       { isRoot: false }
@@ -7546,25 +7577,27 @@ async function handleSwapComponent(msg: any) {
               const previousCellType = node.getPluginData('cellType');
               const wasActionCell =
                 typeof previousCellType === 'string' && isTableActionCellComponentId(previousCellType);
-              // Iterate over children
               const children = [...node.children];
               let swappedCount = 0;
+              const cellsToSwap: SceneNode[] = [];
               for (const child of children) {
                   const childId = child.getPluginData('component-id');
                   const childDef = COMPONENT_DEFS[childId];
-                  // Only swap if it's a data cell (part of table-cell family but not header)
                   if (childDef && childDef.family === 'table-cell' && childId !== 'table-header-cell') {
                       if (child.getPluginData('merge-role') === 'merge-hidden') continue;
-                      const newNode = await swapComponent(child, componentId);
-                      if (newNode) {
-                        newNode.setPluginData('cellType', componentId);
-                        if (newNode.parent !== node) {
-                          node.insertChild(node.children.indexOf(child), newNode);
-                        }
-                        restoreMergedAnchorCellHeight(newNode as SceneNode);
-                      }
-                      swappedCount++;
+                      cellsToSwap.push(child);
                   }
+              }
+              for (let i = 0; i < cellsToSwap.length; i++) {
+                  const cell = cellsToSwap[i];
+                  try {
+                    const newNode = await swapComponent(cell, componentId);
+                    if (newNode) {
+                      newNode.setPluginData('cellType', componentId);
+                      restoreMergedAnchorCellHeight(newNode as SceneNode);
+                      swappedCount++;
+                    }
+                  } catch {}
               }
               node.setPluginData('cellType', componentId);
               if (typeof componentId === 'string' && isTableActionCellComponentId(componentId)) {
