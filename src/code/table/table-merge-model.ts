@@ -294,6 +294,26 @@ export const buildNormalizedTableGrid = (input: {
     columnCount,
     ''
   );
+  const normalizedMerges: NormalizedTableMergeSpec[] = Array.isArray(input.merges)
+    ? input.merges.map((item) => ({ ...item }))
+    : [];
+
+  if (input.bodyMergeInference === 'auto') {
+    for (const merge of normalizedMerges) {
+      if (merge.section !== 'body') continue;
+      const rowspan = Math.max(1, Number(merge.rowspan) || 1);
+      const colspan = Math.max(1, Number(merge.colspan) || 1);
+      for (let r = merge.row; r < merge.row + rowspan; r += 1) {
+        for (let c = merge.col; c < merge.col + colspan; c += 1) {
+          if (r === merge.row && c === merge.col) continue;
+          if (r >= 0 && r < bodyRows.length && c >= 0 && c < columnCount) {
+            bodyRows[r][c] = '';
+          }
+        }
+      }
+    }
+  }
+
   const normalizedLeafHeaders =
     leafHeaders.length === columnCount
       ? leafHeaders
@@ -310,7 +330,7 @@ export const buildNormalizedTableGrid = (input: {
     columnWidths: normalizeColumnWidths(input.columnWidths || [], columnCount),
     ...(input.rowAction ? { rowAction: input.rowAction } : {}),
     ...(input.bodyMergeInference ? { bodyMergeInference: input.bodyMergeInference } : {}),
-    merges: Array.isArray(input.merges) ? input.merges.map((item) => ({ ...item })) : [],
+    merges: normalizedMerges,
     autoMergeRules: Array.isArray(input.autoMergeRules) ? input.autoMergeRules.map((item) => ({ ...item })) : []
   };
 };
