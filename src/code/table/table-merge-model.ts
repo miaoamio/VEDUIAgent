@@ -56,6 +56,11 @@ const toPositiveInteger = (value: unknown): number | null => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+const toPositiveNumber = (value: unknown): number | null => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 export const normalizeHeaderRowsInput = (source: any, fallbackHeaders: string[] = []): string[][] => {
   const rawHeaderRows = Array.isArray(source?.headerRows) ? source.headerRows : null;
   if (rawHeaderRows && rawHeaderRows.length > 0) {
@@ -301,8 +306,8 @@ export const buildNormalizedTableGrid = (input: {
   if (input.bodyMergeInference === 'auto') {
     for (const merge of normalizedMerges) {
       if (merge.section !== 'body') continue;
-      const rowspan = toPositiveInteger(merge.rowspan) ?? 1;
-      const colspan = toPositiveInteger(merge.colspan) ?? 1;
+      const rowspan = Math.max(1, toPositiveNumber(merge.rowspan) ?? 1);
+      const colspan = Math.max(1, toPositiveNumber(merge.colspan) ?? 1);
       for (let r = merge.row; r < merge.row + rowspan; r += 1) {
         for (let c = merge.col; c < merge.col + colspan; c += 1) {
           if (r === merge.row && c === merge.col) continue;
