@@ -7414,8 +7414,7 @@ async function handleApplyColumnSettings(msg: any) {
           const templateComponentId = sourceCell?.getPluginData?.('component-id') || componentId;
           const shouldCloneSourceCell =
             Boolean(sourceCell)
-            && templateComponentId === componentId
-            && isActionCell;
+            && templateComponentId === componentId;
           if (sourceCell && shouldCloneSourceCell) {
             const offset = getTableHeaderOffset(column);
             const children = [...column.children];
@@ -7442,14 +7441,17 @@ async function handleApplyColumnSettings(msg: any) {
                 // 合并 hidden 占位不需要 swap：visible=false，类型保持原样不影响渲染
                 const role = child.getPluginData('merge-role');
                 if (role === 'merge-hidden') continue;
-                const newNode = await swapComponent(child, componentId);
-                if (newNode) {
-                  newNode.setPluginData('cellType', componentId);
-                  if (newNode.parent !== column) {
-                    column.insertChild(column.children.indexOf(child), newNode);
+                if (childId === componentId) continue;
+                try {
+                  const newNode = await swapComponent(child, componentId);
+                  if (newNode) {
+                    newNode.setPluginData('cellType', componentId);
+                    if (newNode.parent !== column) {
+                      column.insertChild(column.children.indexOf(child), newNode);
+                    }
+                    restoreMergedAnchorCellHeight(newNode as SceneNode);
                   }
-                  restoreMergedAnchorCellHeight(newNode as SceneNode);
-                }
+                } catch {}
               }
             }
             column.setPluginData('cellType', componentId);
@@ -7531,6 +7533,7 @@ async function handleApplyColumnSettings(msg: any) {
           restoreMergedAnchorCellHeight(child as SceneNode);
         }
 
+        figma.currentPage.selection = [column];
         checkSelection();
         figma.ui.postMessage({ type: 'action-done', message: 'Applied column settings' });
       } else {
@@ -7608,6 +7611,7 @@ async function handleSwapComponent(msg: any) {
                   applyColumnWidthMode(node, 'FILL');
                   mergeNodeParams(node, { width: undefined });
               }
+              figma.currentPage.selection = [node];
               checkSelection();
               figma.ui.postMessage({ type: 'action-done', message: `Updated ${swappedCount} cells in column` });
           } 
