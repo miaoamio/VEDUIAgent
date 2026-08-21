@@ -1526,7 +1526,15 @@ export const buildTableComponentFromPayloadDetailed = (
   const secondaryButtonText =
     source.secondaryButtonText ?? buttonGroup?.secondaryText ?? buttonGroup?.secondary ?? buttonGroup?.secondaryLabel;
   const filterTexts = Array.isArray(source.filters)
-    ? source.filters.join(',')
+    ? source.filters.map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const label = item.label || item.name || item.title || '';
+          const type = item.type || 'select';
+          return label ? `${label}:${type}` : '';
+        }
+        return String(item);
+      }).filter(Boolean).join(',')
     : (typeof source.filters === 'string' ? source.filters : '');
   const rowActionRaw =
     source.rowAction ?? source.rowSelection ?? source.selection ?? source.selectionMode;

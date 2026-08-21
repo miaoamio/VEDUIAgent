@@ -923,7 +923,6 @@ function ensureAllPagesLoaded(): Promise<void> {
 
 // Wrap in async init to support dynamic-page mode (same pattern as SmartTable)
 async function initDocumentChangeListener() {
-  await ensureAllPagesLoaded();
 figma.on('documentchange', async (event) => {
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
