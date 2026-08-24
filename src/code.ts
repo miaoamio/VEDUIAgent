@@ -897,8 +897,9 @@ function ensureAllPagesLoaded(): Promise<void> {
 }
 
 
-// Register document change listener (sync registration; async work happens inside callbacks)
-function initDocumentChangeListener() {
+// Must call figma.loadAllPagesAsync() before registering documentchange in incremental mode
+async function initDocumentChangeListener() {
+await ensureAllPagesLoaded();
 figma.on('documentchange', async (event) => {
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
