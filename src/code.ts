@@ -5021,9 +5021,11 @@ async function renderComponent(
                   baseParams.width = shouldUseResolvedCellWidth ? cellWidth : (explicitHugWidth ? 0 : cellWidth);
                   baseParams.height = bodyHeight;
               }
+              const cellEndRow = rowIndex + rowspan - 1;
+              const isBottomEdge = cellEndRow >= bodyRowCount - 1;
               baseParams.disableStretch = true;
               baseParams.borderBottomOnly = true;
-              baseParams.borderWidth = (rowIndex === bodyRowCount - 1) ? 0 : mergedBorderWidth;
+              baseParams.borderWidth = isBottomEdge ? 0 : mergedBorderWidth;
               baseParams.borderColor = mergedBorderColor;
               if (baseParams.paddingTop === undefined) baseParams.paddingTop = 0;
               if (baseParams.paddingBottom === undefined) baseParams.paddingBottom = 0;
@@ -5064,7 +5066,7 @@ async function renderComponent(
               } catch {}
               await applyMergedCellBorders(node, {
                   leftBoundary: groupBoundaryStartCols.has(leafColumnStart),
-                  bottom: true
+                  bottom: !isBottomEdge
               });
               // 合计行：通过变量绑定到源力 color-bg-3，避免被 cell painter 内的 variable bind 覆盖回白色
               if (totalRowSet.has(rowIndex)) {
