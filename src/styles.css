@@ -2596,16 +2596,16 @@ button:disabled {
   padding-right: 32px;
 }
 
-.selection-panel .select-control:not(:focus-within):hover,
-.selection-layout .field-row .select-control:not(:focus-within):hover {
+.selection-panel .select-control:not(.is-disabled):not(:focus-within):hover,
+.selection-layout .field-row .select-control:not(.is-disabled):not(:focus-within):hover {
   border-radius: 4px;
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.05),
     0 0 0 1px var(--ved-input-focus, #18181b);
 }
 
-.selection-panel .select-control:not(:focus-within):hover select,
-.selection-layout .field-row .select-control:not(:focus-within):hover select {
+.selection-panel .select-control:not(.is-disabled):not(:focus-within):hover select,
+.selection-layout .field-row .select-control:not(.is-disabled):not(:focus-within):hover select {
   border-color: transparent;
 }
 
@@ -2618,14 +2618,14 @@ button:disabled {
     0 0 0 1px var(--ved-input-focus, #18181b);
 }
 
-.selection-panel select:not(:focus):hover {
+.selection-panel select:not(:disabled):not(:focus):hover {
   border-color: transparent;
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.05),
     0 0 0 1px var(--ved-input-focus, #18181b);
 }
 
-.selection-layout .field-row select:not(:focus):hover {
+.selection-layout .field-row select:not(:disabled):not(:focus):hover {
   border-color: transparent;
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.05),
@@ -2932,14 +2932,15 @@ button:disabled {
   transition: background-color 120ms ease;
 }
 
-.selection-primary:hover,
-.selection-primary:active {
+.selection-primary:hover:not(:disabled),
+.selection-primary:active:not(:disabled) {
   background: var(--ved-button-primary-hover-bg, #27272A);
 }
 
 .selection-primary:disabled {
   background: #9CA3AF;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .apply-column-row {
