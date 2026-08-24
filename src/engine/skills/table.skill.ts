@@ -48,7 +48,17 @@ const CHINESE_SINGLE_SURNAMES =
   '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵湛汪祁毛禹狄米贝明臧计伏成戴谈宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣贲邓郁单杭洪包诸左石崔吉龚程嵇邢滑裴陆荣翁荀羊於惠甄曲家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘斜厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴郁胥能苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍郤璩桑桂濮牛寿通边扈燕冀郏浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东殴殳沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公';
 const NON_PERSON_NAME_TOKENS = [
   '服务', '平台', '系统', '资源', '分析', '报表', '同步', '业务', '分组', '状态', '部门', '事业部',
-  '团队', '项目', '云', '组', '部', '率', '时间', '日期', '名称', '操作', '编辑', '删除', '运行'
+  '团队', '项目', '云', '组', '部', '率', '时间', '日期', '名称', '操作', '编辑', '删除', '运行',
+  '公司', '有限', '集团', '科技', '工厂', '车间', '中心', '医院', '学校', '大学', '学院', '银行',
+  '商店', '酒店', '餐厅', '公园', '广场', '花园', '大厦', '公寓', '小区', '社区',
+  '省', '市', '区', '县', '镇', '村', '路', '街', '道', '号', '楼', '栋', '城', '港', '站', '所',
+  '员', '师', '长', '工', '官', '理', '总', '总', '助理', '代理', '代表',
+  '用户', '客户', '访客', '会员', '管理员', '操作员', '审核员', '专员', '服务员', '技术员',
+  '工程师', '设计师', '经理', '总监', '主管', '组长', '班长', '行长', '校长', '院长',
+  '启用', '禁用', '正常', '异常', '在线', '离线', '激活', '注销', '有效', '无效', '成功', '失败',
+  '普通', '超级', '高级', '初级', '中级', '特级', '一级', '二级', '三级',
+  '类型', '类别', '分类', '级别', '等级', '角色', '权限',
+  '应用', '软件', '工具', '设备', '机器', '装置', '仪器', '仪表'
 ] as const;
 
 export const extractCellText = (value: unknown): string => {
@@ -75,6 +85,24 @@ const normalizeHeaderToken = (header: unknown): string =>
 const headerIncludes = (header: unknown, tokens: string[]): boolean => {
   const normalized = normalizeHeaderToken(header);
   return tokens.some((token) => normalized.includes(token));
+};
+
+const NON_USER_SIGNAL_TOKENS = [
+  'id', 'code', 'key', 'no', 'num', 'number', 'count', 'amount', 'total', 'sum', 'avg',
+  'type', 'status', 'state', 'level', 'role', 'tag', 'badge', 'category',
+  'time', 'date', 'datetime', 'timestamp',
+  'count', 'num', 'qty', 'quantity', 'price', 'cost', 'rate', 'ratio', 'percent',
+  '编号', '编码', '序号', '工号', '学号', '订单号', '单号', '手机号', '电话',
+  '类型', '状态', '级别', '角色', '标签', '分类', '数量', '金额', '价格',
+  '时间', '日期'
+];
+
+const headerMixedWithNonUserSignal = (header: unknown): boolean => {
+  const normalized = normalizeHeaderToken(header);
+  if (normalized === 'user' || normalized === 'owner' || normalized === 'member' || normalized === 'assignee' || normalized === 'creator') {
+    return false;
+  }
+  return NON_USER_SIGNAL_TOKENS.some((token) => normalized.includes(token));
 };
 
 const CHINESE_ACTION_TOKENS = [
@@ -197,7 +225,6 @@ const isLikelyUserObject = (value: unknown): boolean => {
 };
 
 const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
-  if (headerIncludes(header, USER_HEADER_HINTS)) return true;
   if (
     headerIncludes(header, BUSINESS_TEXT_HEADER_HINTS) ||
     headerIncludes(header, NARRATIVE_TEXT_HEADER_HINTS) ||
@@ -205,9 +232,17 @@ const isLikelyAvatarColumn = (header: string, values: unknown[]): boolean => {
     headerIncludes(header, TYPE_TAG_HEADER_HINTS) ||
     headerIncludes(header, DATE_TIME_HEADER_HINTS) ||
     headerIncludes(header, NON_NUMERIC_HEADER_HINTS) ||
+    headerIncludes(header, NUMERIC_HEADER_HINTS) ||
+    headerIncludes(header, GEO_HEADER_HINTS) ||
+    headerIncludes(header, ORG_ENTITY_HEADER_HINTS) ||
+    headerIncludes(header, NAME_TITLE_HEADER_HINTS) ||
     headerIncludes(header, ['操作', 'action', 'actions', 'operation', '服务', 'service', '平台', 'system'])
   ) {
     return false;
+  }
+  if (headerIncludes(header, USER_HEADER_HINTS)) {
+    if (headerMixedWithNonUserSignal(header)) return false;
+    return true;
   }
   const nonEmptyValues = values.filter((value) => extractCellText(value).trim() !== '' || isObject(value));
   if (nonEmptyValues.length === 0) return false;
@@ -314,6 +349,20 @@ const AMOUNT_HEADER_HINTS = [
 const NON_NUMERIC_HEADER_HINTS = [
   '编号', '编码', 'id', 'code', '订单号', '单号', '序号', '学号', '工号', '手机号', '电话', '邮编',
   'ip', 'ip地址', '服务器ip', '地址', 'address', 'host', 'hostname'
+];
+
+const GEO_HEADER_HINTS = [
+  '城市', '地区', '区域', '位置', '省', '市', '区', '县', '镇', '村', '路', '街', '国家', '省份', '区县',
+  'city', 'region', 'province', 'district', 'location', 'address', 'country', 'town', 'street'
+];
+
+const ORG_ENTITY_HEADER_HINTS = [
+  '产品', '商品', '项目', '公司', '组织', '机构', '学校', '课程', '专业', '班级', '部门', '团队', '工厂', '车间',
+  'product', 'item', 'sku', 'goods', 'merchandise', 'project', 'company', 'organization', 'team', 'school'
+];
+
+const NAME_TITLE_HEADER_HINTS = [
+  '名称', '标题', '主题', '产品名', '商品名', '项目名', '标题名'
 ];
 
 const IDENTIFIER_TEXT_HEADER_HINTS = [
@@ -558,7 +607,7 @@ export const tableTypeToComponentId = (type?: string): string => {
   if (normalized.includes('actiontext') || normalized.includes('action-text') || normalized.includes('action_text') || normalized.includes('操作文字') || normalized.includes('operation') || normalized.includes('action') || normalized.includes('操作')) {
     return 'table-cell-action-text';
   }
-  if (normalized.includes('avatar') || normalized.includes('user') || normalized.includes('owner')) {
+  if (/(?:^|[^a-z])(avatar|user|owner)(?:[^a-z]|$)/.test(normalized)) {
     return 'table-cell-avatar';
   }
   if (normalized.includes('input') || normalized.includes('edit')) {
@@ -1563,6 +1612,10 @@ export const buildTableComponentFromPayloadDetailed = (
     if (isBusinessTextColumn(header)) return 'Text';
     if (isDateTimeColumn(header, columnValues)) return 'Text';
     if (isLikelyAvatarColumn(header, columnValues)) return 'Avatar';
+    const originalType = String(columnTypes[colIndex] || 'Text').toLowerCase();
+    if (/(?:^|[^a-z])(avatar|user|owner)(?:[^a-z]|$)/.test(originalType) && originalType !== 'text') {
+      return 'Text';
+    }
     return columnTypes[colIndex] || 'Text';
   });
 
