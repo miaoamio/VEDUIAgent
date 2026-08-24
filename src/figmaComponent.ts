@@ -958,6 +958,8 @@ export async function loadFigmaComponentByKey(
     throw new Error("componentKey is required when componentNodeId cannot be resolved.");
   }
 
+  // Import from library - local findOne/mainComponent traversal is avoided
+  // because it triggers Figma's component library sync and resets user overrides.
   let componentSetImportError: unknown = null;
   try {
     const importSetAsync = (figma as unknown as {
@@ -982,14 +984,6 @@ export async function loadFigmaComponentByKey(
     cacheLoadedFigmaComponent(imported, [componentKey, imported.key]);
     return imported;
   } catch (error) {
-    const localByKey = figma.currentPage.findOne(
-      (node) => isComponentOrSetNode(node) && node.key === componentKey
-    ) as ComponentNode | ComponentSetNode | null;
-    if (localByKey) {
-      cacheLoadedFigmaComponent(localByKey, [componentKey, localByKey.key]);
-      return localByKey;
-    }
-
     if (options.fallbackName) {
       const localByName = await findComponentByFallbackName(options.fallbackName);
       if (localByName) {

@@ -336,34 +336,8 @@ const isComponentOrSetNode = (node: BaseNode | PageNode | DocumentNode | null): 
 
 
 async function cleanupLegacyPrewarmTemplates(): Promise<void> {
-  const componentKeyToToken = new Map<string, string>();
-  for (const token of TABLE_CELL_PREWARM_TOKENS) {
-    const componentKey = resolveComponentTokenProfile(token)?.profile.componentKey;
-    if (componentKey && !componentKeyToToken.has(componentKey)) {
-      componentKeyToToken.set(componentKey, token);
-    }
-  }
-  if (componentKeyToToken.size === 0) return;
-  const candidates = figma.currentPage.findAll((node) => node.type === 'INSTANCE') as InstanceNode[];
-  for (const node of candidates) {
-    if (node.getPluginData(TEMPLATE_CACHE_NODE_KEY) === 'true') continue;
-    if (node.visible || node.x > -99999 || node.y > -99999) continue;
-    const mainComponent = await resolveInstanceMainComponentNode(node);
-    const componentKey = mainComponent?.key;
-    if (!componentKey) continue;
-    const token = componentKeyToToken.get(componentKey);
-    if (!token) continue;
-    const cacheKey = buildTokenCacheKey(token);
-    if (!cacheKey) continue;
-    if (FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.has(cacheKey)) {
-      try {
-        node.remove();
-      } catch {}
-      continue;
-    }
-    registerTemplateNode(cacheKey, 'component-instance', node);
-    FIGMA_COMPONENT_INSTANCE_TEMPLATE_CACHE.set(cacheKey, node);
-  }
+  // Disabled: calling getMainComponentAsync on instances triggers Figma's
+  // component library sync, which resets user overrides on all same-type instances.
 }
 
 async function hydrateTemplateCaches(): Promise<void> {
@@ -416,7 +390,9 @@ async function hydrateTemplateCaches(): Promise<void> {
   await cleanupLegacyPrewarmTemplates();
 }
 
-hydrateTemplateCaches();
+// Template caches hydration disabled on startup - it triggers Figma component
+// library sync by traversing all Instance nodes. Caches will be populated
+// naturally during rendering via createFigmaComponentInstanceByToken.
 
 async function prewarmTableCellAssets(): Promise<void> {
   if (TABLE_CELL_PREWARM_STATE.inFlight) return;
@@ -923,7 +899,6 @@ function ensureAllPagesLoaded(): Promise<void> {
 
 // Wrap in async init to support dynamic-page mode (same pattern as SmartTable)
 async function initDocumentChangeListener() {
-  await ensureAllPagesLoaded();
 figma.on('documentchange', async (event) => {
   for (const change of event.documentChanges) {
     if (change.type !== 'PROPERTY_CHANGE') continue;
