@@ -1085,7 +1085,7 @@ figma.on('documentchange', async (event) => {
 
 });  // end figma.on documentchange
 }
-initDocumentChangeListener();
+initDocumentChangeListener().catch(err => console.error('[DocumentChangeListener] init failed:', err));
 
 
 function toPositiveNumber(value: unknown): number | null {
